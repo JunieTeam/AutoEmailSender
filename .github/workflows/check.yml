@@ -1,11 +1,12 @@
 name: 检查
 
+# GitHub compares the whole push or pull request against these patterns, not just its last commit.
 on:
   pull_request:
-    paths-ignore: ["docs/**", "site/**", "*.md"]
+    paths-ignore: ["docs/**", "site/**", "*.md", "LICENSE", ".github/FUNDING.yml"]
   push:
     branches: [master]
-    paths-ignore: ["docs/**", "site/**", "*.md"]
+    paths-ignore: ["docs/**", "site/**", "*.md", "LICENSE", ".github/FUNDING.yml"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,40 +21,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-      # Nothing below reads these files, so a change touching only them skips the rest. The steps
-      # are skipped rather than the job, because the required checks need the job to report.
-      - id: changes
-        shell: bash
-        run: |
-          if git diff --name-only HEAD^ HEAD | grep -qvE '^(docs/|[^/]+\.md$|LICENSE$|\.github/FUNDING\.yml$)'; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          fi
       # Each test creates its own SQLite database in a temporary directory; on the Windows
       # runner's system drive that made the tests take ten times as long as on macOS.
-      - if: steps.changes.outputs.code && runner.os == 'Windows'
+      - if: runner.os == 'Windows'
         uses: samypr100/setup-dev-drive@v4
         with:
           env-mapping: |
             TMP,{{ DEV_DRIVE }}/
             TEMP,{{ DEV_DRIVE }}/
-      - if: steps.changes.outputs.code
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-      - if: steps.changes.outputs.code
-        uses: Swatinem/rust-cache@v2
-      - if: steps.changes.outputs.code
-        run: cargo install sqlx-cli --version 0.9.0 --no-default-features --features sqlite,sqlx-toml --locked
-      - if: steps.changes.outputs.code
-        uses: pnpm/action-setup@v6
-      - if: steps.changes.outputs.code
-        uses: actions/setup-node@v7
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install sqlx-cli --version 0.9.0 --no-default-features --features sqlite,sqlx-toml --locked
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: pnpm
-      - if: steps.changes.outputs.code
-        run: pnpm install --frozen-lockfile
-      - if: steps.changes.outputs.code
-        run: pnpm check
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
