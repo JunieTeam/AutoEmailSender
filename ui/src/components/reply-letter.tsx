@@ -22,6 +22,7 @@ import {
 import { TemplateMenu } from "@/components/first-letter";
 import { Confirm } from "@/components/batch-bar";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Attachments } from "@/components/attachments";
 import {
   AttachMenu,
@@ -213,7 +214,11 @@ function Composer({
   }, [answer, fills]);
   const locked = approving || discard.isPending || uploading || busy || review !== undefined;
   const canSelect = !approving && !discard.isPending && !uploading;
+  // docs/ui.md#交互: a line until clicked; kept open while there is anything in it.
+  const [expanded, setExpanded] = useState(false);
+  const [focusing, setFocusing] = useState(0);
   if (canSelect && selecting && selected && chosen.data?.messageId) {
+    setExpanded(true);
     setSelection({ version: selected.version, previousReplyTo: letter.replyTo });
     setChoice(chosen.data);
     setEditing({ letter: { ...letter, replyTo: chosen.data.messageId }, target: chosen.data });
@@ -262,6 +267,7 @@ function Composer({
       });
     },
     onSuccess: async () => {
+      setExpanded(false);
       await queryClient.invalidateQueries({ queryKey: [draftQuery, mentorId] });
       writing.forget();
       factCheck.forget();
@@ -288,162 +294,209 @@ function Composer({
         ? "这封信缺少邮件编号，无法在原线程里回复，请到邮箱里回复"
         : null;
   const approveError = approvals.at(-1)?.error;
+  const failed = !!(discard.error ?? writing.latest?.error ?? last?.error ?? approveError);
+  const open =
+    expanded ||
+    followUp ||
+    !!draft ||
+    letter.bodyMd.trim() !== "" ||
+    letter.attachments.length > 0 ||
+    busy ||
+    review !== undefined ||
+    approving ||
+    failed;
   const sendButton = useRef<HTMLButtonElement>(null);
   return (
-    <section
-      aria-label={`${label}导师`}
-      className="mt-auto flex max-h-[65dvh] shrink-0 flex-col gap-2 overflow-y-auto border-t border-border bg-background px-5 py-3 phone:px-3 [&>*]:shrink-0"
-      onKeyDown={(e) => {
-        if (
-          e.key === "Enter" &&
-          (e.metaKey || e.ctrlKey) &&
-          !composing(e) &&
-          e.target instanceof HTMLElement &&
-          e.currentTarget.contains(e.target)
-        ) {
-          e.preventDefault();
-          sendButton.current?.click();
-        }
-      }}
-    >
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 grow">
-          <p className="truncate text-sm font-medium">
-            {label} {mentor.name}
-          </p>
-          {shownTarget && (
-            <p className="truncate text-xs text-muted-foreground" title={shownTarget.subject ?? undefined}>
-              “{shownTarget.subject ?? "无主题"}” · {shownTarget.fromAddress} · {day(shownTarget.sentAt)}{" "}
-              {time(shownTarget.sentAt)}
+    <section aria-label={`${label}导师`} className="mt-auto shrink-0 border-t border-border bg-background">
+      {!open && (
+        <button
+          type="button"
+          className="m-3 flex h-10 w-[calc(100%-1.5rem)] items-center rounded-lg bg-muted px-3 text-left text-sm text-muted-foreground transition-colors hover:bg-press"
+          onClick={() => {
+            setExpanded(true);
+            setFocusing(focusing + 1);
+          }}
+        >
+          {label} {mentor.name}…
+        </button>
+      )}
+      <Collapsible open={open}>
+        <CollapsibleContent
+          className="flex max-h-[65dvh] flex-col gap-2 overflow-y-auto px-5 py-3 phone:px-3 [&>*]:shrink-0"
+          // Leaving an empty box folds it back, but not for its own menus and dialogs, which sit
+          // outside the app root, nor for "回复" on another letter, which only changes the target.
+          onBlur={(e) => {
+            const to = e.relatedTarget;
+            if (
+              to instanceof Element &&
+              (e.currentTarget.contains(to) ||
+                !document.getElementById("root")?.contains(to) ||
+                to.closest("[data-reply]"))
+            )
+              return;
+            setExpanded(false);
+          }}
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter" &&
+              (e.metaKey || e.ctrlKey) &&
+              !composing(e) &&
+              e.target instanceof HTMLElement &&
+              e.currentTarget.contains(e.target)
+            ) {
+              e.preventDefault();
+              sendButton.current?.click();
+            }
+          }}
+        >
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 grow">
+              <p className="truncate text-sm font-medium">
+                {label} {mentor.name}
+              </p>
+              {shownTarget && (
+                <p className="truncate text-xs text-muted-foreground" title={shownTarget.subject ?? undefined}>
+                  “{shownTarget.subject ?? "无主题"}” · {shownTarget.fromAddress} · {day(shownTarget.sentAt)}{" "}
+                  {time(shownTarget.sentAt)}
+                </p>
+              )}
+            </div>
+            {followUp && (
+              <Confirm
+                trigger={
+                  <Button variant="ghost" size="sm" disabled={locked}>
+                    放弃追问
+                  </Button>
+                }
+                message="放弃这份追问草稿？已保存的正文和取消原因会保留在往来里。"
+                action="放弃追问"
+                onConfirm={() => discard.mutate()}
+              />
+            )}
+          </div>
+          {followUp && (
+            <p className="text-xs text-muted-foreground">
+              主题自动沿用上一封。AI 起草会将之前发出的信交给所选模型参考。
             </p>
           )}
-        </div>
-        {followUp && (
-          <Confirm
-            trigger={
-              <Button variant="ghost" size="sm" disabled={locked}>
-                放弃追问
-              </Button>
-            }
-            message="放弃这份追问草稿？已保存的正文和取消原因会保留在往来里。"
-            action="放弃追问"
-            onConfirm={() => discard.mutate()}
-          />
-        )}
-      </div>
-      {followUp && (
-        <p className="text-xs text-muted-foreground">主题自动沿用上一封。AI 起草会将之前发出的信交给所选模型参考。</p>
-      )}
-      {review && <Rewrite {...review} />}
-      <LazyLetterEditor
-        key={body.version}
-        id={`reply-letter-${mentorId}`}
-        markdown={body.markdown}
-        placeholders={placeholders}
-        unfilled
-        compact
-        quotes={quotes(problems)}
-        focus={selection.version}
-        disabled={locked}
-        onChange={(bodyMd) => edit({ ...letter, bodyMd })}
-      />
-      <Attachments
-        files={attached}
-        onRemove={
-          locked ? undefined : (m) => edit({ ...letter, attachments: letter.attachments.filter((id) => id !== m.id) })
-        }
-      />
-      <LetterProblems
-        problems={problems}
-        locked={locked}
-        onSalutation={(salutation) => rewrite(`${salutation}\n\n${letter.bodyMd}`)}
-      />
-      {!review && <FactCheckStatus check={factCheck} stored={draft?.factCheck} />}
-      <div className="flex flex-wrap items-center gap-2">
-        {busy ? (
-          <>
-            <Button variant="quiet" onClick={writing.forget}>
-              取消
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              AI 正在{writing.latest?.variables?.bodyMd.trim() ? "改写" : "起草"}…
-            </span>
-          </>
-        ) : (
-          <AiButton
-            blank={!letter.bodyMd.trim()}
-            disabled={locked || !shownTarget?.messageId || chosen.isFetching}
-            onWrite={() => writing.start({ ...letter, subject: "", replyTarget: shownTarget })}
-          />
-        )}
-        {followUp && (
-          <TemplateMenu
-            mentorId={mentorId}
+          {review && <Rewrite {...review} />}
+          <LazyLetterEditor
+            key={body.version}
+            id={`reply-letter-${mentorId}`}
+            markdown={body.markdown}
+            placeholders={placeholders}
+            unfilled
+            compact
+            quotes={quotes(problems)}
+            focus={selection.version + focusing}
             disabled={locked}
-            written={!!letter.bodyMd.trim()}
-            bodyOnly
-            onApply={(filled) => rewrite(filled.bodyMd)}
+            onChange={(bodyMd) => edit({ ...letter, bodyMd })}
           />
-        )}
-        <AttachMenu
-          materials={materials}
-          attached={attached}
-          disabled={locked}
-          mentorId={mentorId}
-          kind={followUp ? "follow_up" : "reply"}
-          onPrepare={() => {
-            const edited = { letter, target: shownTarget };
-            setEditing(edited);
-            return save.mutateAsync(edited);
-          }}
-          onAttach={(m) =>
-            edit({
-              ...letter,
-              attachments: [
-                ...letter.attachments.filter((id) => !attached.some((a) => a.id === id && a.fileName === m.fileName)),
-                m.id,
-              ],
-            })
-          }
-        />
-        <div className="ml-auto flex min-w-0 items-center gap-3">
-          {review ? (
-            <>
-              <Button variant="quiet" onClick={writing.forget}>
-                保留原文
-              </Button>
-              <Button
-                onClick={() => {
-                  writing.forget();
-                  rewrite(review.after.bodyMd);
-                  factCheck.start();
-                }}
-              >
-                采用修改
-              </Button>
-            </>
-          ) : (
-            <LetterSend
-              buttonRef={sendButton}
-              problems={problems}
-              blocker={blocker}
-              disabled={locked || !style.data || letter.bodyMd.trim() === "" || chosen.isFetching}
-              onSend={() => approve.mutate({ ...letter, attachments: attached.map((m) => m.id) })}
+          <Attachments
+            files={attached}
+            onRemove={
+              locked
+                ? undefined
+                : (m) => edit({ ...letter, attachments: letter.attachments.filter((id) => id !== m.id) })
+            }
+          />
+          <LetterProblems
+            problems={problems}
+            locked={locked}
+            onSalutation={(salutation) => rewrite(`${salutation}\n\n${letter.bodyMd}`)}
+          />
+          {!review && <FactCheckStatus check={factCheck} stored={draft?.factCheck} />}
+          <div className="flex flex-wrap items-center gap-2">
+            {busy ? (
+              <>
+                <Button variant="quiet" onClick={writing.forget}>
+                  取消
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  AI 正在{writing.latest?.variables?.bodyMd.trim() ? "改写" : "起草"}…
+                </span>
+              </>
+            ) : (
+              <AiButton
+                blank={!letter.bodyMd.trim()}
+                disabled={locked || !shownTarget?.messageId || chosen.isFetching}
+                onWrite={() => writing.start({ ...letter, subject: "", replyTarget: shownTarget })}
+              />
+            )}
+            {followUp && (
+              <TemplateMenu
+                mentorId={mentorId}
+                disabled={locked}
+                written={!!letter.bodyMd.trim()}
+                bodyOnly
+                onApply={(filled) => rewrite(filled.bodyMd)}
+              />
+            )}
+            <AttachMenu
+              materials={materials}
+              attached={attached}
+              disabled={locked}
+              mentorId={mentorId}
+              kind={followUp ? "follow_up" : "reply"}
+              onPrepare={() => {
+                const edited = { letter, target: shownTarget };
+                setEditing(edited);
+                return save.mutateAsync(edited);
+              }}
+              onAttach={(m) =>
+                edit({
+                  ...letter,
+                  attachments: [
+                    ...letter.attachments.filter(
+                      (id) => !attached.some((a) => a.id === id && a.fileName === m.fileName),
+                    ),
+                    m.id,
+                  ],
+                })
+              }
             />
+            <div className="ml-auto flex min-w-0 items-center gap-3">
+              {review ? (
+                <>
+                  <Button variant="quiet" onClick={writing.forget}>
+                    保留原文
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      writing.forget();
+                      rewrite(review.after.bodyMd);
+                      factCheck.start();
+                    }}
+                  >
+                    采用修改
+                  </Button>
+                </>
+              ) : (
+                <LetterSend
+                  buttonRef={sendButton}
+                  problems={problems}
+                  blocker={blocker}
+                  disabled={locked || !style.data || letter.bodyMd.trim() === "" || chosen.isFetching}
+                  onSend={() => approve.mutate({ ...letter, attachments: attached.map((m) => m.id) })}
+                />
+              )}
+            </div>
+          </div>
+          {discard.error && <p className="text-sm text-destructive">未能放弃追问：{errorMessage(discard.error)}</p>}
+          {writing.latest?.error && (
+            <p className="text-sm text-destructive">AI 撰写未能完成：{errorMessage(writing.latest.error)}</p>
           )}
-        </div>
-      </div>
-      {discard.error && <p className="text-sm text-destructive">未能放弃追问：{errorMessage(discard.error)}</p>}
-      {writing.latest?.error && (
-        <p className="text-sm text-destructive">AI 撰写未能完成：{errorMessage(writing.latest.error)}</p>
-      )}
-      {last?.status === "error" && <p className="text-sm text-destructive">草稿未能保存：{errorMessage(last.error)}</p>}
-      {checks.error && <p className="text-sm text-destructive">发送前检查未能完成：{errorMessage(checks.error)}</p>}
-      {(chosen.error ?? style.error ?? approveError) && (
-        <p className="text-sm text-destructive">
-          未能发送：{errorMessage(chosen.error ?? style.error ?? approveError)}
-        </p>
-      )}
+          {last?.status === "error" && (
+            <p className="text-sm text-destructive">草稿未能保存：{errorMessage(last.error)}</p>
+          )}
+          {checks.error && <p className="text-sm text-destructive">发送前检查未能完成：{errorMessage(checks.error)}</p>}
+          {(chosen.error ?? style.error ?? approveError) && (
+            <p className="text-sm text-destructive">
+              未能发送：{errorMessage(chosen.error ?? style.error ?? approveError)}
+            </p>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
     </section>
   );
 }

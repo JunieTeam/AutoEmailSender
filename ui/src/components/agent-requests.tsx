@@ -6,6 +6,7 @@ import type { AgentRequest, ConfirmationLetter, SendAt } from "@/api/types";
 import { openLinks } from "@/components/correspondence";
 import { scheduledAt, scheduleText } from "@/components/schedule";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { fileSize } from "@/format";
 import { letterHtml, letterText } from "@/letter";
@@ -81,14 +82,14 @@ function RequestDialog({ request, queued }: { request: AgentRequest; queued: num
               <ul className="max-h-80 divide-y divide-border overflow-y-auto rounded-lg border border-border text-sm">
                 {letters.map((l, i) => (
                   <li key={i}>
-                    <details>
-                      <summary className="cursor-pointer px-3 py-2 wrap-anywhere">
+                    <Collapsible>
+                      <CollapsibleTrigger className="w-full px-3 py-2 text-foreground wrap-anywhere">
                         {l.mentorName}：{l.subject}
-                      </summary>
-                      <div className="px-3 pb-3">
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="px-3 pb-3">
                         <Letter letter={l} html={rendered?.[i]?.html} time={!sharedTime} />
-                      </div>
-                    </details>
+                      </CollapsibleContent>
+                    </Collapsible>
                   </li>
                 ))}
               </ul>

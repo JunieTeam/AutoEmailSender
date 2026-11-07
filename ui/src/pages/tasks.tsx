@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch, useParams, useBlocker } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { ChevronLeft, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, ListChecks, Mail, MoreHorizontal, SearchX } from "lucide-react";
 import { call, errorMessage } from "@/api/call";
 import { refreshTasks } from "@/components/task-cache";
-import type { DraftFilter, DraftState, PlanColumn, Progress, TaskSummary, NewTask } from "@/api/types";
+import type { DraftFilter, DraftState, PlanColumn, Progress, TaskState, TaskSummary, NewTask } from "@/api/types";
+import { cn } from "cn";
 import { ModelAction } from "@/components/ai-writing";
 import { Confirm } from "@/components/batch-bar";
 import { CloudSendDialog } from "@/components/cloud-send";
@@ -16,7 +17,9 @@ import { Avatar } from "@/components/mentor";
 import { Pager, pageParam } from "@/components/mentor-table";
 import { Notice } from "@/components/notice";
 import { usePlaceholders } from "@/components/template-dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { StatusDot, type Tone } from "@/components/ui/status-dot";
+import { Segments } from "@/components/ui/segments";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -25,6 +28,7 @@ import { SendingPlan } from "@/components/sending-plan";
 import { ChangeSchedule, ScheduleActions, scheduleText, scheduledAt } from "@/components/schedule";
 import { day } from "@/format";
 import { letterHtml, letterText } from "@/letter";
+import { Loading } from "@/components/loading";
 
 export function tasksSearch(s: Record<string, unknown>): {
   page?: number;
@@ -75,7 +79,7 @@ function ProgressBar({ progress, labels = false }: { progress: Progress; labels?
             progress[k] > 0 && (
               <div
                 key={k}
-                className={color}
+                className={`${color} transition-[width] duration-240`}
                 style={{ width: `${(progress[k] / total) * 100}%` }}
                 title={`${label} ${progress[k]} 封`}
               />
@@ -98,7 +102,22 @@ function ProgressBar({ progress, labels = false }: { progress: Progress; labels?
     </div>
   );
 }
-const TASK_STATE = { active: "进行中", paused: "已暂停", stopped: "已停止", completed: "已完成" };
+const TASK_STATE: Record<TaskState, [string, Tone]> = {
+  active: ["进行中", "info"],
+  paused: ["已暂停", "warning"],
+  stopped: ["已停止", "faint"],
+  completed: ["已完成", "success"],
+};
+
+function TaskStatus({ state, className }: { state: TaskState; className?: string }) {
+  const [label, tone] = TASK_STATE[state];
+  return (
+    <span className={cn("flex items-center gap-1.5 text-sm text-muted-foreground", className)}>
+      <StatusDot tone={tone} />
+      {label}
+    </span>
+  );
+}
 export function TasksPage() {
   const search = useSearch({ from: "/tasks" });
   const navigate = useNavigate({ from: "/tasks" });
@@ -115,67 +134,69 @@ export function TasksPage() {
         <h1 className="text-2xl font-semibold">任务</h1>
         <p className="mt-1 text-sm text-muted-foreground">审核邮件草稿，批准后依次发出</p>
       </header>
-      <div className="mb-4 flex gap-2 px-7 phone:px-4" role="tablist" aria-label="任务页面">
-        <Button
-          variant={search.tab !== "plan" ? "quiet" : "ghost"}
-          role="tab"
-          aria-selected={search.tab !== "plan"}
-          onClick={() => void navigate({ search: (s) => ({ ...s, tab: undefined }) })}
-        >
-          任务
-        </Button>
-        <Button
-          variant={search.tab === "plan" ? "quiet" : "ghost"}
-          role="tab"
-          aria-selected={search.tab === "plan"}
-          onClick={() => void navigate({ search: (s) => ({ ...s, tab: "plan" }) })}
-        >
-          发送计划
-        </Button>
+      <div className="mb-4 px-7 phone:px-4">
+        <Segments
+          label="任务页面"
+          value={search.tab}
+          options={[
+            [undefined, "任务"],
+            ["plan", "发送计划"],
+          ]}
+          onChange={(tab) => void navigate({ search: (s) => ({ ...s, tab }) })}
+        />
       </div>
-      {search.tab === "plan" ? (
-        <SendingPlan />
-      ) : (
-        <>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 phone:px-2">
-            {query.error ? (
-              <Notice title="任务列表未能加载" detail={errorMessage(query.error)} />
-            ) : query.data?.total === 0 ? (
-              <Notice title="尚未创建任务" detail="在导师列表勾选导师，按“写信”或“追问”创建任务" />
-            ) : (
-              query.data?.tasks.map((t) => (
-                <Link
-                  key={t.id}
-                  to="/tasks/$id"
-                  params={{ id: t.id }}
-                  className="mb-[3px] grid grid-cols-[minmax(140px,1fr)_minmax(160px,1.5fr)_70px] items-center gap-5 rounded-md px-4 py-4 hover:bg-muted phone:grid-cols-[minmax(0,1fr)_64px] phone:gap-2"
-                >
-                  <div className="min-w-0">
-                    <h2 className="truncate font-medium">{t.name}</h2>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {day(t.createdAt)} · {Object.values(t.progress).reduce((n, v) => n + v, 0)} 位导师
-                    </p>
-                  </div>
-                  <div className="phone:col-span-2 phone:row-start-2">
-                    <ProgressBar progress={t.progress} labels />
-                  </div>
-                  <span className={`text-sm ${t.state === "paused" ? "text-warning" : "text-muted-foreground"}`}>
-                    {TASK_STATE[t.state]}
-                  </span>
-                </Link>
-              ))
-            )}
-          </div>
-          <footer className="flex justify-end px-7 py-3">
-            <Pager
-              page={page}
-              total={query.data?.total ?? 0}
-              pageSize={20}
-              onPage={(p) => navigate({ search: { page: p > 1 ? p : undefined } })}
-            />
-          </footer>
-        </>
-      )}
+      <div key={search.tab ?? "tasks"} className="flex min-h-0 flex-1 animate-enter flex-col">
+        {search.tab === "plan" ? (
+          <SendingPlan />
+        ) : (
+          <>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 phone:px-2">
+              {query.error ? (
+                <Notice title="任务列表未能加载" detail={errorMessage(query.error)} />
+              ) : query.data?.total === 0 ? (
+                <Notice
+                  icon={ListChecks}
+                  title="尚未创建任务"
+                  detail="在导师列表勾选导师，按“写信”或“追问”创建任务"
+                  actions={
+                    <Link to="/mentors" className={buttonVariants()}>
+                      去导师列表
+                    </Link>
+                  }
+                />
+              ) : (
+                query.data?.tasks.map((t) => (
+                  <Link
+                    key={t.id}
+                    to="/tasks/$id"
+                    params={{ id: t.id }}
+                    className="mb-[3px] grid animate-enter grid-cols-[minmax(140px,1fr)_minmax(160px,1.5fr)_70px] items-center gap-5 rounded-md px-4 py-4 hover:bg-muted phone:grid-cols-[minmax(0,1fr)_64px] phone:gap-2"
+                  >
+                    <div className="min-w-0">
+                      <h2 className="truncate font-medium">{t.name}</h2>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {day(t.createdAt)} · {Object.values(t.progress).reduce((n, v) => n + v, 0)} 位导师
+                      </p>
+                    </div>
+                    <div className="phone:col-span-2 phone:row-start-2">
+                      <ProgressBar progress={t.progress} labels />
+                    </div>
+                    <TaskStatus state={t.state} />
+                  </Link>
+                ))
+              )}
+            </div>
+            <footer className="flex justify-end px-7 py-3 empty:hidden">
+              <Pager
+                page={page}
+                total={query.data?.total ?? 0}
+                pageSize={20}
+                onPage={(p) => navigate({ search: { page: p > 1 ? p : undefined } })}
+              />
+            </footer>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -329,7 +350,7 @@ export function TaskReviewPage() {
   });
   if (task.error) return <Notice title="任务未能加载" detail={errorMessage(task.error)} />;
   const t = task.data;
-  if (!t) return null;
+  if (!t) return <Loading />;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {restarting && (
@@ -346,8 +367,8 @@ export function TaskReviewPage() {
             <ChevronLeft className="size-5" />
           </Link>
           <h1 className="min-w-0 grow truncate text-lg font-semibold">{t.name}</h1>
-          <span className="text-xs text-muted-foreground phone:hidden">{TASK_STATE[t.state]}</span>
-          {t.state !== "stopped" &&
+          <TaskStatus state={t.state} className="phone:hidden" />
+          {(t.state === "active" || t.state === "paused") &&
             (t.state === "paused" && t.writer === "ai" ? (
               <ModelAction
                 modelId={t.modelConfigId}
@@ -426,11 +447,7 @@ export function TaskReviewPage() {
                 />
               )}
               <Confirm
-                trigger={
-                  <Button variant="ghost" className="text-destructive">
-                    删除任务
-                  </Button>
-                }
+                trigger={<Button variant="danger">删除任务</Button>}
                 message={
                   t.progress.cloud > 0
                     ? `有 ${t.progress.cloud} 封邮件已交给云端，请先把它们撤回到本地再删除任务`
@@ -479,21 +496,22 @@ export function TaskReviewPage() {
                 </option>
               ))}
             </NativeSelect>
-            <Button
-              variant="quiet"
-              className="w-full"
-              disabled={t.progress.review === 0 || t.state === "stopped"}
-              onClick={() => {
-                void flush()
-                  .then(() => {
-                    client.removeQueries({ queryKey: ["prepareTaskApproval", id] });
-                    setBulk(true);
-                  })
-                  .catch((e: unknown) => setError(errorMessage(e)));
-              }}
-            >
-              批准全部待审核
-            </Button>
+            {t.progress.review > 0 && t.state !== "stopped" && (
+              <Button
+                variant="quiet"
+                className="w-full"
+                onClick={() => {
+                  void flush()
+                    .then(() => {
+                      client.removeQueries({ queryKey: ["prepareTaskApproval", id] });
+                      setBulk(true);
+                    })
+                    .catch((e: unknown) => setError(errorMessage(e)));
+                }}
+              >
+                批准全部待审核
+              </Button>
+            )}
             {t.progress.generationFailed > 0 && t.state !== "stopped" && (
               <Button variant="ghost" className="w-full" onClick={() => action.mutate("retryTaskGeneration")}>
                 重试全部生成失败的
@@ -504,7 +522,7 @@ export function TaskReviewPage() {
             {list.error ? (
               <Notice title="草稿列表未能加载" detail={errorMessage(list.error)} />
             ) : list.data?.total === 0 ? (
-              <Notice title="无符合条件的邮件" detail="可更换筛选条件查看" />
+              <Notice icon={SearchX} title="无符合条件的邮件" detail="可更换筛选条件查看" />
             ) : (
               list.data?.drafts.map((d) => (
                 <button
@@ -525,7 +543,7 @@ export function TaskReviewPage() {
               ))
             )}
           </div>
-          <footer className="flex justify-end p-3">
+          <footer className="flex justify-end p-3 empty:hidden">
             <Pager
               page={page}
               total={list.data?.total ?? 0}
@@ -547,7 +565,7 @@ export function TaskReviewPage() {
             }}
           />
         ) : (
-          <Notice title="选择一封草稿开始审核" detail="草稿会陆续出现在左边" />
+          <Notice icon={Mail} title="选择一封草稿开始审核" detail="草稿会陆续出现在左边" />
         )}
       </div>
       {changingSchedule && <ChangeSchedule task={t} onClose={() => setChangingSchedule(false)} />}
@@ -608,7 +626,7 @@ function DraftDetail({
   const d = draft.data;
   const mentor = m.data;
   if (error) return <Notice title="邮件未能加载" detail={errorMessage(error)} />;
-  if (!d || !mentor || !materials.data || !placeholders.data) return null;
+  if (!d || !mentor || !materials.data || !placeholders.data) return <Loading />;
   const editable = d.state === "review" && task.state !== "stopped";
   return (
     <>

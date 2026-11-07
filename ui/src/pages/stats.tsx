@@ -8,6 +8,7 @@ import { BarChart, Legend, type Point, type Series } from "@/components/bar-char
 import { Pager } from "@/components/mentor-table";
 import { findSearch } from "@/pages/find";
 import { Segments } from "@/components/ui/segments";
+import { Loading } from "@/components/loading";
 
 // docs/ui.md 统计. Only the contact progress and token sections follow the range.
 
@@ -116,8 +117,13 @@ function Loaded<T>({
   children: (data: T) => React.ReactNode;
 }) {
   if (query.error) return <p className="text-sm text-destructive">{errorMessage(query.error)}</p>;
-  // The queries take milliseconds; drawing nothing until then avoids a flash of placeholders.
-  return query.data === undefined ? <div className="h-40" /> : children(query.data);
+  return query.data === undefined ? (
+    <div className="flex h-40">
+      <Loading />
+    </div>
+  ) : (
+    children(query.data)
+  );
 }
 
 function Contact({
@@ -202,12 +208,9 @@ function Contact({
             </tbody>
           </table>
           {p.schoolCount === 0 && <p className="py-6 text-sm text-muted-foreground">联系过的导师均未填写学校</p>}
-          {/* Also past the end, when the list shrank under the page shown. */}
-          {(p.schoolCount > SCHOOLS_PER_PAGE || page > 1) && (
-            <div className="mt-3 flex justify-end text-sm text-muted-foreground">
-              <Pager page={page} total={p.schoolCount} pageSize={SCHOOLS_PER_PAGE} onPage={onPage} />
-            </div>
-          )}
+          <div className="mt-3 flex justify-end empty:hidden">
+            <Pager page={page} total={p.schoolCount} pageSize={SCHOOLS_PER_PAGE} onPage={onPage} />
+          </div>
         </div>
       </div>
     </div>
@@ -356,7 +359,10 @@ function Bars({
             {r.label}
           </span>
           <span className="h-2 rounded-full bg-muted">
-            <span className="block h-full rounded-full bg-primary/75" style={{ width: `${(r.value / max) * 100}%` }} />
+            <span
+              className="block h-full rounded-full bg-muted-foreground/60 transition-[width] duration-240"
+              style={{ width: `${(r.value / max) * 100}%` }}
+            />
           </span>
           <span className="w-16 text-right tabular-nums">
             {share ? `${Math.round((r.value / max) * 100)}%` : `${r.value} ${unit}`}

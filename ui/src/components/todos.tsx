@@ -225,7 +225,7 @@ export function TodoEditor({
         {onDelete && (
           <Confirm
             trigger={
-              <Button type="button" variant="ghost" size="sm" className="text-destructive" disabled={pending}>
+              <Button type="button" variant="danger" size="sm" disabled={pending}>
                 删除
               </Button>
             }

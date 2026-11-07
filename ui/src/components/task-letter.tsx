@@ -27,6 +27,7 @@ import {
 } from "@/components/letter-composer";
 import { LazyLetterEditor } from "@/components/lazy-letter-editor";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { day, time } from "@/format";
 import { letterHtml, letterText } from "@/letter";
@@ -201,14 +202,18 @@ export function TaskLetter({
         </div>
       )}
       {draft.previous && (
-        <details className="rounded-lg bg-muted p-3 text-sm">
-          <summary className="cursor-pointer">
-            上一封 · {draft.previous.subject ?? "（无主题）"} · {day(draft.previous.sentAt)}{" "}
-            {time(draft.previous.sentAt)}
-          </summary>
-          <p className="mt-2 break-words text-xs text-muted-foreground">{draft.previous.attribution}</p>
-          <p className="mt-2 whitespace-pre-wrap break-words">{draft.previous.bodyText}</p>
-        </details>
+        <Collapsible className="rounded-lg bg-muted px-3 py-1.5 text-sm">
+          <CollapsibleTrigger className="w-full text-foreground">
+            <span className="min-w-0 truncate">
+              上一封 · {draft.previous.subject ?? "（无主题）"} · {day(draft.previous.sentAt)}{" "}
+              {time(draft.previous.sentAt)}
+            </span>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pb-1.5">
+            <p className="mt-1 break-words text-xs text-muted-foreground">{draft.previous.attribution}</p>
+            <p className="mt-2 whitespace-pre-wrap break-words">{draft.previous.bodyText}</p>
+          </CollapsibleContent>
+        </Collapsible>
       )}
       <Attachments
         files={attached}

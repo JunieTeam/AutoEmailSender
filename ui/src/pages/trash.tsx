@@ -59,12 +59,12 @@ export function TrashPage() {
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
-          className={`@container min-h-0 flex-1 overflow-y-auto px-4 phone:px-0 ${selected.size > 0 ? "pb-20" : ""}`}
+          className={`@container min-h-0 flex-1 overflow-y-auto px-4 phone:px-1.5 ${selected.size > 0 ? "pb-20" : ""}`}
         >
           {query.isError ? (
             <Notice title="回收站未能加载" detail={errorMessage(query.error)} />
           ) : query.data?.total === 0 ? (
-            <Notice title="回收站是空的" detail="移入回收站的导师会出现在这里，可以恢复或永久删除" />
+            <Notice icon={Trash2} title="回收站是空的" detail="移入回收站的导师会出现在这里，可以恢复或永久删除" />
           ) : (
             <MentorTable
               mentors={query.data?.mentors ?? []}
@@ -92,7 +92,7 @@ export function TrashPage() {
           </Button>
           <Confirm
             trigger={
-              <Button variant="ghost" disabled={act.isPending}>
+              <Button variant="danger" disabled={act.isPending}>
                 <Trash2 strokeWidth={1.6} />
                 永久删除
               </Button>
@@ -104,7 +104,7 @@ export function TrashPage() {
         </BatchBar>
       </div>
 
-      <footer className="flex items-center justify-end px-7 py-3 text-sm text-muted-foreground phone:justify-center phone:px-4">
+      <footer className="flex items-center justify-end px-7 py-3 empty:hidden phone:justify-center phone:px-4">
         <Pager
           page={page}
           total={query.data?.total ?? 0}

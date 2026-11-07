@@ -148,7 +148,7 @@ function MailboxRow({ mailbox: m, providers }: { mailbox: Mailbox; providers: Pr
           </Button>
           {m.cloudEmails > 0 ? (
             <Confirm
-              trigger={<Button variant="ghost">删除</Button>}
+              trigger={<Button variant="danger">删除</Button>}
               message={`有 ${m.cloudEmails} 封已交给云端的邮件从这个邮箱发出，请先在发送计划里把它们撤回到本地，再删除邮箱`}
               action="知道了"
               side="bottom"
@@ -157,7 +157,7 @@ function MailboxRow({ mailbox: m, providers }: { mailbox: Mailbox; providers: Pr
           ) : (
             <Confirm
               trigger={
-                <Button variant="ghost" disabled={remove.isPending}>
+                <Button variant="danger" disabled={remove.isPending}>
                   删除
                 </Button>
               }

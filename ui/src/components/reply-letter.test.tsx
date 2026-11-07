@@ -220,6 +220,11 @@ function setup(correspondence = false) {
     container,
     render,
     button,
+    /** The reply box stays one line until clicked. */
+    async openReply() {
+      await vi.waitFor(() => button("回复 王伟…"));
+      await act(async () => button("回复 王伟…").click());
+    },
     async close() {
       await act(async () => root.unmount());
       client.clear();
@@ -340,6 +345,7 @@ it.each(["correspondence", "sending plan"])(
     const view = setup(source === "correspondence");
     try {
       await view.render();
+      await view.openReply();
       await vi.waitFor(() => expect(view.button("AI 起草").disabled).toBe(false));
       await act(async () => view.button("AI 起草").click());
       await vi.waitFor(() => expect(complete).toBeDefined());
@@ -358,13 +364,15 @@ it.each(["correspondence", "sending plan"])(
       await vi.waitFor(() =>
         expect(remote.approved).toEqual({ draftId: email.id, replyTo: original.messageId, bodyMd: email.bodyMd }),
       );
-      await vi.waitFor(() => expect(view.button("AI 起草").disabled).toBe(false));
+      // Sent, the box folds back into a line and opens empty.
+      await view.openReply();
       await vi.waitFor(() => expect(view.container.querySelector(".tiptap")?.textContent).toBe(""));
       expect(remote.draft).toBeNull();
       expect(remote.saves).toEqual([]);
       expect(view.container.textContent).not.toContain("不应复活的回复 B");
       await view.render(false);
       await view.render();
+      await view.openReply();
       await vi.waitFor(() => expect(view.container.querySelector(".tiptap")?.textContent).toBe(""));
       expect(remote.draft).toBeNull();
       expect(remote.saves).toEqual([]);
@@ -394,6 +402,7 @@ it("discards the kept mentor's hidden reply AI when merging, so approving the ad
   const view = setup();
   try {
     await view.render();
+    await view.openReply();
     await vi.waitFor(() => expect(view.button("AI 起草").disabled).toBe(false));
     await act(async () => view.button("AI 起草").click());
     await vi.waitFor(() => expect(complete).toBeDefined());
@@ -410,11 +419,13 @@ it("discards the kept mentor's hidden reply AI when merging, so approving the ad
     await vi.waitFor(() =>
       expect(remote.approved).toEqual({ draftId: 6, replyTo: adoptedTarget.messageId, bodyMd: "王老师，合并来的回复" }),
     );
+    await view.openReply();
     await vi.waitFor(() => expect(view.container.querySelector(".tiptap")?.textContent).toBe(""));
     expect(remote.draft).toBeNull();
     expect(view.container.textContent).not.toContain("不应复活的旧 AI 结果");
     await view.render(false);
     await view.render();
+    await view.openReply();
     await vi.waitFor(() => expect(view.container.querySelector(".tiptap")?.textContent).toBe(""));
     expect(remote.draft).toBeNull();
   } finally {
@@ -431,6 +442,7 @@ it("does not revive a trashed reply's late AI result or save a new draft after r
   const view = setup();
   try {
     await view.render();
+    await view.openReply();
     await vi.waitFor(() => expect(view.button("AI 起草").disabled).toBe(false));
     await act(async () => view.button("AI 起草").click());
     await vi.waitFor(() => expect(complete).toBeDefined());
@@ -438,6 +450,7 @@ it("does not revive a trashed reply's late AI result or save a new draft after r
     await act(async () => dropDrafts(view.client, [mentor.id]));
     await act(async () => complete?.({ subject: "", bodyMd: "已放弃的旧 AI 结果" }));
     await view.render();
+    await view.openReply();
     await vi.waitFor(() => expect(view.container.querySelector(".tiptap")).not.toBeNull());
     expect(view.container.textContent).not.toContain("已放弃的旧 AI 结果");
     expect(view.container.querySelector(".tiptap")?.textContent).toBe("");
@@ -457,6 +470,7 @@ it("keeps a failed empty reply's error and original target after new mail and le
   const view = setup();
   try {
     await view.render();
+    await view.openReply();
     await vi.waitFor(() => expect(view.button("AI 起草").disabled).toBe(false));
     await act(async () => view.button("AI 起草").click());
     await vi.waitFor(() => expect(fail).toBeDefined());
@@ -539,6 +553,7 @@ it("checks a reply AI drafted once it is saved, and marks what the materials do 
   const view = setup();
   try {
     await view.render();
+    await view.openReply();
     await vi.waitFor(() => expect(view.button("AI 起草").disabled).toBe(false));
     await act(async () => view.button("AI 起草").click());
     await vi.waitFor(() =>

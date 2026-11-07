@@ -4,6 +4,7 @@ import type { Affiliation, Contact, ContactStatus, DraftKind, ReplyOutcome } fro
 import { forgetWriting } from "@/components/ai-writing";
 import { refreshTasks } from "@/components/task-cache";
 import { day } from "@/format";
+import { StatusDot, type Tone } from "@/components/ui/status-dot";
 
 const AVATARS = ["bg-avatar-1", "bg-avatar-2", "bg-avatar-3", "bg-avatar-4", "bg-avatar-5"];
 
@@ -27,11 +28,11 @@ export function Missing({ children }: { children: string }) {
   return <span className="text-faint">{children}</span>;
 }
 
-const STATUS_STYLE: Record<ContactStatus, [string, string]> = {
-  none: ["未联系", "border border-input"],
-  contacted: ["已联系", "bg-info"],
-  replied: ["已回复", "bg-success"],
-  bounced: ["退信", "bg-warning"],
+const STATUS_STYLE: Record<ContactStatus, [string, Tone]> = {
+  none: ["未联系", "none"],
+  contacted: ["已联系", "info"],
+  replied: ["已回复", "success"],
+  bounced: ["退信", "warning"],
 };
 
 /**
@@ -47,10 +48,10 @@ export function ContactLabel({
   outcome?: ReplyOutcome | null;
   className?: string;
 }) {
-  const [label, dot] = STATUS_STYLE[contact.status];
+  const [label, tone] = STATUS_STYLE[contact.status];
   return (
     <div className={`flex items-center gap-1.5 ${className}`}>
-      <span className={`size-2 shrink-0 rounded-full ${dot}`} />
+      <StatusDot tone={tone} />
       {label}
       {contact.status === "contacted" && contact.opened && <span className="text-muted-foreground">已打开</span>}
       {contact.status === "replied" && contact.unread && (

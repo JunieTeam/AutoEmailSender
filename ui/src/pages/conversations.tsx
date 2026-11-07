@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
-import { ChevronLeft, RefreshCw, UserRound } from "lucide-react";
+import { ChevronLeft, Inbox, ListTodo, MessagesSquare, RefreshCw, UserRound } from "lucide-react";
 import { call, errorMessage } from "@/api/call";
 import type { TodoPage } from "@/api/types";
 import { Correspondence } from "@/components/correspondence";
@@ -21,6 +21,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { day, time } from "@/format";
 import { useNow } from "@/now";
 import { Segments } from "@/components/ui/segments";
+import { Loading } from "@/components/loading";
 
 export type ConversationSearch = { show?: "unread" | "todos"; page?: number; mentor?: number };
 
@@ -158,8 +159,9 @@ export function ConversationsPage() {
             <Notice title="往来列表未能加载" detail={errorMessage(query.error)} />
           ) : query.data?.total === 0 ? (
             <Notice
+              icon={Inbox}
               title={unread ? "尚无新回信" : "尚无往来"}
-              detail={unread ? "" : "给导师发信或收到回信后，往来会列在这里"}
+              detail={unread ? undefined : "给导师发信或收到回信后，往来会列在这里"}
             />
           ) : (
             <div className="flex flex-col gap-[3px]">
@@ -169,7 +171,7 @@ export function ConversationsPage() {
                   to="/conversations"
                   search={(s) => ({ ...s, mentor: c.mentorId })}
                   aria-current={search.mentor === c.mentorId ? "true" : undefined}
-                  className={`flex items-center gap-3 rounded-md px-3 py-3 ${search.mentor === c.mentorId ? "bg-selected" : "hover:bg-muted"}`}
+                  className={`flex animate-enter items-center gap-3 rounded-md px-3 py-3 ${search.mentor === c.mentorId ? "bg-selected" : "hover:bg-muted"}`}
                 >
                   <Avatar id={c.mentorId} name={c.name} />
                   <div className="min-w-0 grow">
@@ -193,7 +195,7 @@ export function ConversationsPage() {
             </div>
           )}
         </div>
-        <footer className="flex justify-end px-3 py-3 text-xs text-muted-foreground">
+        <footer className="flex justify-end p-3 empty:hidden">
           <Pager
             page={page}
             total={listed.data?.total ?? 0}
@@ -205,7 +207,7 @@ export function ConversationsPage() {
         {search.mentor ? (
           <ConversationDetail key={search.mentor} id={search.mentor} />
         ) : (
-          <Notice title="选择左边的一位导师查看往来" detail="" />
+          <Notice icon={MessagesSquare} title="选择左边的一位导师查看往来" />
         )}
       </section>
     </div>
@@ -217,7 +219,7 @@ function TodoList({ query, selected }: { query: UseQueryResult<TodoPage>; select
   const now = useNow();
   if (query.isError) return <Notice title="待办未能加载" detail={errorMessage(query.error)} />;
   if (query.data?.total === 0) {
-    return <Notice title="尚无待办" detail="导师回信里要你做的事和你自己添加的待办会列在这里" />;
+    return <Notice icon={ListTodo} title="尚无待办" detail="导师回信里要你做的事和你自己添加的待办会列在这里" />;
   }
   return (
     <ul className="flex flex-col gap-[3px]">
@@ -226,7 +228,7 @@ function TodoList({ query, selected }: { query: UseQueryResult<TodoPage>; select
         return (
           <li
             key={t.id}
-            className={`flex items-start gap-3 rounded-md px-3 py-3 ${selected === t.mentorId ? "bg-selected" : "hover:bg-muted"}`}
+            className={`flex animate-enter items-start gap-3 rounded-md px-3 py-3 ${selected === t.mentorId ? "bg-selected" : "hover:bg-muted"}`}
           >
             <TodoCheck todo={t} />
             <div className="min-w-0 grow">
@@ -265,7 +267,7 @@ function ConversationDetail({ id }: { id: number }) {
         <Notice title="导师资料未能加载" detail={errorMessage(query.error)} />
       </>
     );
-  if (!query.data) return null;
+  if (!query.data) return <Loading />;
   const m = query.data;
   const main = m.affiliations.at(0);
   return (

@@ -4,7 +4,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { type Editor, EditorContent, Extension, getSchema, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Bold, Braces, Italic, Link, List, ListOrdered } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FIELD, Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -158,6 +158,8 @@ export function LetterEditor({
     ],
     content: toHtml(markdown),
     parseOptions: letterParsing,
+    // A focus asked for along with the editor waits until the editor is ready.
+    autofocus: focus > 0 ? "end" : false,
     editorProps: {
       attributes: {
         id,
@@ -174,8 +176,11 @@ export function LetterEditor({
     }
   }, [editor, quotes]);
   const [tools, setTools] = useState(false);
+  const focused = useRef(focus);
   useEffect(() => {
-    if (focus > 0) editor.commands.focus("end");
+    if (focus === focused.current) return;
+    focused.current = focus;
+    editor.commands.focus("end");
   }, [editor, focus]);
   return (
     <div className="flex flex-col gap-1.5">

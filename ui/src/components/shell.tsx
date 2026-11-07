@@ -1,8 +1,18 @@
 import { crawlName, refreshCrawls, findSearch } from "@/pages/find";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useNavigate, useRouterState } from "@tanstack/react-router";
 import { listen } from "@tauri-apps/api/event";
-import { MessagesSquare, Settings, Users, ListTodo, LoaderCircle, Search, ChartNoAxesColumn } from "lucide-react";
+import {
+  Activity,
+  ChartNoAxesColumn,
+  ListTodo,
+  LoaderCircle,
+  MessagesSquare,
+  Search,
+  Settings,
+  Users,
+  X,
+} from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import appIcon from "../../../docs/icon.svg";
@@ -140,6 +150,8 @@ export function Shell() {
     });
     return () => void stop.then((unlisten) => unlisten());
   }, [queryClient]);
+  // docs/ui.md#动效: another page fades in.
+  const page = useRouterState({ select: (s) => s.matches[1]?.routeId });
   if (failure.isPending) return null;
   if (failure.data) return <StartupFailure reason={failure.data} />;
   return (
@@ -160,18 +172,21 @@ export function Shell() {
         <AccountRow />
       </aside>
       <main className="relative my-3 mr-3 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-background phone:m-0 phone:min-h-0 phone:rounded-none">
-        <Outlet />
+        <div key={page} className="flex min-h-0 flex-1 animate-enter flex-col">
+          <Outlet />
+        </div>
         {desktop && <AgentRequests />}
         {desktop && <TermsUpdate />}
         {completed && (
           <div
+            key={completed}
             role="status"
-            className="absolute bottom-5 left-5 z-40 flex max-w-[calc(100%-40px)] items-center gap-3 rounded-lg border border-border bg-background px-4 py-3 text-sm shadow-pop phone:bottom-3 phone:left-3"
+            className="absolute bottom-5 left-5 z-40 flex max-w-[calc(100%-40px)] animate-enter items-center gap-2 rounded-lg border border-border bg-background py-2 pr-2 pl-4 text-sm shadow-pop phone:bottom-3 phone:left-3"
           >
             <span>{completed}</span>
-            <button aria-label="关闭提醒" onClick={() => setCompleted(null)}>
-              ×
-            </button>
+            <Button variant="ghost" size="icon" aria-label="关闭提醒" onClick={() => setCompleted(null)}>
+              <X />
+            </Button>
           </div>
         )}
       </main>
@@ -184,12 +199,14 @@ export function Shell() {
             activeProps={{ className: "text-brand-text" }}
             inactiveProps={{ className: "text-muted-foreground" }}
           >
-            <Icon className="size-[22px]" strokeWidth={1.6} />
-            <span className="flex items-center gap-1">
-              {label}
-              {to === "/conversations" && <UnreadBadge />}
+            <span className="relative">
+              <Icon className="size-[22px]" strokeWidth={1.6} />
+              {to === "/conversations" && (
+                <UnreadBadge className="absolute -top-1.5 left-3.5 min-w-4 px-1 text-[10px] leading-4" />
+              )}
               {to === "/more" && <WaitingDot />}
             </span>
+            {label}
           </Link>
         ))}
       </nav>
@@ -378,7 +395,11 @@ function WaitingDot() {
   const { waiting } = useBackground();
   return (
     waiting > 0 && (
-      <span role="status" aria-label={`${waiting} 项待处理`} className="size-1.5 rounded-full bg-warning" />
+      <span
+        role="status"
+        aria-label={`${waiting} 项待处理`}
+        className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-warning"
+      />
     )
   );
 }
@@ -426,7 +447,11 @@ function Background({ className }: { className?: string }) {
           />
         }
       >
-        <LoaderCircle className={cn("size-[18px]", work.running > 0 && "animate-spin")} strokeWidth={1.6} />
+        {work.running > 0 ? (
+          <LoaderCircle className="size-[18px] animate-spin" strokeWidth={1.6} />
+        ) : (
+          <Activity className="size-[18px]" strokeWidth={1.6} />
+        )}
         后台
         {work.waiting > 0 && (
           <span

@@ -1,8 +1,8 @@
 import { findSearch } from "@/pages/find";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Download, Merge, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Download, Merge, Plus, SearchX, Trash2, UsersRound } from "lucide-react";
+import { type ReactElement, useState } from "react";
 import { call, errorMessage } from "@/api/call";
 import type { ContactStatus, Imported, MentorFilter, ReplyOutcomeFilter, Scope, Kind } from "@/api/types";
 import { BatchBar, Confirm } from "@/components/batch-bar";
@@ -95,7 +95,6 @@ export function MentorsPage() {
   });
   const [matching, setMatching] = useState<number[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [addMenu, setAddMenu] = useState(false);
   const [importing, setImporting] = useState(false);
   const [imported, setImported] = useState<Imported | null>(null);
   const [exporting, setExporting] = useState<{ scope: Scope; count: number } | null>(null);
@@ -144,48 +143,17 @@ export function MentorsPage() {
           value={search.q ?? ""}
           onChange={(q) => navigate({ search: (s) => ({ ...s, q: q || undefined, page: undefined }) })}
         />
-        <Popover open={addMenu} onOpenChange={setAddMenu}>
-          <PopoverTrigger render={<Button aria-label="添加导师" className="phone:px-2.5" />}>
-            <Plus strokeWidth={1.6} />
-            <span className="phone:hidden">添加导师</span>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-40 p-1.5">
-            <Link
-              to="/find"
-              search={findSearch({ tab: "crawl" })}
-              className={buttonVariants({ variant: "ghost", className: "w-full justify-start" })}
-            >
-              智能整理
-            </Link>
-            <Link
-              to="/find"
-              search={findSearch({ tab: "library" })}
-              className={buttonVariants({ variant: "ghost", className: "w-full justify-start" })}
-            >
-              从导师库添加
-            </Link>
-            <Button
-              variant="ghost"
-              className="w-full justify-start"
-              onClick={() => {
-                setAddMenu(false);
-                setImporting(true);
-              }}
-            >
-              导入表格
+        <AddMentorMenu
+          trigger={
+            <Button aria-label="添加导师" className="phone:px-2.5">
+              <Plus strokeWidth={1.6} />
+              <span className="phone:hidden">添加导师</span>
             </Button>
-            <Button
-              variant="ghost"
-              className="w-full justify-start"
-              onClick={() => {
-                setAddMenu(false);
-                setAdding(true);
-              }}
-            >
-              手动添加
-            </Button>
-          </PopoverContent>
-        </Popover>
+          }
+          align="end"
+          onImport={() => setImporting(true)}
+          onAdd={() => setAdding(true)}
+        />
         {adding && (
           <MentorDialog
             title="添加导师"
@@ -312,15 +280,27 @@ export function MentorsPage() {
       <MatchingProgress />
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
-          className={`@container min-h-0 flex-1 overflow-y-auto px-4 phone:px-0 ${selected.size > 0 ? "pb-20" : ""}`}
+          className={`@container min-h-0 flex-1 overflow-y-auto px-4 phone:px-1.5 ${selected.size > 0 ? "pb-20" : ""}`}
         >
           {query.isError ? (
             <Notice title="导师列表未能加载" detail={errorMessage(query.error)} />
           ) : query.data?.total === 0 ? (
             search.status || search.q || filtered(search) ? (
-              <Notice title="无符合条件的导师" detail="可更换关键词或筛选条件再试" />
+              <Notice icon={SearchX} title="无符合条件的导师" detail="可更换关键词或筛选条件再试" />
             ) : (
-              <Notice title="尚无导师" detail="点“添加导师”，从导师库添加、智能整理、导入表格或手动填写" />
+              <Notice
+                icon={UsersRound}
+                title="尚无导师"
+                detail="添加导师后，可分析匹配度、给导师写信"
+                actions={
+                  <AddMentorMenu
+                    trigger={<Button>添加导师</Button>}
+                    align="center"
+                    onImport={() => setImporting(true)}
+                    onAdd={() => setAdding(true)}
+                  />
+                }
+              />
             )
           ) : (
             <MentorTable
@@ -378,7 +358,7 @@ export function MentorsPage() {
           )}
           <Confirm
             trigger={
-              <Button variant="ghost" disabled={trash.isPending}>
+              <Button variant="danger" disabled={trash.isPending}>
                 <Trash2 strokeWidth={1.6} />
                 移入回收站
               </Button>
@@ -423,5 +403,61 @@ export function MentorsPage() {
         />
       </footer>
     </div>
+  );
+}
+
+/** The ways to add mentors, from the header and from an empty list. */
+function AddMentorMenu({
+  trigger,
+  align,
+  onImport,
+  onAdd,
+}: {
+  trigger: ReactElement;
+  align: "center" | "end";
+  onImport: () => void;
+  onAdd: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger render={trigger} />
+      <PopoverContent align={align} className="w-40 p-1.5">
+        <Link
+          to="/find"
+          search={findSearch({ tab: "crawl" })}
+          className={buttonVariants({ variant: "ghost", className: "w-full justify-start" })}
+        >
+          智能整理
+        </Link>
+        <Link
+          to="/find"
+          search={findSearch({ tab: "library" })}
+          className={buttonVariants({ variant: "ghost", className: "w-full justify-start" })}
+        >
+          从导师库添加
+        </Link>
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => {
+            setOpen(false);
+            onImport();
+          }}
+        >
+          导入表格
+        </Button>
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => {
+            setOpen(false);
+            onAdd();
+          }}
+        >
+          手动添加
+        </Button>
+      </PopoverContent>
+    </Popover>
   );
 }

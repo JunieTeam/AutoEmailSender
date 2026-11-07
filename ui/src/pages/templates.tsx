@@ -70,7 +70,7 @@ function TemplateRow({ template: t, placeholders }: { template: TemplateSummary;
           </Button>
           <Confirm
             trigger={
-              <Button variant="ghost" disabled={remove.isPending}>
+              <Button variant="danger" disabled={remove.isPending}>
                 删除
               </Button>
             }

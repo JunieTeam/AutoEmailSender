@@ -75,7 +75,7 @@ function ModelRow({ config: c, providers }: { config: ModelConfig; providers: Mo
           </Button>
           <Confirm
             trigger={
-              <Button variant="ghost" disabled={remove.isPending}>
+              <Button variant="danger" disabled={remove.isPending}>
                 删除
               </Button>
             }

@@ -4,7 +4,8 @@ import { XIcon } from "lucide-react";
 import type * as React from "react";
 import { Button } from "@/components/ui/button";
 
-// docs/ui.md#尺寸 and #动效: a 20px-cornered card that fades in; on a phone it fills the screen.
+// docs/ui.md#尺寸 and #动效: a 20px-cornered card that grows in from 96%; on a phone it fills the screen
+// and slides up from the bottom.
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
@@ -13,12 +14,12 @@ function Dialog({ ...props }: DialogPrimitive.Root.Props) {
 function DialogContent({ className, children, ...props }: DialogPrimitive.Popup.Props) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-[rgb(20_17_16/0.4)] transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+      <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-[rgb(20_17_16/0.4)] transition-opacity duration-180 ease-out data-ending-style:opacity-0 data-ending-style:duration-120 data-ending-style:ease-in data-starting-style:opacity-0" />
       <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center p-6 phone:p-0">
         <DialogPrimitive.Popup
           data-slot="dialog-content"
           className={cn(
-            "flex max-h-[calc(100dvh-3rem)] min-h-0 w-[660px] max-w-full min-w-0 flex-col rounded-xl bg-background shadow-pop transition-opacity duration-150 outline-none data-ending-style:opacity-0 data-starting-style:opacity-0 phone:h-full phone:max-h-dvh phone:w-full phone:rounded-none",
+            "flex max-h-[calc(100dvh-3rem)] min-h-0 w-[660px] max-w-full min-w-0 flex-col rounded-xl bg-background shadow-pop transition-[opacity,scale,translate] duration-180 ease-out outline-none data-ending-style:scale-96 data-ending-style:opacity-0 data-ending-style:duration-120 data-ending-style:ease-in data-starting-style:scale-96 data-starting-style:opacity-0 phone:h-full phone:max-h-dvh phone:w-full phone:rounded-none phone:data-ending-style:translate-y-full phone:data-ending-style:scale-100 phone:data-starting-style:translate-y-full phone:data-starting-style:scale-100",
             className,
           )}
           {...props}

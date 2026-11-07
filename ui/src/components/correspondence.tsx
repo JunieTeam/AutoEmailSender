@@ -19,6 +19,7 @@ import {
   refreshReplyOutcomes,
 } from "@/components/mentor";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScheduleActions, refreshSchedule, scheduledAt } from "@/components/schedule";
 import { AddTodo, TodoItem } from "@/components/todos";
@@ -27,6 +28,7 @@ import { day, sentence, sentFor, time } from "@/format";
 import { LETTER_BODY } from "@/letter";
 import { toHtml } from "@/markdown";
 import { useNow } from "@/now";
+import { Loading } from "@/components/loading";
 
 /** Pending mail hides both entry buttons, while a blocked thread still explains why. */
 export function followUpActions(entry: FollowUpEntry, now: number) {
@@ -115,7 +117,7 @@ export function Correspondence({ mentor }: { mentor: MentorDetail }) {
   if (entries.error) {
     return <p className="px-5 py-4 text-sm text-destructive">往来未能加载：{errorMessage(entries.error)}</p>;
   }
-  if (!entries.data) return null;
+  if (!entries.data) return <Loading />;
   if (entries.data.length === 0) {
     return (
       <>
@@ -297,7 +299,7 @@ function Sent({
   // Which address it went to is worth saying when the mentor has several.
   const [text, tone] = status(e, emails.length > 1);
   return (
-    <article className="flex flex-col items-end gap-1.5">
+    <article className="flex animate-enter flex-col items-end gap-1.5">
       <div className="max-w-[min(42rem,88%)] rounded-[18px] rounded-br-[6px] bg-mine px-4 py-3">
         <h3 className="mb-2 font-semibold">{e.subject}</h3>
         <LetterBody markdown={e.bodyMd} />
@@ -440,7 +442,7 @@ function TodoGroup({ todos, readOnly }: { todos: Todo[]; readOnly: boolean }) {
       className="w-full max-w-[min(42rem,88%)] self-start divide-y divide-border rounded-lg border border-border"
     >
       {todos.map((t) => (
-        <li key={t.id}>
+        <li key={t.id} className="animate-enter">
           <TodoItem todo={t} readOnly={readOnly} now={now} />
         </li>
       ))}
@@ -460,7 +462,6 @@ function Seen({
   fresh: boolean;
   onReply: () => void;
 }) {
-  const [quoted, setQuoted] = useState(false);
   const [opened, setOpened] = useState(false);
   const queryClient = useQueryClient();
   const add = useMutation({
@@ -487,7 +488,7 @@ function Seen({
   const known = mentor.emails.some((e) => e.toLowerCase() === m.fromAddress);
   const from = mine || known ? "" : `，来自 ${m.fromAddress}`;
   return (
-    <article className={`flex flex-col gap-1.5 ${mine ? "items-end" : "items-start"}`}>
+    <article className={`flex animate-enter flex-col gap-1.5 ${mine ? "items-end" : "items-start"}`}>
       <div
         className={`max-w-[min(42rem,88%)] rounded-[18px] px-4 py-3 ${mine ? "rounded-br-[6px] bg-mine" : "rounded-bl-[6px] bg-muted"}`}
       >
@@ -499,21 +500,14 @@ function Seen({
           </p>
         )}
         {m.quote && (
-          <>
-            <button
-              type="button"
-              className="mt-2 text-sm text-muted-foreground hover:text-foreground"
-              aria-expanded={quoted}
-              onClick={() => setQuoted(!quoted)}
-            >
-              {quoted ? "收起引用的原文" : "显示引用的原文"}
-            </button>
-            {quoted && (
-              <div className="mt-2 border-l-2 border-border pl-3 text-muted-foreground">
+          <Collapsible className="mt-1">
+            <CollapsibleTrigger className="text-sm">引用的原文</CollapsibleTrigger>
+            <CollapsibleContent className="pt-1">
+              <div className="border-l-2 border-border pl-3 text-muted-foreground">
                 <Text text={m.quote} />
               </div>
-            )}
-          </>
+            </CollapsibleContent>
+          </Collapsible>
         )}
       </div>
       <p className={`flex max-w-[min(42rem,88%)] items-center gap-1.5 text-sm ${mine ? "text-right" : ""}`}>
@@ -531,7 +525,7 @@ function Seen({
           />
         )}
         {m.kind === "reply" && !mentor.trashed && (
-          <Button variant="quiet" size="sm" disabled={!m.canReply} onClick={onReply}>
+          <Button variant="quiet" size="sm" data-reply disabled={!m.canReply} onClick={onReply}>
             回复
           </Button>
         )}

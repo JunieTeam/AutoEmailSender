@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import type { PlanCloud, PlanColumn, PlanEmail, Waiting } from "@/api/types";
 import { call, errorMessage } from "@/api/call";
 import { Button } from "@/components/ui/button";
+import { Segments } from "@/components/ui/segments";
 import { Confirm } from "@/components/batch-bar";
 import { CloudSendButton, WithdrawFromCloud } from "@/components/cloud-send";
 import { Pager } from "@/components/mentor-table";
@@ -32,18 +33,14 @@ export function SendingPlan() {
   const selected = search.column ?? "pending";
   return (
     <>
-      <div className="mx-4 mb-3 hidden rounded-full bg-muted p-1 phone:flex" role="tablist" aria-label="发送计划">
-        {COLUMNS.map(([column, label]) => (
-          <button
-            key={column}
-            role="tab"
-            aria-selected={selected === column}
-            className="h-10 flex-1 rounded-full text-sm aria-selected:bg-background aria-selected:shadow-sm"
-            onClick={() => void navigate({ search: (s) => ({ ...s, column }) })}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mx-4 mb-3 hidden phone:block">
+        <Segments
+          label="发送计划"
+          className="flex w-full [&>*]:flex-1"
+          value={selected}
+          options={COLUMNS}
+          onChange={(column) => void navigate({ search: (s) => ({ ...s, column }) })}
+        />
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-3 gap-4 px-5 pb-4 max-[1240px]:gap-2 max-[1240px]:px-3 phone:grid-cols-1 phone:px-3">
         {COLUMNS.map(([column, label]) => (
@@ -93,7 +90,7 @@ function PlanList({ column, label, hidden }: { column: PlanColumn; label: string
         )}
         {query.error && <p className="p-3 text-sm text-destructive">{errorMessage(query.error)}</p>}
       </div>
-      <div className="flex justify-end p-2">
+      <div className="flex justify-end p-2 empty:hidden">
         <Pager
           page={page}
           total={query.data?.total ?? 0}

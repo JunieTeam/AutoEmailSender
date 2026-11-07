@@ -94,7 +94,7 @@ export function MaterialRow({ material: m }: { material: Material }) {
           )}
           <Confirm
             trigger={
-              <Button variant="ghost" disabled={remove.isPending}>
+              <Button variant="danger" disabled={remove.isPending}>
                 删除
               </Button>
             }

@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { day } from "@/format";
+import { Loading } from "@/components/loading";
 
 /** One mentor: the correspondence in the middle, the profile and match analysis on the right (docs/ui.md#页面). */
 export function MentorPage() {
@@ -46,7 +47,7 @@ export function MentorPage() {
     },
     onSettled: () => refreshMentors(queryClient),
   });
-  if (query.isPending) return null;
+  if (query.isPending) return <Loading />;
   if (query.isError) {
     return (
       <Notice title="导师资料未能加载" detail={errorMessage(query.error)}>
@@ -78,7 +79,7 @@ export function MentorPage() {
                 </Button>
                 <Confirm
                   trigger={
-                    <Button variant="ghost" disabled={trash.isPending}>
+                    <Button variant="danger" disabled={trash.isPending}>
                       <Trash2 strokeWidth={1.6} />
                       永久删除
                     </Button>
@@ -176,7 +177,7 @@ function Header({
           {(main && placeOf(main)) || <Missing>未填写学校</Missing>}
         </p>
       </div>
-      <ContactLabel contact={m.contact} className="text-sm phone:hidden" />
+      <ContactLabel contact={m.contact} className="shrink-0 text-sm phone:hidden" />
       <Button variant="ghost" className="hidden px-3 phone:inline-flex" onClick={onProfile}>
         <UserRound strokeWidth={1.6} />
         资料
@@ -380,7 +381,10 @@ function Analysis({ mentor: m }: { mentor: MentorDetail }) {
       <Section title="匹配度">
         {a ? (
           <>
-            <p className="text-[32px] leading-none font-semibold">{a.score}</p>
+            <p className="text-[32px] leading-none font-semibold">
+              {a.score}
+              <span className="ml-1 text-sm font-normal text-muted-foreground">分</span>
+            </p>
             <p className="mt-2 text-xs text-muted-foreground wrap-anywhere">
               {day(a.matchedAt)}分析 · {a.model}
             </p>

@@ -56,6 +56,7 @@ const PHONE = "(width <= 760px)";
 export function SettingsPage() {
   // A section is open unless this is the bare /settings, which on a phone is the group list.
   const open = useChildMatches({ select: (matches) => matches.some((m) => m.routeId !== "/settings/") });
+  const section = useChildMatches({ select: (matches) => matches[0]?.routeId });
   // docs/ui.md#页面: a wider window opens the first section, including when a phone-width one widens.
   const navigate = useNavigate();
   useEffect(() => {
@@ -92,7 +93,10 @@ export function SettingsPage() {
         ))}
       </nav>
       <div className={`min-h-0 overflow-y-auto border-l border-border phone:border-0 ${open ? "" : "phone:hidden"}`}>
-        <Outlet />
+        {/* docs/ui.md#动效: another section fades in. */}
+        <div key={section} className="animate-enter">
+          <Outlet />
+        </div>
       </div>
     </div>
   );

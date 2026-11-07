@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, Link } from "@tanstack/react-router";
+import { Check } from "lucide-react";
 import { useState } from "react";
+import { cn } from "cn";
 import { call, errorMessage } from "@/api/call";
 import type { Material, NewTask, TemplateSummary, Writer, Kind } from "@/api/types";
 import { ModelAction } from "@/components/ai-writing";
 import { Field, formClose } from "@/components/form";
 import { LIBRARY_STATUS } from "@/components/library";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -142,13 +145,26 @@ function TaskSteps({
     <Dialog open onOpenChange={formClose(true, create.isPending, onClose)}>
       <DialogContent className="w-[620px]">
         <DialogHeader>{kind === "follow_up" ? "新建追问任务" : "新建任务"}</DialogHeader>
-        <div className="flex gap-4 px-6 pt-3 pb-2 text-sm phone:px-4">
+        {/* docs/ui.md#控件: numbered circles, a tick once done, the current step in the brand's colour. */}
+        <ol className="flex items-center gap-2 px-6 pt-3 pb-2 text-sm phone:px-4">
           {["导师", "撰写方式", "发送"].map((s, i) => (
-            <span key={s} className={i === step ? "font-medium text-brand-text" : "text-muted-foreground"}>
-              {i + 1}　{s}
-            </span>
+            <li key={s} className="flex items-center gap-2">
+              {i > 0 && <span aria-hidden className="h-px w-6 bg-border" />}
+              <span
+                aria-current={i === step ? "step" : undefined}
+                className={cn(
+                  "grid size-6 place-items-center rounded-full text-xs transition-colors",
+                  i < step && "bg-success text-white",
+                  i === step && "bg-primary text-primary-foreground",
+                  i > step && "border border-input text-muted-foreground",
+                )}
+              >
+                {i < step ? <Check className="size-3.5" strokeWidth={2.4} aria-label="已完成" /> : i + 1}
+              </span>
+              <span className={i === step ? "font-medium" : "text-muted-foreground"}>{s}</span>
+            </li>
           ))}
-        </div>
+        </ol>
         <DialogBody className="space-y-4 py-4 text-sm">
           {step === 0 && (
             <>
@@ -159,16 +175,20 @@ function TaskSteps({
                 </p>
               )}
               {unavailable.length > 0 && (
-                <details className="rounded-lg bg-muted p-3">
-                  <summary className="cursor-pointer">有 {unavailable.length} 位不能加入</summary>
-                  <ul className="mt-2 space-y-2 text-muted-foreground">
-                    {unavailable.map((m) => (
-                      <li key={m.id}>
-                        {m.name}：{m.reason}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
+                <Collapsible className="rounded-lg bg-muted px-3 py-1.5">
+                  <CollapsibleTrigger className="w-full text-foreground">
+                    有 {unavailable.length} 位不能加入
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <ul className="space-y-2 pt-1 pb-1.5 text-muted-foreground">
+                      {unavailable.map((m) => (
+                        <li key={m.id}>
+                          {m.name}：{m.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
               {kind === "first" && contacted.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 text-warning">
@@ -205,8 +225,9 @@ function TaskSteps({
                           {m.previous.opened !== null && (m.previous.opened ? " · 已打开" : " · 未打开过")}
                         </p>
                       )}
+                      {/* The count above already warns; one brown line per row would colour the whole list. */}
                       {kind === "first" && (m.contactCount > 0 || m.lastContactAt !== null) && (
-                        <p className="text-xs text-warning">
+                        <p className="text-xs text-muted-foreground">
                           联系 {m.contactCount} 次{m.lastContactAt !== null && `，最近一次在${day(m.lastContactAt)}`}
                         </p>
                       )}

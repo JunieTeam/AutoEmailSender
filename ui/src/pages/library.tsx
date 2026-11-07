@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, SearchX, UsersRound } from "lucide-react";
 import { Fragment, type ReactNode, useMemo, useState } from "react";
 import { call, errorMessage } from "@/api/call";
 import type { LibraryAddPreview, LibraryAdded, LibraryMentor, LibraryOrg } from "@/api/types";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { day } from "@/format";
+import { Loading } from "@/components/loading";
 
 const LIMIT = 200;
 const collator = new Intl.Collator("zh-CN");
@@ -24,7 +25,7 @@ export function LibraryTab() {
   const [dialog, setDialog] = useState<AccountMode | null>(null);
   const state = account.data;
   if (account.error) return <Notice title="账号未能读取" detail={errorMessage(account.error)} />;
-  if (!state) return null;
+  if (!state) return <Loading />;
   if (state.kind === "loggedIn" && state.termsOutdated) {
     return (
       <Notice title="尚未同意新版条款" detail="同意新版《用户服务协议》和《隐私政策》后，方可使用导师库">
@@ -172,7 +173,13 @@ function Library() {
               </label>
             )}
             {list.data?.total === 0 && (
-              <p className="py-12 text-center text-muted-foreground">{s.q ? `未找到“${s.q}”` : "这里尚无导师"}</p>
+              <div className="py-6">
+                {s.q ? (
+                  <Notice icon={SearchX} title={`未找到“${s.q}”`} detail="可更换关键词再试" />
+                ) : (
+                  <Notice icon={UsersRound} title="这里尚无导师" />
+                )}
+              </div>
             )}
             {items.map((m) => (
               <Fragment key={m.id}>
@@ -188,8 +195,8 @@ function Library() {
                 {expanded === m.id && <Preview id={m.id} />}
               </Fragment>
             ))}
-            {list.data && (s.page > 1 || list.data.total > 50) && (
-              <div className="mt-3 flex justify-end text-sm text-muted-foreground">
+            {list.data && (
+              <div className="mt-3 flex justify-end empty:hidden">
                 <Pager
                   page={s.page}
                   total={list.data.total}

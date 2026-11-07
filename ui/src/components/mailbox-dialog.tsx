@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ChevronRight } from "lucide-react";
 import { useRef, useState } from "react";
 import { call, errorMessage } from "@/api/call";
 import type { Mailbox, MailboxTest, NewMailbox, Provider, Security, Server } from "@/api/types";
@@ -256,11 +255,8 @@ export function MailboxDialog({
                     </div>
                   </Field>
                   <Collapsible open={serversOpen} onOpenChange={setServersOpen}>
-                    <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground [&[data-panel-open]>svg]:rotate-90">
-                      <ChevronRight className="size-4 transition-transform" strokeWidth={1.6} />
-                      服务器设置
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="mt-3 flex flex-col gap-3.5">
+                    <CollapsibleTrigger className="text-sm">服务器设置</CollapsibleTrigger>
+                    <CollapsibleContent className="flex flex-col gap-3.5 pt-3">
                       <ServerFields
                         label="发信（SMTP）"
                         id="mailbox-smtp"

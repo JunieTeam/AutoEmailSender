@@ -395,7 +395,7 @@ function TagRow({
           确认删除
         </Button>
       ) : (
-        <Button variant="ghost" className="px-3" onClick={() => setConfirming(true)}>
+        <Button variant="danger" className="px-3" onClick={() => setConfirming(true)}>
           删除
         </Button>
       )}

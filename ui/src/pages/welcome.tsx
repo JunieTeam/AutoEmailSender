@@ -1,6 +1,6 @@
 import { type MutationState, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Check, ChevronDown } from "lucide-react";
+import { Check } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { call, errorMessage } from "@/api/call";
 import type { Mailbox, Material, TestLetter } from "@/api/types";
@@ -12,6 +12,7 @@ import { EMPTY_FORM, MentorDialog } from "@/components/mentor-dialog";
 import { ModelDialog, useModelProviders } from "@/components/model-dialog";
 import { TemplateDialog, usePlaceholders } from "@/components/template-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, ExpandChevron } from "@/components/ui/collapsible";
 import { letterHtml, letterText } from "@/letter";
 import { uploadMaterial } from "@/material";
 import { findSearch } from "./find";
@@ -151,7 +152,7 @@ export function WelcomePage() {
           <div className="grow">
             <h1 className="text-2xl font-semibold">开始使用</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              配好下面几项，就可以开始联系导师。每一步都能先跳过，以后在设置里改。
+              完成下面几项后即可开始联系导师。每一步都可先跳过，之后在设置里修改。
             </p>
           </div>
           <Button variant="quiet" disabled={finish.isPending} onClick={() => finish.mutate()}>
@@ -229,13 +230,10 @@ function StepRow({
         </span>
         <span className="shrink-0 font-medium">{s.title}</span>
         {s.done && s.result && <span className="min-w-0 truncate text-sm text-muted-foreground">{s.result}</span>}
-        <ChevronDown
-          className={`ml-auto size-[18px] shrink-0 text-muted-foreground transition-transform group-hover:text-foreground ${open ? "rotate-180" : ""}`}
-          strokeWidth={1.6}
-        />
+        <ExpandChevron className="ml-auto size-[18px] text-muted-foreground group-hover:text-foreground" />
       </button>
-      {open && (
-        <div className="flex flex-col gap-4 pr-1 pb-6 pl-11 phone:pl-1">
+      <Collapsible open={open}>
+        <CollapsibleContent className="flex flex-col gap-4 pr-1 pb-6 pl-11 phone:pl-1">
           <p className="text-sm text-muted-foreground">{s.intro}</p>
           {s.body}
           {(s.action ?? onNext) && (
@@ -248,8 +246,8 @@ function StepRow({
               )}
             </div>
           )}
-        </div>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
     </li>
   );
 }

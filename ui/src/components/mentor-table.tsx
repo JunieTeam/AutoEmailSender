@@ -18,7 +18,7 @@ export function pageParam(page: unknown): number | undefined {
 const COLUMNS =
   "grid grid-cols-[16px_minmax(150px,1.1fr)_minmax(170px,1.2fr)_minmax(180px,1.8fr)_110px_minmax(176px,1fr)_minmax(64px,0.5fr)] items-center gap-3 narrow:grid-cols-[16px_minmax(140px,1.1fr)_minmax(150px,1.2fr)_minmax(140px,1.4fr)_110px_minmax(170px,1fr)]";
 const CARD =
-  "cards:h-auto cards:grid-cols-[16px_minmax(0,1fr)_auto] cards:gap-x-3 cards:gap-y-1 cards:rounded-none cards:border-b cards:border-border cards:px-4 cards:py-3 cards:[grid-template-areas:'check_who_match'_'check_place_contact'_'check_research_research']";
+  "cards:h-auto cards:grid-cols-[16px_minmax(0,1fr)_auto] cards:gap-x-3 cards:gap-y-1 cards:rounded-lg cards:px-3 cards:py-3 cards:[grid-template-areas:'check_who_match'_'check_place_contact'_'check_research_research']";
 const TAGS = "narrow:hidden";
 
 /**
@@ -47,11 +47,7 @@ export function MentorTable({
     onSelect(next);
   }
   return (
-    <div
-      role="table"
-      aria-label="导师"
-      className="flex flex-col gap-[3px] pb-4 cards:gap-0 cards:border-t cards:border-border cards:pb-0"
-    >
+    <div role="table" aria-label="导师" className="flex flex-col gap-[3px] pb-4 cards:gap-1">
       <div role="row" className={`${COLUMNS} px-3 pb-1 text-sm text-muted-foreground cards:hidden`}>
         <span role="columnheader" className="flex">
           <Checkbox
@@ -82,7 +78,7 @@ export function MentorTable({
           key={m.id}
           role="row"
           data-selected={selected.has(m.id) || undefined}
-          className={`${COLUMNS} relative h-[62px] rounded-md px-3 outline-ring hover:bg-muted has-focus-visible:outline-2 data-selected:bg-selected ${CARD}`}
+          className={`${COLUMNS} relative h-[62px] animate-enter rounded-md px-3 outline-ring hover:bg-muted has-focus-visible:outline-2 data-selected:bg-selected ${CARD}`}
         >
           {/* Above the stretched link, with a hit area wider than the box. */}
           <div role="cell" className="relative z-10 flex cards:self-start cards:pt-2.5 cards:[grid-area:check]">
@@ -155,7 +151,10 @@ function Match({ state: { result, state } }: { state: MatchSummary }) {
     <div className="flex flex-col gap-0.5 text-sm">
       {result && (
         <div className="flex items-center gap-1.5">
-          <span className="font-medium tabular-nums">{result.score}</span>
+          <span className="font-medium tabular-nums">
+            <span className="mr-1 hidden font-normal text-muted-foreground cards:inline">匹配度</span>
+            {result.score}
+          </span>
           {result.basisChanged && (
             <span className="size-1.5 rounded-full bg-faint" title={BASIS_CHANGED} aria-label={BASIS_CHANGED} />
           )}
@@ -193,7 +192,10 @@ export function useLastPage(total: number | undefined, page: number, onPage: (pa
   }, [total, page]);
 }
 
-/** "第 2 页，共 9 页" with previous and next. */
+/**
+ * "第 2 页，共 9 页" with previous and next (docs/ui.md#控件). Hidden while everything fits on one page,
+ * but kept when the list shrank under the page being shown, so that there is a way back.
+ */
 export function Pager({
   page,
   total,
@@ -206,8 +208,9 @@ export function Pager({
   onPage: (page: number) => void;
 }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (pages === 1 && page === 1) return null;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 text-sm text-muted-foreground">
       <span className="whitespace-nowrap phone:hidden">
         第 {page} 页，共 {pages} 页
       </span>

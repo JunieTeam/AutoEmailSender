@@ -1,7 +1,8 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ChevronDown } from "lucide-react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Inbox, SearchX } from "lucide-react";
+import { Notice } from "@/components/notice";
 import { useState } from "react";
 import { exportCrawlLog } from "@/api/app";
 import { call, errorMessage } from "@/api/call";
@@ -22,6 +23,8 @@ import { refreshMentors, placeOf } from "@/components/mentor";
 import { Pager } from "@/components/mentor-table";
 import { LibraryTab } from "@/pages/library";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger, ExpandChevron } from "@/components/ui/collapsible";
+import { Segments } from "@/components/ui/segments";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -96,21 +99,17 @@ export function FindPage() {
     <>
       <header className="shrink-0 px-6 pt-6 phone:px-4">
         <h1 className="text-2xl font-semibold">找导师</h1>
-        <div className="my-4 flex w-fit gap-1 rounded-full bg-muted p-1" role="tablist" aria-label="找导师">
-          {TABS.map((tab) => (
-            <Button
-              key={tab}
-              role="tab"
-              aria-selected={search.tab === tab}
-              variant={search.tab === tab ? "quiet" : "ghost"}
-              onClick={() => void navigate({ search: (s) => ({ ...s, tab, page: 1 }) })}
-            >
-              {TAB_NAMES[tab]}
-            </Button>
-          ))}
-        </div>
+        <Segments
+          label="找导师"
+          className="my-4"
+          value={search.tab}
+          options={TABS.map((tab) => [tab, TAB_NAMES[tab]] as const)}
+          onChange={(tab) => void navigate({ search: (s) => ({ ...s, tab, page: 1 }) })}
+        />
       </header>
-      {search.tab === "crawl" ? <Crawls /> : search.tab === "library" ? <LibraryTab /> : <Candidates />}
+      <div key={search.tab} className="flex min-h-0 flex-1 animate-enter flex-col">
+        {search.tab === "crawl" ? <Crawls /> : search.tab === "library" ? <LibraryTab /> : <Candidates />}
+      </div>
     </>
   );
 }
@@ -232,9 +231,7 @@ function CrawlRecord({ crawl: c, expanded }: { crawl: CrawlSummary; expanded: bo
           aria-expanded={expanded}
         >
           <strong className="break-all">{c.url ?? crawlName(c)}</strong>
-          <ChevronDown
-            className={`ml-1 inline size-4 text-faint transition-transform ${expanded ? "rotate-180" : ""}`}
-          />
+          <ExpandChevron className="ml-1 inline" />
           <span className="mt-1 block text-sm text-muted-foreground">
             {(c.url === null
               ? [c.stage !== "done" && STAGES[c.stage], `收到 ${c.candidates} 位导师`]
@@ -388,15 +385,17 @@ function CrawlDetails({ id, modelId, modelIds }: { id: number; modelId: number |
             </>
           )}
           {detail.data.runs.length > 0 && (
-            <details>
-              <summary className="cursor-pointer text-muted-foreground">运行记录</summary>
-              {detail.data.runs.map((r, n) => (
-                <p key={n} className="mt-2 text-xs text-muted-foreground">
-                  {day(r.startedAt)} {time(r.startedAt)} —{" "}
-                  {r.endedAt ? `${day(r.endedAt)} ${time(r.endedAt)}` : "进行中"} · {r.appVersion}
-                </p>
-              ))}
-            </details>
+            <Collapsible>
+              <CollapsibleTrigger>运行记录</CollapsibleTrigger>
+              <CollapsibleContent>
+                {detail.data.runs.map((r, n) => (
+                  <p key={n} className="mt-2 text-xs text-muted-foreground">
+                    {day(r.startedAt)} {time(r.startedAt)} —{" "}
+                    {r.endedAt ? `${day(r.endedAt)} ${time(r.endedAt)}` : "进行中"} · {r.appVersion}
+                  </p>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
           )}
           <div className="flex flex-wrap items-center gap-3">
             {desktop && (
@@ -461,6 +460,15 @@ function Candidates() {
     <>
       <div className="shrink-0 space-y-3 px-6 pb-4 phone:px-4">
         <div className="flex flex-wrap items-center gap-2">
+          <Segments
+            label="候选分类"
+            value={s.filter}
+            options={Object.entries(FILTERS).map(
+              ([value, label]) => [findSearch({ filter: value }).filter, label] as const,
+            )}
+            onChange={(filter) => change({ filter })}
+          />
+          <div className="grow" />
           <NativeSelect
             aria-label="按整理记录筛选"
             className="max-w-full"
@@ -481,18 +489,6 @@ function Candidates() {
           >
             {s.processed ? "返回待审核" : "已处理"}
           </Button>
-        </div>
-        <div role="group" aria-label="候选分类" className="flex flex-wrap gap-1">
-          {Object.entries(FILTERS).map(([value, label]) => (
-            <Button
-              key={value}
-              variant={value === s.filter ? "quiet" : "ghost"}
-              aria-pressed={value === s.filter}
-              onClick={() => change({ filter: findSearch({ filter: value }).filter })}
-            >
-              {label}
-            </Button>
-          ))}
         </div>
         {enrichResult && (
           <p role="status" className="text-sm text-muted-foreground">
@@ -517,14 +513,26 @@ function Candidates() {
             选择本页
           </label>
         )}
-        {items.length === 0 && !list.isPending && (
-          <p className="py-12 text-center text-muted-foreground">
-            {s.processed ? "暂无已处理的候选" : "暂无符合条件的候选，可从智能整理开始"}
-          </p>
-        )}
+        {items.length === 0 &&
+          !list.isPending &&
+          (s.processed ? (
+            <Notice icon={Inbox} title="尚无已处理的候选" />
+          ) : s.filter !== "all" || s.crawl !== undefined ? (
+            <Notice icon={SearchX} title="无符合条件的候选" detail="可更换筛选条件查看" />
+          ) : (
+            <Notice
+              icon={Inbox}
+              title="尚无候选"
+              detail="智能整理找到的导师先列在这里，审核后加入导师列表"
+              actions={<Button onClick={() => change({ tab: "crawl" })}>开始智能整理</Button>}
+            />
+          ))}
         <div className="space-y-2">
           {items.map((c) => (
-            <section key={c.id} className="flex items-start gap-3 rounded-lg bg-muted p-4 phone:flex-wrap">
+            <section
+              key={c.id}
+              className="flex animate-enter items-start gap-3 rounded-lg bg-muted p-4 phone:flex-wrap"
+            >
               {!s.processed && (
                 <label className="flex min-h-10 min-w-10 cursor-pointer items-center justify-center">
                   <Checkbox
@@ -547,9 +555,7 @@ function Candidates() {
                     {s.processed ? (c.review === "rejected" ? "已拒绝" : "已接受") : FILTERS[c.category]}
                     {c.crawlId !== null && agentCrawls.has(c.crawlId) && " · Agent 提交"}
                   </span>
-                  <ChevronDown
-                    className={`ml-1 inline size-4 text-faint transition-transform ${expanded === c.id ? "rotate-180" : ""}`}
-                  />
+                  <ExpandChevron className="ml-1 inline" />
                   <span className="mt-1 block text-sm text-muted-foreground">
                     {c.affiliation && [placeOf(c.affiliation), c.affiliation.title].filter(Boolean).join(" · ")}
                   </span>
@@ -574,16 +580,18 @@ function Candidates() {
                 {c.sourceUrl && <SourceLink url={c.sourceUrl} />}
                 {c.issue && <p className="mt-2 text-sm text-warning">{c.issue}</p>}
                 {expanded === c.id && (
-                  <CandidateDetails
-                    candidate={c}
-                    decisions={choices[c.id] ?? EMPTY}
-                    onChange={(next) =>
-                      setChoices((previous) => ({
-                        ...previous,
-                        [c.id]: typeof next === "function" ? next(previous[c.id] ?? EMPTY) : next,
-                      }))
-                    }
-                  />
+                  <div className="animate-enter">
+                    <CandidateDetails
+                      candidate={c}
+                      decisions={choices[c.id] ?? EMPTY}
+                      onChange={(next) =>
+                        setChoices((previous) => ({
+                          ...previous,
+                          [c.id]: typeof next === "function" ? next(previous[c.id] ?? EMPTY) : next,
+                        }))
+                      }
+                    />
+                  </div>
                 )}
               </div>
               {!s.processed && (
@@ -781,22 +789,22 @@ function CandidateDetails({
               ))}
             </div>
           )}
-          <details>
-            <summary className="cursor-pointer text-muted-foreground">
-              来源与邮箱证据 · {detail.data.evidence.length} 页
-            </summary>
-            {detail.data.evidence.map((e, n) => (
-              <div key={n} className="mt-2 break-words text-muted-foreground">
-                <SourceLink url={e.url} />
-                <p>
-                  {e.name} ·{" "}
-                  {e.emails.map((m) => (e.recognized.includes(m) ? `${m}（从图片识别）` : m)).join("、") ||
-                    "未找到可确认归属的邮箱"}
-                </p>
-                {e.research && <p>{e.research}</p>}
-              </div>
-            ))}
-          </details>
+          <Collapsible>
+            <CollapsibleTrigger>来源与邮箱证据 · {detail.data.evidence.length} 页</CollapsibleTrigger>
+            <CollapsibleContent>
+              {detail.data.evidence.map((e, n) => (
+                <div key={n} className="mt-2 break-words text-muted-foreground">
+                  <SourceLink url={e.url} />
+                  <p>
+                    {e.name} ·{" "}
+                    {e.emails.map((m) => (e.recognized.includes(m) ? `${m}（从图片识别）` : m)).join("、") ||
+                      "未找到可确认归属的邮箱"}
+                  </p>
+                  {e.research && <p>{e.research}</p>}
+                </div>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
           {c.review === "pending" && (
             <p className="text-muted-foreground">接受前可查看补充内容，并逐项选择资料不同的部分</p>
           )}
@@ -915,11 +923,9 @@ function SourceLink({ url }: { url: string }) {
     </a>
   );
 }
-/** Pages of 50, shown once there is more than one or the list shrank under the page being shown. */
 function Pages(props: { page: number; total: number; onPage: (page: number) => void }) {
-  if (props.page === 1 && props.total <= 50) return null;
   return (
-    <div className="mt-3 flex justify-end text-sm text-muted-foreground">
+    <div className="mt-3 flex justify-end empty:hidden">
       <Pager {...props} />
     </div>
   );
