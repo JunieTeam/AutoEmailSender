@@ -94,7 +94,7 @@ export function TagSaveError({ mentorId }: { mentorId: number }) {
           )
         );
       })}
-      {created?.status === "error" && <p className="text-destructive">没能新建标签：{errorMessage(created.error)}</p>}
+      {created?.status === "error" && <p className="text-destructive">未能新建标签：{errorMessage(created.error)}</p>}
     </>
   );
 }
@@ -281,7 +281,7 @@ function TagManager({ onClose }: { onClose: () => void }) {
       <DialogContent className="w-[480px]">
         <DialogHeader>管理标签</DialogHeader>
         <DialogBody className="flex flex-col gap-1.5 pb-5">
-          {list.length === 0 && <p className="py-6 text-center text-muted-foreground">还没有标签</p>}
+          {list.length === 0 && <p className="py-6 text-center text-muted-foreground">尚无标签</p>}
           {list.map((t, i) => (
             <TagRow
               key={t.id}

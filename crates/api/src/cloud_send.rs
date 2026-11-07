@@ -244,8 +244,8 @@ async fn upload_mailbox(
     Ok(saved.login_error)
 }
 
-const NO_SECRET: &str = "发件邮箱的授权码不在这台电脑上了，请在邮箱设置里重新填写。";
-const CHANGED: &str = "这些邮件或邮箱刚刚有了变化，请重新打开“交给云端发送”再交。";
+const NO_SECRET: &str = "发件邮箱的授权码不在这台电脑上了，请在邮箱设置里重新填写";
+const CHANGED: &str = "这些邮件或邮箱刚刚有了变化，请重新打开“交给云端发送”再交";
 
 #[derive(Deserialize, TS)]
 #[ts(rename = "CloudSendPreviewInput")]
@@ -628,9 +628,9 @@ pub async fn hand_off(ctx: &Context, input: HandOff, now: i64) -> Result<HandedO
     } = ready(ctx, now).await?.map_err(|blocked| {
         CallError::invalid(
             match blocked {
-                Blocked::SignedOut => "请先登录。",
-                Blocked::TermsOutdated => "尚未同意新版条款，同意后方可使用官方服务。",
-                Blocked::NoPlus => "云端定时发送是 Plus 专享。",
+                Blocked::SignedOut => "请先登录",
+                Blocked::TermsOutdated => "尚未同意新版条款，同意后方可使用官方服务",
+                Blocked::NoPlus => "云端定时发送是 Plus 专享",
             }
             .into(),
         )
@@ -665,7 +665,7 @@ pub async fn hand_off(ctx: &Context, input: HandOff, now: i64) -> Result<HandedO
             && !input.consents.contains(&c.mailbox_id)
         {
             return Err(CallError::invalid(format!(
-                "请先勾选同意把 {address} 的授权码交给官方服务器，用来按时发信。"
+                "请先勾选同意把 {address} 的授权码交给官方服务器，用来按时发信"
             )));
         }
         mailboxes.push((c.mailbox_id, copy));
@@ -768,7 +768,7 @@ async fn upload_email(
     let compressed = zstd::encode_all(&message[..], LEVEL).map_err(CallError::internal)?;
     if compressed.len() > MAX_SIZE {
         return Ok(Err(format!(
-            "这封邮件压缩后超过 {} MB，不能交给云端。",
+            "这封邮件压缩后超过 {} MB，不能交给云端",
             MAX_SIZE / 1024 / 1024
         )));
     }
@@ -841,7 +841,7 @@ pub async fn withdraw(ctx: &Context, input: Withdraw, now: i64) -> Result<Withdr
     };
     let emails = email::cloud::in_cloud(&mut *ctx.db.acquire().await?, id, task).await?;
     if id.is_some() && emails.is_empty() {
-        return Err(CallError::not_found("这封邮件已不在云端。"));
+        return Err(CallError::not_found("这封邮件已不在云端"));
     }
     let mut result = Withdrawn { sending: 0 };
     if emails.is_empty() {
@@ -855,7 +855,7 @@ pub async fn withdraw(ctx: &Context, input: Withdraw, now: i64) -> Result<Withdr
         .collect();
     if let Some(other) = emails.iter().find(|e| e.account != login.email) {
         return Err(CallError::invalid(format!(
-            "有邮件是账号 {} 交给云端的，登录这个账号后才能撤回。",
+            "有邮件是账号 {} 交给云端的，登录这个账号后才能撤回",
             other.account
         )));
     }

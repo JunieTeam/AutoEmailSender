@@ -137,12 +137,12 @@ fn authorize(executable: &Path, link: &Path, install: bool) -> Result<(), CallEr
     let message = String::from_utf8_lossy(&output.stderr);
     if message.contains("(-128)") {
         return Err(CallError::invalid(
-            "你取消了管理员授权，命令行工具未更改。".into(),
+            "你取消了管理员授权，命令行工具未更改".into(),
         ));
     }
     if message.contains("(17)") {
         return Err(CallError::invalid(
-            "/usr/local/bin/autoemail 已被其他文件占用，未覆盖。".into(),
+            "/usr/local/bin/autoemail 已被其他文件占用，未覆盖".into(),
         ));
     }
     Err(CallError::invalid(format!(

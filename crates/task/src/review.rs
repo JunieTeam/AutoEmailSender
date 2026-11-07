@@ -615,7 +615,7 @@ pub async fn save(db: &SqlitePool, edit: &DraftEdit, now: i64) -> Result<()> {
     .await?
     {
         return Err(Error::Invalid(
-            "这封邮件已不在待审核状态，请刷新后重试。".into(),
+            "这封邮件已不在待审核状态，请刷新后重试".into(),
         ));
     }
     tx.commit().await?;
@@ -635,7 +635,7 @@ pub async fn check(db: &SqlitePool, edit: &DraftEdit, now: i64) -> Result<Vec<ch
     .await?;
     let m = mentor::detail(&mut tx, row.mentor_id)
         .await?
-        .ok_or_else(|| Error::Invalid("导师已被删除。".into()))?;
+        .ok_or_else(|| Error::Invalid("导师已被删除".into()))?;
     let names = other_names(&mut tx, edit.task_id).await?;
     let c = sqlx::query!(
         "SELECT contact_count,last_out_at FROM mentor_contact WHERE mentor_id = ?",
@@ -785,23 +785,23 @@ where
         if current.subject.as_deref() != Some(r.subject.as_str())
             || current.body_md.as_deref() != Some(r.body_md.as_str())
         {
-            return Err(Error::Invalid("草稿刚被修改，请重新核对后批准。".into()));
+            return Err(Error::Invalid("草稿刚被修改，请重新核对后批准".into()));
         }
         let mut expected = r.attachments.clone();
         expected.sort_unstable();
         let mut attached = email::attached(&mut tx, r.id).await?;
         attached.sort_unstable();
         if attached != expected {
-            return Err(Error::Invalid("附件刚被修改，请重新核对后批准。".into()));
+            return Err(Error::Invalid("附件刚被修改，请重新核对后批准".into()));
         }
         let html = r
             .html
             .as_deref()
-            .ok_or_else(|| Error::Invalid("缺少邮件的 HTML 渲染结果。".into()))?;
+            .ok_or_else(|| Error::Invalid("缺少邮件的 HTML 渲染结果".into()))?;
         let text = r
             .text
             .as_deref()
-            .ok_or_else(|| Error::Invalid("缺少邮件的纯文本渲染结果。".into()))?;
+            .ok_or_else(|| Error::Invalid("缺少邮件的纯文本渲染结果".into()))?;
         let (html, text) = if current.kind == "follow_up" {
             let parent = email::thread::previous(
                 &mut tx,
@@ -810,7 +810,7 @@ where
                 true,
             )
             .await?
-            .ok_or_else(|| Error::Invalid("上一封已不在往来里，请移出任务后重新创建。".into()))?;
+            .ok_or_else(|| Error::Invalid("上一封已不在往来里，请移出任务后重新创建".into()))?;
             let frozen = email::thread::freeze(&mut tx, r.id, &parent, html, text, zone).await?;
             (frozen.html, frozen.text)
         } else {
@@ -858,7 +858,7 @@ pub async fn reapply(db: &SqlitePool, key: &TaskEmail, now: i64) -> Result<()> {
     )
     .fetch_optional(&mut *tx)
     .await?
-    .ok_or_else(|| Error::Invalid("这封邮件已不在待审核状态。".into()))?;
+    .ok_or_else(|| Error::Invalid("这封邮件已不在待审核状态".into()))?;
     let id = sqlx::query_scalar!(
         "SELECT mentor_id FROM email WHERE id = ? AND task_id = ?",
         key.id,
@@ -868,7 +868,7 @@ pub async fn reapply(db: &SqlitePool, key: &TaskEmail, now: i64) -> Result<()> {
     .await?;
     let m = mentor::detail(&mut tx, id)
         .await?
-        .ok_or_else(|| Error::Invalid("导师已被删除。".into()))?;
+        .ok_or_else(|| Error::Invalid("导师已被删除".into()))?;
     let name = sqlx::query_scalar!("SELECT name FROM profile")
         .fetch_one(&mut *tx)
         .await?;
@@ -883,7 +883,7 @@ pub async fn reapply(db: &SqlitePool, key: &TaskEmail, now: i64) -> Result<()> {
     )
     .await?
     {
-        return Err(Error::Invalid("这封邮件已不在待审核状态。".into()));
+        return Err(Error::Invalid("这封邮件已不在待审核状态".into()));
     }
     tx.commit().await?;
     Ok(())

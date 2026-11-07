@@ -224,7 +224,7 @@ export function IntakeAdditions({ additions }: { additions: Addition[] }) {
                   ))}
               </dl>
             ) : (
-              <p className="text-muted-foreground">没有可直接补上的空项；资料不同的部分由你选择</p>
+              <p className="text-muted-foreground">无可直接补上的空项；资料不同的部分由你选择</p>
             )}
           </div>
         );

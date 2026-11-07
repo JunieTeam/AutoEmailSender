@@ -269,7 +269,7 @@ export function MentorsPage() {
             发出超过
           </label>
           <Input
-            aria-label="没回复的天数"
+            aria-label="未回复的天数"
             type="number"
             min={1}
             max={36500}
@@ -285,7 +285,7 @@ export function MentorsPage() {
               }
             }}
           />
-          天没回复
+          天未回复
           {tracked && (
             <NativeSelect
               aria-label="打开情况"
@@ -303,7 +303,7 @@ export function MentorsPage() {
             >
               <option value="">全部打开情况</option>
               <option value="true">打开过</option>
-              <option value="false">没打开过</option>
+              <option value="false">未打开过</option>
             </NativeSelect>
           )}
         </div>
@@ -315,12 +315,12 @@ export function MentorsPage() {
           className={`@container min-h-0 flex-1 overflow-y-auto px-4 phone:px-0 ${selected.size > 0 ? "pb-20" : ""}`}
         >
           {query.isError ? (
-            <Notice title="导师列表没能加载" detail={errorMessage(query.error)} />
+            <Notice title="导师列表未能加载" detail={errorMessage(query.error)} />
           ) : query.data?.total === 0 ? (
             search.status || search.q || filtered(search) ? (
-              <Notice title="没有符合条件的导师" detail="换个关键词或筛选条件再试。" />
+              <Notice title="无符合条件的导师" detail="可更换关键词或筛选条件再试" />
             ) : (
-              <Notice title="还没有导师" detail="点“添加导师”填写导师的资料。" />
+              <Notice title="尚无导师" detail="点“添加导师”，从导师库添加、智能整理、导入表格或手动填写" />
             )
           ) : (
             <MentorTable
@@ -334,8 +334,8 @@ export function MentorsPage() {
         <BatchBar
           count={selected.size}
           errors={[
-            ...(addTag.error ? [`没能添加标签：${errorMessage(addTag.error)}`] : []),
-            ...(trash.error ? [`没能移入回收站：${errorMessage(trash.error)}`] : []),
+            ...(addTag.error ? [`未能添加标签：${errorMessage(addTag.error)}`] : []),
+            ...(trash.error ? [`未能移入回收站：${errorMessage(trash.error)}`] : []),
           ]}
           onClear={() => {
             setSelected(new Set());
@@ -383,7 +383,7 @@ export function MentorsPage() {
                 移入回收站
               </Button>
             }
-            message={`把选中的 ${selected.size} 位导师移入回收站？没发出的邮件会取消，恢复导师后也不会恢复。`}
+            message={`把选中的 ${selected.size} 位导师移入回收站？未发出的邮件会取消，恢复导师后也不会恢复。`}
             action="移入回收站"
             onConfirm={() => trash.mutate([...selected])}
           />

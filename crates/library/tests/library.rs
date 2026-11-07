@@ -699,7 +699,7 @@ async fn quota_failure_is_reported_and_expired_sessions_stop_sync(db: SqlitePool
     };
     let library = sync::Synchronizer::default();
     let (result, ()) = tokio::join!(library.add(&client, &db, &selection, 0), response);
-    assert!(result.unwrap_err().message().contains("少选几位或明天再来"));
+    assert!(result.unwrap_err().message().contains("少选几位或明天再试"));
     let response = async {
         let request = server.requests.recv().await.unwrap();
         request

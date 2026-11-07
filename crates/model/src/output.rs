@@ -7,7 +7,7 @@ pub fn thinking_block(text: &str) -> Result<&str, &'static str> {
         Some(rest) => rest
             .split_once("</think>")
             .map(|(_, text)| text.trim_start())
-            .ok_or("思考块没有结束"),
+            .ok_or("思考块未结束"),
         None => Ok(text),
     }
 }
@@ -27,7 +27,7 @@ pub fn fence_content(text: &str) -> Result<Option<&str>, &'static str> {
         .map(|rest| {
             rest.split_once('\n')
                 .map(|(_, text)| text)
-                .ok_or("代码围栏没有内容")
+                .ok_or("代码围栏无内容")
         })
         .transpose()
 }

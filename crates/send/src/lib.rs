@@ -196,7 +196,7 @@ pub async fn step_in_zone<T: chrono::TimeZone>(
                 email::failed(
                     &mut *db.acquire().await?,
                     e.id,
-                    "没有能发信的邮箱，去设置里添加或在导师资料里指定负责邮箱后重试。",
+                    "无可发信的邮箱，请在设置里添加，或在导师资料里指定负责邮箱后重试",
                     at,
                 )
                 .await?;
@@ -550,7 +550,7 @@ pub async fn cloud_message(
     let letter = email::cloud::letter(&mut *db.acquire().await?, cloud_id).await?;
     let Some(account) = mailbox::account(db, letter.mailbox_id).await? else {
         return Ok(Err(
-            "发件邮箱的授权码不在这台电脑上了，请在邮箱设置里重新填写。".into(),
+            "发件邮箱的授权码不在这台电脑上了，请在邮箱设置里重新填写".into(),
         ));
     };
     let files = match files(materials, &letter.attachments).await {

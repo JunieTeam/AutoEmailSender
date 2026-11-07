@@ -63,7 +63,7 @@ export function TodoCheck({ todo }: { todo: Todo }) {
   });
   return (
     <Checkbox
-      aria-label={todo.done ? `标为没完成：${todo.text}` : `标为完成：${todo.text}`}
+      aria-label={todo.done ? `标为未完成：${todo.text}` : `标为完成：${todo.text}`}
       checked={set.isPending ? set.variables : todo.done}
       disabled={set.isPending}
       onCheckedChange={(done) => set.mutate(done)}

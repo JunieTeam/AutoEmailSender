@@ -285,7 +285,7 @@ pub async fn withdrawn(
     Ok(())
 }
 
-const GONE: &str = "官方服务器收到过这封邮件，但结果已经不在了（比如超过 30 天没有同步），没法确定是否发出，请到发件邮箱的“已发送”里核对。";
+const GONE: &str = "官方服务器收到过这封邮件，但结果已不在（比如超过 30 天未同步），无法确定是否发出，请到发件邮箱的“已发送”里核对";
 
 /// The server had an email and its outcome is gone, as when this computer was away longer than
 /// the server keeps outcomes, or a backup from before it came was restored: it may have gone out
@@ -309,7 +309,7 @@ pub async fn unknown(
 }
 
 const ACCOUNT_GONE: &str =
-    "交出这封邮件的账号已经注销，没法确定是否发出，请到发件邮箱的“已发送”里核对。";
+    "交出这封邮件的账号已注销，无法确定是否发出，请到发件邮箱的“已发送”里核对";
 
 /// The emails handed over as `account` by an earlier account with that email, deleted since with
 /// what became of them: written down as maybe sent at their time, as `unknown` does. Each one's id,

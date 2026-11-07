@@ -149,7 +149,7 @@ impl ModelForm {
             .flatten()
             .any(|p| !p.is_finite() || p < 0.0)
         {
-            return Err("单价不能是负数，请按每百万 Token 的人民币价格填写。".into());
+            return Err("单价不能是负数，请按每百万 Token 的人民币价格填写".into());
         }
         Ok(ModelFields {
             name: Some(self.name.trim())

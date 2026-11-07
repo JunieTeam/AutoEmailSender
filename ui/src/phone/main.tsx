@@ -109,17 +109,17 @@ class Link {
           kind: "ended",
           message:
             this.pairing.computer === null
-              ? "二维码已过期或已被用过，请回到电脑上重新添加这部手机。"
-              : "这部手机已在电脑上撤销，请重新扫码配对。",
+              ? "二维码已过期或已被用过，请回到电脑上重新添加这部手机"
+              : "这部手机已在电脑上撤销，请重新扫码配对",
         });
         return forget(room);
       case CLOSE.DENIED:
-        this.set({ kind: "ended", message: "电脑上没有允许这部手机连接，请回到电脑上重新添加。" });
+        this.set({ kind: "ended", message: "电脑上未允许这部手机连接，请回到电脑上重新添加" });
         return forget(room);
       case CLOSE.BROKEN:
         return this.set({
           kind: "ended",
-          message: "和电脑的连接出错了，请刷新页面再试；仍然出错时，在电脑上导出日志发给开发者。",
+          message: "和电脑的连接出错，请刷新页面再试；仍然出错时，在电脑上导出日志发给开发者",
         });
     }
     const offline = status.code === CLOSE.OFFLINE;
@@ -129,9 +129,9 @@ class Link {
     this.set({
       kind: "waiting",
       message: offline
-        ? "电脑上的应用没有连上：请确认它开着、已登录、能联网。"
+        ? "电脑上的应用未连接：请确认它已打开、已登录、能联网"
         : status.code === CLOSE.FULL
-          ? "这台电脑同时连着的手机太多了，稍后自动再试。"
+          ? "这台电脑同时连接的手机过多，稍后自动重试"
           : "连不上服务器，正在重试…",
     });
   }
@@ -159,7 +159,7 @@ function Phone({ link, computer }: { link: Link; computer: string | null }) {
       <div className="flex max-w-[320px] flex-col items-center gap-4 text-center">
         <img src={appIcon} alt="" className="size-12" />
         {view.kind === "connecting" ? (
-          <p>{computer === null ? "请在电脑上允许这台手机连接。" : `正在连接 ${computer}…`}</p>
+          <p>{computer === null ? "请在电脑上允许这台手机连接" : `正在连接 ${computer}…`}</p>
         ) : (
           <p>{view.message}</p>
         )}
@@ -176,7 +176,7 @@ function Phone({ link, computer }: { link: Link; computer: string | null }) {
 async function invoke(link: Link, command: string, args?: InvokeArgs): Promise<unknown> {
   switch (command) {
     case "call":
-      if (!args || !("op" in args) || typeof args.op !== "string") throw new Error("调用无效。");
+      if (!args || !("op" in args) || typeof args.op !== "string") throw new Error("调用无效");
       return link.call(args.op, "input" in args ? args.input : undefined);
     case "startup_failure":
       return null;
@@ -185,14 +185,14 @@ async function invoke(link: Link, command: string, args?: InvokeArgs): Promise<u
     case "plugin:window|set_theme":
       return undefined;
     case "plugin:opener|open_url": {
-      if (!args || !("url" in args) || typeof args.url !== "string") throw new Error("链接无效。");
+      if (!args || !("url" in args) || typeof args.url !== "string") throw new Error("链接无效");
       const url = new URL(args.url);
-      if (!["http:", "https:", "mailto:"].includes(url.protocol)) throw new Error("手机上打不开这种链接。");
+      if (!["http:", "https:", "mailto:"].includes(url.protocol)) throw new Error("手机上无法打开这种链接");
       window.open(url.href, "_blank", "noopener,noreferrer");
       return undefined;
     }
     default:
-      throw new Error("这个操作只能在电脑上做。");
+      throw new Error("这个操作只能在电脑上完成");
   }
 }
 

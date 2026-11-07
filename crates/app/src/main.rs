@@ -507,7 +507,7 @@ async fn finish_drafts(
         app.notification()
             .builder()
             .title(format!(
-                "任务“{}”的草稿写好了：{} 封，失败 {} 封",
+                "任务“{}”的草稿已生成：{} 封，失败 {} 封",
                 result.name, result.generated, result.failed
             ))
             .show()?;

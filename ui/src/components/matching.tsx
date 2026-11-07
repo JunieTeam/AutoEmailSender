@@ -60,11 +60,11 @@ export function MatchingDialog({ ids, onClose }: { ids: number[]; onClose: () =>
                   约 {(data.inputTokens + data.outputTokens).toLocaleString()} Token
                   {data.cost !== null && `，约 ${data.cost.toFixed(2)} 元`}
                 </p>
-                <p className="mt-1 text-xs">按字数估算，实际以服务商为准。</p>
+                <p className="mt-1 text-xs">按字数估算，实际以服务商为准</p>
               </div>
               {!data.hasBasis && (
                 <p className="text-warning">
-                  还没有匹配依据。请在
+                  尚无匹配依据。请在
                   <Link to="/settings/materials" className="text-brand-text">
                     设置 › 个人
                   </Link>
@@ -112,7 +112,7 @@ export function MatchButton({ mentor: m }: { mentor: MentorDetail }) {
         <AiIcon />
         {m.analysis.state?.state === "failed" ? "重试" : m.analysis.result ? "重新分析" : "分析匹配度"}
       </ModelAction>
-      {insufficient && <p className="text-muted-foreground">请先补充研究方向或代表论文。</p>}
+      {insufficient && <p className="text-muted-foreground">请先补充研究方向或代表论文</p>}
       {run.error && (
         <p role="alert" className="text-destructive">
           {errorMessage(run.error)}
@@ -179,7 +179,7 @@ export function MatchingProgress() {
           </div>
           {p.pause && p.remaining > 0 && (
             <p className="mt-1 text-muted-foreground wrap-anywhere">
-              {p.pause.reason ?? "你已暂停分析，正在分析的几位会做完。"}
+              {p.pause.reason ?? "你已暂停分析，正在分析的几位会做完"}
             </p>
           )}
         </>

@@ -1114,7 +1114,7 @@ async fn retry_targets_tell_an_automatic_sender_from_a_reply_without_one(db: Sql
         (
             "reply",
             Some("<gone@example.invalid>"),
-            "没有负责邮箱，要先在导师资料里指定",
+            "无负责邮箱，请先在导师资料里指定",
         ),
     ] {
         let email = test_fixtures::mail::first_email(&ctx.db, mentor, "approved", 0)

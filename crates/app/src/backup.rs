@@ -17,11 +17,11 @@ async fn blocking<T: Send + 'static>(
         let _held = commands
             .0
             .lock()
-            .map_err(|_| "备份处理已中断，请重启应用后重试。".to_owned())?;
+            .map_err(|_| "备份处理已中断，请重启应用后重试".to_owned())?;
         work(&app)
     })
     .await
-    .map_err(|e| format!("备份处理未能完成：{e}，请重试。"))?
+    .map_err(|e| format!("备份处理未能完成：{e}，请重试"))?
 }
 
 fn failure(e: api::backup::Error) -> String {
@@ -45,7 +45,7 @@ pub async fn export_backup(
         )
         .map_err(|e| {
             tracing::error!("backup date: {e}");
-            "无法读取备份日期，请重试。".to_owned()
+            "无法读取备份日期，请重试".to_owned()
         })?;
         let Some(target) = app
             .dialog()
@@ -58,7 +58,7 @@ pub async fn export_backup(
         };
         let target = target
             .into_path()
-            .map_err(|e| format!("无法保存到这个位置：{e}，请选择其他位置。"))?;
+            .map_err(|e| format!("无法保存到这个位置：{e}，请选择其他位置"))?;
         tauri::async_runtime::block_on(api::backup::export(&db, &dir, &target, now))
             .map_err(failure)?;
         tracing::info!("exported a backup");
@@ -83,7 +83,7 @@ pub async fn prepare_restore(app: AppHandle) -> Result<Option<api::backup::Resto
         };
         let source = source
             .into_path()
-            .map_err(|e| format!("无法读取这个文件：{e}，请选择本地备份文件。"))?;
+            .map_err(|e| format!("无法读取这个文件：{e}，请选择本地备份文件"))?;
         let info =
             tauri::async_runtime::block_on(api::backup::prepare(&dir, &source)).map_err(failure)?;
         tracing::info!(

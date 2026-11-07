@@ -186,7 +186,7 @@ async fn exchange(
         // A malformed page must not move the progress back or keep this looping.
         if page.revision < after || page.more && page.revision == after {
             return Err(account::Error::Invalid(
-                "服务器返回的打开记录不正确，请稍后重试或升级应用。",
+                "服务器返回的打开记录不正确，请稍后重试或升级应用",
             ));
         }
         let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
@@ -317,7 +317,7 @@ pub async fn set_tracking(ctx: &Context, input: TrackingSwitch) -> Result<(), Ca
     let login = match account::saved_login(&ctx.db).await {
         Err(account::Error::SignedOut) => {
             return Err(CallError::invalid(
-                "登录并开通 Plus 后可以用邮件追踪。".into(),
+                "登录并开通 Plus 后可以用邮件追踪".into(),
             ));
         }
         login => login?,
@@ -326,7 +326,7 @@ pub async fn set_tracking(ctx: &Context, input: TrackingSwitch) -> Result<(), Ca
     let account = read(ctx, &login).await?;
     if !account.plus_until.is_some_and(|until| until > crate::now()) {
         return Err(CallError::invalid(
-            "开通 Plus 后可以用邮件追踪，每 30 天 500 封。".into(),
+            "开通 Plus 后可以用邮件追踪，每 30 天 500 封".into(),
         ));
     }
     let mut tx = ctx.db.begin_with("BEGIN IMMEDIATE").await?;

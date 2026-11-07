@@ -13,7 +13,7 @@ export function ProfileSection() {
   return (
     <Section title="个人资料">
       <p className="text-sm text-muted-foreground">AI 写信和分析匹配度时参考这些内容。输入后自动保存。</p>
-      {profile.error && <p className="text-sm text-destructive">个人资料没能加载：{errorMessage(profile.error)}</p>}
+      {profile.error && <p className="text-sm text-destructive">个人资料未能加载：{errorMessage(profile.error)}</p>}
       {profile.data && <ProfileFields />}
     </Section>
   );
@@ -80,7 +80,7 @@ export function ProfileFields({ basic = false }: { basic?: boolean }) {
           value={shown("researchInterests")}
           onChange={(e) => edit({ researchInterests: e.target.value })}
         />
-        <p className="mt-1.5 text-sm text-muted-foreground">分析匹配度时，和材料一起作为依据。</p>
+        <p className="mt-1.5 text-sm text-muted-foreground">分析匹配度时，和材料一起作为依据</p>
       </Field>
       {!basic && (
         <Field label="草稿改写偏好" id="profile-rewrite">
@@ -91,7 +91,7 @@ export function ProfileFields({ basic = false }: { basic?: boolean }) {
             value={shown("rewritePreference")}
             onChange={(e) => edit({ rewritePreference: e.target.value })}
           />
-          <p className="mt-1.5 text-sm text-muted-foreground">AI 写草稿和改写时照着做。</p>
+          <p className="mt-1.5 text-sm text-muted-foreground">AI 起草和改写时遵循</p>
         </Field>
       )}
       {last?.status === "error" && (

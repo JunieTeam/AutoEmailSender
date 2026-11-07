@@ -64,7 +64,7 @@ it("orders only after the Plus terms are agreed to, then waits for the payment t
     expect(remote.opened).toHaveBeenCalledWith("https://pay.example/7");
 
     await act(async () => vi.advanceTimersByTimeAsync(3000));
-    await vi.waitFor(() => expect(document.body.textContent).toContain("已开通，Plus 到2030年2月1日。"));
+    await vi.waitFor(() => expect(document.body.textContent).toContain("已开通，Plus 到2030年2月1日"));
     expect(button("完成")).toBeDefined();
   } finally {
     await act(async () => root.unmount());

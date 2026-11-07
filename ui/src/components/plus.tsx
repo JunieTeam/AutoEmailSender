@@ -158,14 +158,14 @@ function Paying({
         {applied ? (
           <p className="text-success">
             {pack
-              ? `已开通，额度包剩 ${applied.tracking.packLeft} 封。`
-              : `已开通${applied.plusUntil == null ? "" : `，Plus 到${day(applied.plusUntil)}`}。`}
+              ? `已开通，额度包剩 ${applied.tracking.packLeft} 封`
+              : `已开通${applied.plusUntil == null ? "" : `，Plus 到${day(applied.plusUntil)}`}`}
           </p>
         ) : refunded ? (
-          <p>这笔订单已退款。</p>
+          <p>这笔订单已退款</p>
         ) : (
           <>
-            <p>{waited ? "尚未收到付款。如已付款，稍后会自动开通。" : "请在浏览器中完成付款，付款后自动开通。"}</p>
+            <p>{waited ? "尚未收到付款。如已付款，稍后会自动开通。" : "请在浏览器中完成付款，付款后自动开通"}</p>
             <div className="flex items-center gap-3">
               <Button variant="quiet" size="sm" onClick={reopen}>
                 重新打开付款页

@@ -123,7 +123,7 @@ export function TaskLetter({
     scope,
     mutationFn: async (current: DraftEdit) => {
       await saved();
-      if (!style.data) throw new Error("信件样式尚未加载，请稍后再试。");
+      if (!style.data) throw new Error("信件样式尚未加载，请稍后再试");
       await call("approveTaskEmails", {
         taskId: task.id,
         emails: [
@@ -154,14 +154,14 @@ export function TaskLetter({
     setBody({ version: body.version + 1, markdown: next.bodyMd });
   }
   const blocker = !address ? (
-    "导师尚未填写邮箱，可在资料里填写。"
+    "导师尚未填写邮箱，可在资料里填写"
   ) : mailboxes.data?.length === 0 ? (
     <>
       尚未添加发信的邮箱，可在
       <Link to="/settings/mailboxes" className="text-brand-text">
         设置 › 邮件 › 邮箱
       </Link>
-      里添加。
+      里添加
     </>
   ) : null;
   return (

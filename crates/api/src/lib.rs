@@ -240,7 +240,7 @@ macro_rules! operations {
                         .map_err(CallError::bad_input)?;
                     serde_json::to_value($handler(ctx, input).await?).map_err(CallError::internal)
                 })*)*
-                _ => Err(CallError::bad_input(format!("没有操作 {op}"))),
+                _ => Err(CallError::bad_input(format!("不存在操作 {op}"))),
             }
         }
 
@@ -289,7 +289,7 @@ macro_rules! operations {
                         typescript,
                     })
                 })*)*
-                _ => Err(CallError::bad_input(format!("没有操作 {name}"))),
+                _ => Err(CallError::bad_input(format!("不存在操作 {name}"))),
             }
         }
 
@@ -741,7 +741,7 @@ operations! {
         "updateMentor" [confirm_if "更改已批准邮件的收件地址时"] =>
             update_mentor(MentorEdit) -> mentor::MentorDetail;
         /// 设置联系导师使用的邮箱，mailboxId 为 null 时取消指定。
-        "setMentorMailbox" [confirm_if "这位导师有已批准还没发出的邮件，且发件邮箱改变时"] =>
+        "setMentorMailbox" [confirm_if "这位导师有已批准尚未发出的邮件，且发件邮箱改变时"] =>
             set_mentor_mailbox(MentorMailbox) -> mentor::MentorDetail;
         /// 为指定导师添加邮箱地址，address 为新地址。
         "addMentorEmail" [confirm_if "新地址成为已批准邮件的收件地址时"] =>
@@ -1002,11 +1002,11 @@ async fn match_mentor(ctx: &Context, input: MentorId) -> Result<u64, CallError> 
     matching::ready(&ctx.db).await?;
     let m = get_mentor(ctx, MentorId { id: input.id }).await?;
     if m.trashed {
-        return Err(CallError::invalid("请先从回收站恢复这位导师。".into()));
+        return Err(CallError::invalid("请先从回收站恢复这位导师".into()));
     }
     if m.research.is_none() && m.papers.is_empty() {
         return Err(CallError::invalid(
-            "请先补充导师的研究方向或代表论文。".into(),
+            "请先补充导师的研究方向或代表论文".into(),
         ));
     }
     let count = mentor::matching::enqueue(&ctx.db, &[input.id], true, true, now()).await?;
@@ -1060,7 +1060,7 @@ impl From<matching::Error> for CallError {
 #[derive(Debug, Deserialize, TS)]
 pub struct Nothing {}
 
-const NO_MENTOR: &str = "找不到这位导师，可能已被永久删除。";
+const NO_MENTOR: &str = "找不到这位导师，可能已被永久删除";
 
 #[derive(Debug, Deserialize, Serialize, TS)]
 pub struct MentorId {
@@ -1215,7 +1215,7 @@ async fn set_mentor_mailbox(
             if e.as_database_error()
                 .is_some_and(|e| e.is_foreign_key_violation())
             {
-                CallError::invalid("这个邮箱已经删除，请刷新后重新选择。".into())
+                CallError::invalid("这个邮箱已经删除，请刷新后重新选择".into())
             } else {
                 e.into()
             }
@@ -1339,7 +1339,7 @@ pub struct TagMove {
     pub direction: mentor::tags::Direction,
 }
 
-const NO_TAG: &str = "找不到这个标签，可能已被删除。";
+const NO_TAG: &str = "找不到这个标签，可能已被删除";
 
 async fn tag_mentors(ctx: &Context, input: TagMentors) -> Result<(), CallError> {
     Ok(mentor::tags::tag_mentors(&ctx.db, input.tag_id, &input.mentor_ids, input.on).await?)
@@ -1406,14 +1406,14 @@ impl From<mentor::merge::MergeError> for CallError {
     fn from(e: mentor::merge::MergeError) -> Self {
         match e {
             mentor::merge::MergeError::Gone => {
-                CallError::not_found("有一位导师已被永久删除或移入回收站。")
+                CallError::not_found("有一位导师已被永久删除或移入回收站")
             }
             mentor::merge::MergeError::Busy { name, count } => CallError::invalid(format!(
                 "{name}老师还有 {count} 封邮件会发出（待发送、发送中或发送失败）。等它们发出，\
                 或改回草稿后再合并。"
             )),
             mentor::merge::MergeError::Changed => {
-                CallError::invalid("预览之后两位导师的草稿有了变化，请看过新的预览再合并。".into())
+                CallError::invalid("预览之后两位导师的草稿有了变化，请看过新的预览再合并".into())
             }
             mentor::merge::MergeError::Db(e) => e.into(),
         }
@@ -1453,7 +1453,7 @@ pub struct MailboxTest {
     pub secret: String,
 }
 
-const NO_MAILBOX: &str = "找不到这个邮箱，可能已被删除。";
+const NO_MAILBOX: &str = "找不到这个邮箱，可能已被删除";
 const NO_SECRET: &str = "请填写授权码或密码";
 
 async fn list_providers(
@@ -1553,7 +1553,7 @@ async fn entered_or_saved_secret(
 
 async fn send_test_mail(ctx: &Context, input: MailboxId) -> Result<(), CallError> {
     let account = mailbox::account(&ctx.db, input.id).await?.ok_or_else(|| {
-        CallError::invalid("请先在“设置 › 邮件 › 邮箱”填写授权码或密码，再发测试信。".into())
+        CallError::invalid("请先在“设置 › 邮件 › 邮箱”填写授权码或密码，再发测试信".into())
     })?;
     Ok(transport::send_test(&ctx.net, &account.sender).await?)
 }
@@ -1634,7 +1634,7 @@ impl From<mailbox::SaveError> for CallError {
         match e {
             mailbox::SaveError::AddressTaken => CallError::invalid("这个邮箱已经添加过了".into()),
             mailbox::SaveError::InCloud(count) => CallError::invalid(format!(
-                "这个邮箱还有 {count} 封邮件已交给云端，要改地址或删除邮箱，请先把它们撤回到本地。"
+                "这个邮箱还有 {count} 封邮件已交给云端，要改地址或删除邮箱，请先把它们撤回到本地"
             )),
             mailbox::SaveError::Db(e) => e.into(),
         }
@@ -1702,7 +1702,7 @@ pub struct ModelTest {
     pub api_key: String,
 }
 
-const NO_MODEL_CONFIG: &str = "找不到这个模型配置，可能已被删除。";
+const NO_MODEL_CONFIG: &str = "找不到这个模型配置，可能已被删除";
 const NO_API_KEY: &str = "请填写 API Key";
 
 async fn list_model_providers(
@@ -1742,7 +1742,7 @@ async fn delete_model_config(ctx: &Context, input: ModelConfigId) -> Result<(), 
 
 async fn set_default_model(ctx: &Context, input: ModelConfigId) -> Result<(), CallError> {
     let applied = profile::set_default_model(&ctx.db, input.id).await?;
-    require_applied(applied, "找不到这个模型，可能已被删除。")
+    require_applied(applied, "找不到这个模型，可能已被删除")
 }
 
 /// What the user was told AI features send to, and agreed to.
@@ -1893,24 +1893,24 @@ pub struct MaterialPurpose {
     pub on: bool,
 }
 
-const NO_MATERIAL: &str = "找不到这份材料，可能已被删除。";
+const NO_MATERIAL: &str = "找不到这份材料，可能已被删除";
 
 impl From<material::Error> for CallError {
     fn from(e: material::Error) -> Self {
         match e {
-            material::Error::Type => CallError::invalid("只能添加 PDF、DOCX 或 DOC 文件。".into()),
-            material::Error::TooLarge => CallError::invalid("文件超过 20 MB，无法添加。".into()),
+            material::Error::Type => CallError::invalid("只能添加 PDF、DOCX 或 DOC 文件".into()),
+            material::Error::TooLarge => CallError::invalid("文件超过 20 MB，无法添加".into()),
             material::Error::Unreadable(detail) => {
                 tracing::warn!("reading a material: {detail}");
                 CallError::invalid(
-                    "未能读取文件：文件可能已损坏、设有密码，或格式与扩展名不符。".into(),
+                    "未能读取文件：文件可能已损坏、设有密码，或格式与扩展名不符".into(),
                 )
             }
             material::Error::InUse => CallError::invalid(
-                "这份材料是待发邮件的附件，邮件发出或改回草稿去掉附件后才能删除。".into(),
+                "这份材料是待发邮件的附件，邮件发出或改回草稿去掉附件后才能删除".into(),
             ),
             material::Error::TaskInUse { name } => CallError::invalid(format!(
-                "这份材料正用于任务“{name}”的草稿生成，请等待生成完成，或停止该任务后再删除。"
+                "这份材料正用于任务“{name}”的草稿生成，请等待生成完成，或停止该任务后再删除"
             )),
             material::Error::Db(e) => e.into(),
             material::Error::File(e) => CallError::internal(format!("material file: {e}")),
@@ -1957,7 +1957,7 @@ pub struct TemplateEdit {
     pub form: template::TemplateForm,
 }
 
-const NO_TEMPLATE: &str = "找不到这个模板，可能已被删除。";
+const NO_TEMPLATE: &str = "找不到这个模板，可能已被删除";
 
 async fn list_placeholders(_: &Context, _: Nothing) -> Result<&'static [&'static str], CallError> {
     Ok(&template::PLACEHOLDERS)
@@ -1995,15 +1995,15 @@ pub struct WordFile {
 async fn import_word_template(_: &Context, input: UploadedFile) -> Result<WordFile, CallError> {
     let data = uploaded_bytes(&input.data)?;
     let Some((name, extension)) = input.file_name.trim().rsplit_once('.') else {
-        return Err(CallError::invalid("请选择 DOCX 或 DOC 文件。".into()));
+        return Err(CallError::invalid("请选择 DOCX 或 DOC 文件".into()));
     };
     if !extension.eq_ignore_ascii_case("docx") && !extension.eq_ignore_ascii_case("doc") {
-        return Err(CallError::invalid("请选择 DOCX 或 DOC 文件。".into()));
+        return Err(CallError::invalid("请选择 DOCX 或 DOC 文件".into()));
     }
     let unreadable = |detail: String| {
         tracing::warn!("reading a Word template: {detail}");
         CallError::invalid(
-            "未能读取 Word 文件：文件可能已损坏、设有密码或不是 Word 格式，请换一个文件。".into(),
+            "未能读取 Word 文件：文件可能已损坏、设有密码或不是 Word 格式，请换一个文件".into(),
         )
     };
     // Parsing is slow work, and a library may panic on a damaged file.
@@ -2015,7 +2015,7 @@ async fn import_word_template(_: &Context, input: UploadedFile) -> Result<WordFi
     .await
     .map_err(|error| unreadable(error.to_string()))?
     .map_err(unreadable)?
-    .ok_or_else(|| CallError::invalid("文件中没有可导入的文字，请换一个 Word 文件。".into()))?;
+    .ok_or_else(|| CallError::invalid("文件中无可导入的文字，请换一个 Word 文件".into()))?;
     Ok(WordFile {
         name: name.into(),
         html,
@@ -2140,7 +2140,7 @@ async fn save_first_draft(
     .await?;
     if saved.is_none() && (!input.subject.trim().is_empty() || !input.body_md.trim().is_empty()) {
         return Err(CallError::invalid(
-            "还有一封没发出的首封或追问，请先在任务或往来里处理。".into(),
+            "还有一封未发出的首封或追问，请先在任务或往来里处理".into(),
         ));
     }
     Ok(saved)
@@ -2248,7 +2248,7 @@ impl From<writing::Error> for CallError {
                     Some(model::Finish::Length) => {
                         "模型的回答太长，被截断了。再试一次，或者换个模型。"
                     }
-                    _ => "模型没有按要求的格式回答。再试一次，或者换个模型。",
+                    _ => "模型未按要求的格式回答，请重试或换个模型",
                 };
                 CallError {
                     code: ErrorCode::External,
@@ -2315,17 +2315,17 @@ async fn approve_first_email(ctx: &Context, input: FirstEmail) -> Result<(), Cal
         html: input
             .html
             .as_deref()
-            .ok_or_else(|| CallError::invalid("缺少邮件的 HTML 渲染结果。".into()))?,
+            .ok_or_else(|| CallError::invalid("缺少邮件的 HTML 渲染结果".into()))?,
         text: input
             .text
             .as_deref()
-            .ok_or_else(|| CallError::invalid("缺少邮件的纯文本渲染结果。".into()))?,
+            .ok_or_else(|| CallError::invalid("缺少邮件的纯文本渲染结果".into()))?,
         attachments: &input.attachments,
     };
     approved(
         ctx,
         email::approve_first(&ctx.db, input.mentor_id, &approval, input.planned_at, now()).await?,
-        "这位导师已经有一封首封邮件，或已移入回收站。",
+        "这位导师已经有一封首封邮件，或已移入回收站",
         "有附件的材料已被删除。重新选择附件后再发送。",
     )
 }
@@ -2342,7 +2342,7 @@ fn approved(
             Ok(())
         }
         email::Approved::TimePassed => Err(CallError::invalid(
-            "所选时间已过，请选择未来的日期和时间。".into(),
+            "所选时间已过，请选择未来的日期和时间".into(),
         )),
         email::Approved::Refused => Err(CallError::not_found(refused)),
         email::Approved::FollowUpReplied => {
@@ -2356,7 +2356,7 @@ fn approved(
             "回的那封信已不在这位导师的往来里。请选择另一封回信后再发送。",
         )),
         email::Approved::ReplyChanged => {
-            Err(CallError::invalid("回复的信已更换，请再看一遍。".into()))
+            Err(CallError::invalid("回复的信已更换，请再看一遍".into()))
         }
         email::Approved::NoAddress => Err(CallError::invalid(
             "导师尚未填写邮箱。在导师资料里填写后再发送。".into(),
@@ -2468,7 +2468,7 @@ pub struct ReplyEmail {
 
 async fn approve_reply(ctx: &Context, input: ReplyEmail) -> Result<(), CallError> {
     if input.body_md.trim().is_empty() {
-        return Err(CallError::invalid("请先填写回复正文。".into()));
+        return Err(CallError::invalid("请先填写回复正文".into()));
     }
     let approval = email::Approval {
         subject: "",
@@ -2476,11 +2476,11 @@ async fn approve_reply(ctx: &Context, input: ReplyEmail) -> Result<(), CallError
         html: input
             .html
             .as_deref()
-            .ok_or_else(|| CallError::invalid("缺少邮件的 HTML 渲染结果。".into()))?,
+            .ok_or_else(|| CallError::invalid("缺少邮件的 HTML 渲染结果".into()))?,
         text: input
             .text
             .as_deref()
-            .ok_or_else(|| CallError::invalid("缺少邮件的纯文本渲染结果。".into()))?,
+            .ok_or_else(|| CallError::invalid("缺少邮件的纯文本渲染结果".into()))?,
         attachments: &input.attachments,
     };
     approved(
@@ -2549,14 +2549,14 @@ async fn save_follow_up_draft(
     .await?;
     if saved.is_none() {
         return Err(CallError::invalid(
-            "追问已取消或已发送，请刷新往来后查看。".into(),
+            "追问已取消或已发送，请刷新往来后查看".into(),
         ));
     }
     Ok(saved)
 }
 async fn approve_follow_up(ctx: &Context, input: ReplyEmail) -> Result<(), CallError> {
     if input.body_md.trim().is_empty() {
-        return Err(CallError::invalid("请先填写追问正文。".into()));
+        return Err(CallError::invalid("请先填写追问正文".into()));
     }
     let approval = email::Approval {
         subject: "",
@@ -2564,11 +2564,11 @@ async fn approve_follow_up(ctx: &Context, input: ReplyEmail) -> Result<(), CallE
         html: input
             .html
             .as_deref()
-            .ok_or_else(|| CallError::invalid("缺少邮件的 HTML 渲染结果。".into()))?,
+            .ok_or_else(|| CallError::invalid("缺少邮件的 HTML 渲染结果".into()))?,
         text: input
             .text
             .as_deref()
-            .ok_or_else(|| CallError::invalid("缺少邮件的纯文本渲染结果。".into()))?,
+            .ok_or_else(|| CallError::invalid("缺少邮件的纯文本渲染结果".into()))?,
         attachments: &input.attachments,
     };
     approved(
@@ -2582,7 +2582,7 @@ async fn approve_follow_up(ctx: &Context, input: ReplyEmail) -> Result<(), CallE
             now(),
         )
         .await?,
-        "追问已取消、已发送，或导师已无法追问，请刷新往来后查看。",
+        "追问已取消、已发送，或导师已无法追问，请刷新往来后查看",
         "有附件的材料已被删除。重新选择附件后再发送。",
     )
 }
@@ -2704,7 +2704,7 @@ async fn write_reply(
 async fn discard_follow_up_draft(ctx: &Context, key: EmailId) -> Result<(), CallError> {
     require_applied(
         email::follow_up::discard(&ctx.db, key.id, now()).await?,
-        "追问已取消或已发送，请刷新往来后查看。",
+        "追问已取消或已发送，请刷新往来后查看",
     )
 }
 
@@ -2737,7 +2737,7 @@ async fn set_ai_reply_outcome(ctx: &Context, input: AiReplyOutcome) -> Result<()
 async fn set_reply_outcome(ctx: &Context, input: ReplyOutcomeEdit) -> Result<(), CallError> {
     if !email::outcome::set(&ctx.db, input.message_id, input.outcome).await? {
         return Err(CallError::invalid(
-            "只能标记导师的回信，请重新选择回信。".into(),
+            "只能标记导师的回信，请重新选择回信".into(),
         ));
     }
     ctx.reply_processor.wake();
@@ -2746,7 +2746,7 @@ async fn set_reply_outcome(ctx: &Context, input: ReplyOutcomeEdit) -> Result<(),
 async fn retry_reply_outcome(ctx: &Context, input: ReplyMessage) -> Result<(), CallError> {
     require_applied(
         email::outcome::retry(&ctx.db, input.message_id).await?,
-        "这封回信没有标记失败的结果可重试。",
+        "这封回信无可重试的标记",
     )?;
     ctx.reply_processor.wake();
     Ok(())
@@ -2846,14 +2846,14 @@ async fn withdraw_email(ctx: &Context, input: EmailId) -> Result<(), CallError> 
                 e.into()
             }
         })?;
-    require_applied(applied, "这封邮件已在发送或已发出，无法改回草稿。")?;
+    require_applied(applied, "这封邮件已在发送或已发出，无法改回草稿")?;
     ctx.sender.wake();
     Ok(())
 }
 
 async fn retry_email(ctx: &Context, input: EmailId) -> Result<(), CallError> {
     let applied = email::retry(&ctx.db, input.id, now()).await?;
-    require_applied(applied, "这封邮件已取消，或已不在可重试状态。")?;
+    require_applied(applied, "这封邮件已取消，或已不在可重试状态")?;
     ctx.sender.wake();
     Ok(())
 }
@@ -2861,7 +2861,7 @@ async fn retry_email(ctx: &Context, input: EmailId) -> Result<(), CallError> {
 async fn confirm_unsent_email(ctx: &Context, input: EmailId) -> Result<(), CallError> {
     require_applied(
         email::confirm_unsent(&ctx.db, input.id, now()).await?,
-        "这封邮件没有待确认的取消记录，或发送状态已变化。",
+        "这封邮件无待确认的取消记录，或发送状态已变化",
     )
 }
 
@@ -2869,8 +2869,8 @@ async fn resend_email(ctx: &Context, input: EmailId) -> Result<(), CallError> {
     approved(
         ctx,
         email::resend(&ctx.db, input.id, now()).await?,
-        "这封邮件已经重新发送过，或导师已移入回收站。",
-        "有附件的材料已被删除，没法按原样重新发送。",
+        "这封邮件已经重新发送过，或导师已移入回收站",
+        "附件对应的材料已被删除，无法按原样重新发送",
     )
 }
 

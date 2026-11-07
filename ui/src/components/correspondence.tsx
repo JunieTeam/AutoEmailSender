@@ -23,7 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScheduleActions, refreshSchedule, scheduledAt } from "@/components/schedule";
 import { AddTodo, TodoItem } from "@/components/todos";
 import { TrackingNote } from "@/components/tracking";
-import { day, sentFor, time } from "@/format";
+import { day, sentence, sentFor, time } from "@/format";
 import { LETTER_BODY } from "@/letter";
 import { toHtml } from "@/markdown";
 import { useNow } from "@/now";
@@ -31,7 +31,7 @@ import { useNow } from "@/now";
 /** Pending mail hides both entry buttons, while a blocked thread still explains why. */
 export function followUpActions(entry: FollowUpEntry, now: number) {
   return {
-    message: entry.reason ?? `${sentFor(entry.previous?.sentAt ?? now, now)}，还没回复`,
+    message: entry.reason ?? `${sentFor(entry.previous?.sentAt ?? now, now)}，尚未回复`,
     followUp: !entry.pending && entry.reason === null,
     newLetter: !entry.pending,
   };
@@ -120,7 +120,7 @@ export function Correspondence({ mentor }: { mentor: MentorDetail }) {
     return (
       <>
         <div className="grid flex-1 place-items-center p-6 text-center text-sm text-muted-foreground">
-          {mentor.contact.status === "none" ? `尚未联系${mentor.name}老师。` : contactDetail(mentor.contact)}
+          {mentor.contact.status === "none" ? `尚未联系${mentor.name}老师` : contactDetail(mentor.contact)}
         </div>
         {!mentor.trashed && (
           <div className="flex flex-col px-5 pb-4 phone:px-3">
@@ -324,15 +324,15 @@ function Sent({
               trigger={
                 <Button variant="ghost" disabled={act.isPending}>
                   {e.cancelReason === null && <Send strokeWidth={1.6} />}
-                  {e.cancelReason === null ? "重新发送" : "确认没发出"}
+                  {e.cancelReason === null ? "重新发送" : "确认未发出"}
                 </Button>
               }
               message={
                 e.cancelReason === null
-                  ? "确认这封邮件没发出？如果之前已经发出，导师会收到两封。"
-                  : `已取消：${e.cancelReason}。确认这封邮件没发出后，将结束这封邮件，不再发送。`
+                  ? "确认这封邮件未发出？如已发出，导师会收到两封。"
+                  : `已取消：${e.cancelReason}。确认这封邮件未发出后，不再发送。`
               }
-              action={e.cancelReason === null ? "重新发送" : "确认没发出"}
+              action={e.cancelReason === null ? "重新发送" : "确认未发出"}
               onConfirm={() => act.mutate(e.cancelReason === null ? "retryEmail" : "confirmUnsentEmail")}
             />
           )}
@@ -347,7 +347,7 @@ function Sent({
               message={
                 sendTo.toLowerCase() === e.toAddress.toLowerCase()
                   ? `会再发到退回它的地址 ${sendTo}。地址有误时，先在资料里改正，或把能用的地址设为发信地址。`
-                  : `发一封内容和附件都相同的新邮件到 ${sendTo}。`
+                  : `发一封内容和附件都相同的新邮件到 ${sendTo}`
               }
               action="重新发送"
               onConfirm={() => act.mutate("resendEmail")}
@@ -367,7 +367,7 @@ function Sent({
           {act.variables === "withdrawEmail"
             ? "改回草稿"
             : act.variables === "confirmUnsentEmail"
-              ? "确认没发出"
+              ? "确认未发出"
               : e.state === "failed"
                 ? "重试"
                 : "重新发送"}
@@ -388,13 +388,13 @@ function status(e: Email, several: boolean): [string, string] {
   if (e.state === "cloud") {
     const going = `${e.uploading ? "正在交给云端" : "已交给云端"}，${scheduledAt(e.at)} 从 ${e.fromAddress} 发出`;
     return [
-      e.cancelReason === null ? going : `${going}；已取消：${e.cancelReason}，正在从云端撤回。`,
+      e.cancelReason === null ? going : `${going}；已取消：${e.cancelReason}，正在从云端撤回`,
       "text-muted-foreground",
     ];
   }
   if (e.state === "sending")
     return [
-      e.cancelReason === null ? "发送中" : `发送中；已取消：${e.cancelReason}，等待发送结果。`,
+      e.cancelReason === null ? "发送中" : `发送中；已取消：${e.cancelReason}，等待发送结果`,
       "text-muted-foreground",
     ];
   if (e.state === "sent") {
@@ -406,8 +406,8 @@ function status(e: Email, several: boolean): [string, string] {
     const next =
       e.cancelReason === null
         ? "确认导师未收到时，可重新发送。"
-        : `已取消：${e.cancelReason}。确认没发出后，不再发送。`;
-    return [`可能已发出${to}：${e.error}${next}`, "text-warning"];
+        : `已取消：${e.cancelReason}。确认未发出后，不再发送。`;
+    return [`可能已发出${to}：${sentence(e.error)}${next}`, "text-warning"];
   }
   if (e.state === "canceled") return [`已取消：${e.cancelReason}`, "text-muted-foreground"];
   if (e.state === "failed") return [`发送失败：${e.error}`, "text-destructive"];
@@ -495,7 +495,7 @@ function Seen({
         <Text text={m.text} />
         {m.truncated && (
           <p className="mt-2 text-sm text-muted-foreground">
-            邮件较大，只读了开头，可能没有显示全；完整内容请到邮箱里查看。
+            邮件较大，只读取了开头，可能未完整显示；完整内容请到邮箱里查看
           </p>
         )}
         {m.quote && (

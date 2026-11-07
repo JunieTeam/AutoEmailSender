@@ -178,7 +178,7 @@ async fn word_upload_imports_only_the_letter_body() {
         } else {
             let error = result.unwrap_err();
             assert!(matches!(error.code, ErrorCode::Invalid));
-            assert!(error.message.contains("没有可导入的文字"));
+            assert!(error.message.contains("无可导入的文字"));
         }
     }
 }

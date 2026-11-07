@@ -63,7 +63,7 @@ export function AccountSection() {
           )}
           {state.kind === "expired" ? (
             <div className="flex items-center gap-4">
-              <p className="text-sm text-warning">登录已失效，请重新登录。</p>
+              <p className="text-sm text-warning">登录已失效，请重新登录</p>
               <Button onClick={() => setDialog("login")}>登录</Button>
             </div>
           ) : (
@@ -76,7 +76,7 @@ export function AccountSection() {
                         退出登录
                       </Button>
                     }
-                    message={`有 ${state.cloudEmails} 封邮件已交给云端，退出后照常发出，重新登录这个账号后才能同步结果或撤回。`}
+                    message={`有 ${state.cloudEmails} 封邮件已交给云端，退出后照常发出，重新登录这个账号后才能同步结果或撤回`}
                     action="退出登录"
                     side="bottom"
                     onConfirm={() => logout.mutate()}
@@ -140,7 +140,7 @@ function PlusRow({ email, outdated }: { email: string; outdated: boolean }) {
       ) : (
         <p className="text-sm text-muted-foreground">正在读取…</p>
       )}
-      {redeemed != null && <p className="text-sm text-success">兑换成功，Plus 增加 {redeemed} 天。</p>}
+      {redeemed != null && <p className="text-sm text-success">兑换成功，Plus 增加 {redeemed} 天</p>}
       <p className="text-sm text-muted-foreground">
         本机的功能一直免费。Plus 可使用邮件追踪（每 30 天 500 封）、云端定时发送和云端备份，费用用于支付服务器。
       </p>
@@ -148,7 +148,7 @@ function PlusRow({ email, outdated }: { email: string; outdated: boolean }) {
         <>
           <TermsNotice />
           <p className="text-sm text-muted-foreground">
-            未到期的 Plus 和未用完的额度包，可发邮件到 support@auto-email-sender.cn 申请按剩余部分退款。
+            未到期的 Plus 和未用完的额度包，可发邮件到 support@auto-email-sender.cn 申请按剩余部分退款
           </p>
         </>
       ) : items.error ? (
@@ -231,9 +231,7 @@ function InviteRow({ email }: { email: string }) {
       ) : !state ? (
         <p className="text-sm text-muted-foreground">正在读取…</p>
       ) : state.status === "ineligible" ? (
-        <p className="text-sm text-muted-foreground">
-          用常用邮箱（QQ、163、Gmail 等）或学校邮箱注册的账号方可参加邀请。
-        </p>
+        <p className="text-sm text-muted-foreground">用常用邮箱（QQ、163、Gmail 等）或学校邮箱注册的账号方可参加邀请</p>
       ) : (
         <>
           {state.invited < 4 ? (
@@ -247,10 +245,10 @@ function InviteRow({ email }: { email: string }) {
                   {copy.isSuccess ? "已复制" : "复制"}
                 </Button>
               </div>
-              {copy.error && <p className="text-sm text-destructive">未能复制，请选中邀请码手动复制。</p>}
+              {copy.error && <p className="text-sm text-destructive">未能复制，请选中邀请码手动复制</p>}
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">已邀请 4 位，谢谢你的推荐。</p>
+            <p className="text-sm text-muted-foreground">已邀请 4 位，谢谢你的推荐</p>
           )}
           {fill.isSuccess ? (
             <p className="text-sm text-success">
@@ -310,7 +308,7 @@ function RedeemDialog({ submit, onClose }: { submit: (code: string) => Promise<v
           <DialogHeader>兑换 Plus</DialogHeader>
           <DialogBody>
             <fieldset disabled={run.isPending} className="flex min-w-0 flex-col gap-3.5">
-              <p className="text-sm">填写社群活动或他人赠送的兑换码，兑换后增加 Plus 天数。</p>
+              <p className="text-sm">填写社群活动或他人赠送的兑换码，兑换后增加 Plus 天数</p>
               <Field label="兑换码" id="redeem-code">
                 <Input
                   ref={inputRef}

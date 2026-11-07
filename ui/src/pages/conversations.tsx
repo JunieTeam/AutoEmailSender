@@ -155,11 +155,11 @@ export function ConversationsPage() {
           {todos ? (
             <TodoList query={todoQuery} selected={search.mentor} />
           ) : query.isError ? (
-            <Notice title="往来列表没能加载" detail={errorMessage(query.error)} />
+            <Notice title="往来列表未能加载" detail={errorMessage(query.error)} />
           ) : query.data?.total === 0 ? (
             <Notice
-              title={unread ? "没有新回信。" : "还没有往来。"}
-              detail={unread ? "" : "给导师发信或收到回信后会出现在这里。"}
+              title={unread ? "尚无新回信" : "尚无往来"}
+              detail={unread ? "" : "给导师发信或收到回信后，往来会列在这里"}
             />
           ) : (
             <div className="flex flex-col gap-[3px]">
@@ -205,7 +205,7 @@ export function ConversationsPage() {
         {search.mentor ? (
           <ConversationDetail key={search.mentor} id={search.mentor} />
         ) : (
-          <Notice title="选择左边的一位导师查看往来。" detail="" />
+          <Notice title="选择左边的一位导师查看往来" detail="" />
         )}
       </section>
     </div>
@@ -215,9 +215,9 @@ export function ConversationsPage() {
 /** Every open todo, overdue first, then by due time, those without one last (docs/ui.md#交互). */
 function TodoList({ query, selected }: { query: UseQueryResult<TodoPage>; selected?: number }) {
   const now = useNow();
-  if (query.isError) return <Notice title="待办没能加载" detail={errorMessage(query.error)} />;
+  if (query.isError) return <Notice title="待办未能加载" detail={errorMessage(query.error)} />;
   if (query.data?.total === 0) {
-    return <Notice title="没有要做的事。" detail="导师回信里要你做的事、你自己添加的待办会列在这里。" />;
+    return <Notice title="尚无待办" detail="导师回信里要你做的事和你自己添加的待办会列在这里" />;
   }
   return (
     <ul className="flex flex-col gap-[3px]">

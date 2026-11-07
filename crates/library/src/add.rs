@@ -41,7 +41,7 @@ pub async fn fetch(
 ) -> Result<wire::Fetched, Error> {
     if !(1..=200).contains(&ids.len()) || ids.iter().collect::<BTreeSet<_>>().len() != ids.len() {
         return Err(Error::Invalid(
-            "一次请选择 1–200 位导师，不能重复选择。".into(),
+            "一次请选择 1–200 位导师，不能重复选择".into(),
         ));
     }
     Ok(client
@@ -81,7 +81,7 @@ pub async fn calculate(
             .iter()
             .position(|id| *id == record.preview.summary.id)
             .ok_or_else(|| {
-                Error::Invalid("服务器返回了未选择的导师，请稍后重试或升级应用。".into())
+                Error::Invalid("服务器返回了未选择的导师，请稍后重试或升级应用".into())
             })? as u32
             + 1;
         match crate::profile(record) {

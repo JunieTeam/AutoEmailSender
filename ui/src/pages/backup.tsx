@@ -31,7 +31,7 @@ function LocalBackup() {
   return (
     <Row label="本地备份">
       <p className="text-sm text-muted-foreground">
-        把全部数据导出成一个文件，换电脑或者数据丢了时用它恢复。备份里没有邮箱授权码、API
+        把全部数据导出成一个文件，换电脑或数据丢失时用它恢复。备份里不含邮箱授权码、API
         Key、整理时保存的网页和日志，恢复后要重新填授权码和 API Key。
       </p>
       <div className="mt-1.5 flex flex-col items-start gap-1.5">
@@ -63,7 +63,7 @@ function CloudBackupRow() {
       {state && state.kind !== "loggedIn" && (
         <>
           <p className="text-sm text-muted-foreground">
-            登录并开通 Plus 后，可把数据加密备份到云端，换电脑时登录即可恢复。
+            登录并开通 Plus 后，可把数据加密备份到云端，换电脑时登录即可恢复
           </p>
           <div className="mt-1.5">
             <Button variant="quiet" onClick={() => setLogin(true)}>
@@ -149,7 +149,7 @@ function CloudBackup({ email }: { email: string }) {
   const paused = other != null && backingUp && !replacing;
   const running = backUp.isPending || status.running;
   const failure = status.failure
-    ? `${scheduledAt(status.failure.since)} 起备份没有成功：${status.failure.message}`
+    ? `${scheduledAt(status.failure.since)} 起备份未成功：${status.failure.message}`
     : backUp.error && errorMessage(backUp.error);
   return (
     <>
@@ -159,7 +159,7 @@ function CloudBackup({ email }: { email: string }) {
         <>
           {autoBackup}
           <p className="text-sm text-muted-foreground">
-            在这台电脑上压缩、加密后上传，数据有变化才上传，每个账号最多 30 MB。
+            在这台电脑上压缩、加密后上传，数据有变化才上传，每个账号最多 30 MB
           </p>
         </>
       ) : (
@@ -167,7 +167,7 @@ function CloudBackup({ email }: { email: string }) {
           <p className="text-sm text-muted-foreground">
             {backup
               ? `Plus 已到期，云端备份已停止。现有的备份仍可恢复${deleteAt == null ? "" : `，将于${day(deleteAt)}删除`}。`
-              : "云端备份是 Plus 专享：每天自动备份，换电脑时登录即可恢复。"}
+              : "云端备份是 Plus 专享：每天自动备份，换电脑时登录即可恢复"}
           </p>
           <Link to="/settings/account" className={buttonVariants({ variant: "quiet", size: "sm" })}>
             {backup ? "续 Plus" : "开通 Plus"}
@@ -178,7 +178,7 @@ function CloudBackup({ email }: { email: string }) {
         <div className="flex items-center justify-between gap-4">
           <p className="text-sm">
             {copyText(other, "云端现在是", status.needsPassword)}
-            {paused ? "，这台电脑不再自动备份。" : replacing ? "，下次备份时换成这台电脑的数据。" : "。"}
+            {paused ? "，这台电脑不再自动备份" : replacing ? "，下次备份时换成这台电脑的数据" : "。"}
           </p>
           {paused && (
             <Button variant="quiet" size="sm" onClick={() => setDialog("replace")}>
@@ -191,7 +191,7 @@ function CloudBackup({ email }: { email: string }) {
           上次备份：{scheduledAt(status.lastBackupAt ?? backup.committedAt)} · 已用 {fileSize(backup.size)} / 30 MB
         </p>
       ) : (
-        backingUp && <p className="text-sm">还没有备份</p>
+        backingUp && <p className="text-sm">尚无备份</p>
       )}
       {failure && !paused && <p className="text-sm text-destructive">{failure}</p>}
       {((backingUp && !paused) || backup) && (
@@ -250,7 +250,7 @@ function copyText(copy: CloudBackupCopy, lead: string, locked: boolean): string 
     return `${lead}${spaced(deviceName ?? "另一台电脑")}在 ${at} 的备份（${mentorCount} 位导师、${emailCount} 封邮件）`;
   }
   // Without a key yet nothing can be read; with one, the backup was encrypted before a password reset.
-  return locked ? `${lead}另一台电脑在 ${at} 的备份` : `${lead}一份 ${at} 用旧密码加密的备份，现在解不开了`;
+  return locked ? `${lead}另一台电脑在 ${at} 的备份` : `${lead}一份 ${at} 用旧密码加密的备份，现已无法解开`;
 }
 
 /** A computer's name between Chinese words, spaced where it starts or ends with a letter or digit. */
@@ -329,12 +329,12 @@ function EnableDialog({
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
-                  <p className="mt-1.5 text-muted-foreground">用来算出备份钥匙，密码不会离开这台电脑。</p>
+                  <p className="mt-1.5 text-muted-foreground">用来算出备份钥匙，密码不会离开这台电脑</p>
                 </Field>
               )}
               {found && (
                 <p className="text-warning">
-                  {copyText(found, "云端已有", false)}，{replacing ? "替换后" : "开启后"}会换成这台电脑的数据。
+                  {copyText(found, "云端已有", false)}，{replacing ? "替换后" : "开启后"}会换成这台电脑的数据
                 </p>
               )}
             </fieldset>
@@ -398,7 +398,7 @@ function RestoreDialog({ info, onClose }: { info: RestoreInfo; onClose: () => vo
               </li>
               <li>恢复后要重新登录账号，重新填写各个邮箱的授权码和模型的 API Key，填好之前不收发信。</li>
               <li>旧电脑上的应用请先从托盘或菜单栏的图标退出（只关窗口它还会在后台发信），免得同一封信发两次。</li>
-              <li>恢复完应用会自动重启。</li>
+              <li>恢复后应用会自动重启。</li>
             </ul>
           </div>
         </DialogBody>

@@ -130,15 +130,15 @@ impl Error {
             Self::Account(e) => e.message(),
             Self::Local(e) => e.message(),
             Self::Database(_) | Self::Io(_) => {
-                "云端备份未能完成，请重试；仍然失败时导出日志发给开发者。".into()
+                "云端备份未能完成，请重试；仍然失败时导出日志发给开发者".into()
             }
-            Self::NeedsPassword => "请先输入账号密码，算出这台电脑的备份钥匙。".into(),
-            Self::AccountChanged => "登录的账号刚刚变了，请重试。".into(),
-            Self::Disabled => "云端备份没有开启。".into(),
-            Self::PlusRequired => "Plus 已到期，云端备份已停止。".into(),
-            Self::OtherDevice => "云端备份来自另一台电脑，这台电脑不再自动备份。".into(),
+            Self::NeedsPassword => "请先输入账号密码，算出这台电脑的备份钥匙".into(),
+            Self::AccountChanged => "登录的账号刚刚变了，请重试".into(),
+            Self::Disabled => "云端备份未开启".into(),
+            Self::PlusRequired => "Plus 已到期，云端备份已停止".into(),
+            Self::OtherDevice => "云端备份来自另一台电脑，这台电脑不再自动备份".into(),
             Self::TooLarge(message) => message.clone(),
-            Self::NotFound => "云端没有备份。".into(),
+            Self::NotFound => "云端尚无备份".into(),
             Self::OldPassword => {
                 "云端备份是用旧密码加密的，解不开了。在还有数据的电脑上用新密码登录，确认替换后重新备份。"
                     .into()
@@ -146,7 +146,7 @@ impl Error {
             Self::Corrupted => {
                 "云端备份已损坏，无法恢复。请在还有数据的电脑上删除云端备份，再重新开启。".into()
             }
-            Self::Newer => "这份备份来自更新版本的应用，请先升级应用再恢复。".into(),
+            Self::Newer => "这份备份来自更新版本的应用，请先升级应用再恢复".into(),
         }
     }
 }

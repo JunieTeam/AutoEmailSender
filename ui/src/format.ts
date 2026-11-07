@@ -15,6 +15,14 @@ export function sentFor(sentAt: number, now: number): string {
   return days === 0 ? `${day(sentAt)}发出` : `已发出 ${days} 天`;
 }
 
+/**
+ * Ends a message with "。" so that another sentence can follow it. Single-sentence messages carry no
+ * full stop (docs/ui.md#文案) but longer ones end with one, so add it only when missing.
+ */
+export function sentence(text: string): string {
+  return /[。？]$/.test(text) ? text : `${text}。`;
+}
+
 /** "320 KB", "1.2 MB". */
 export function fileSize(bytes: number): string {
   const kb = bytes / 1024;

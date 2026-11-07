@@ -79,7 +79,7 @@ export function WelcomePage() {
       title: "你的信息",
       done: profile.data.name !== null,
       result: profile.data.name,
-      intro: "AI 写信时用你的姓名落款，分析匹配度时参考你的意向研究方向。",
+      intro: "AI 写信时用你的姓名落款，分析匹配度时参考你的意向研究方向",
       body: <ProfileFields basic />,
     },
     {
@@ -122,21 +122,21 @@ export function WelcomePage() {
       title: "试发一封",
       done: sent !== undefined,
       result: sent && `已发到 ${sent}`,
-      intro: "把模板套上一位示例导师，带上默认附件，发到你自己的邮箱，看看导师收到的是什么样。",
+      intro: "把模板套上一位示例导师，带上默认附件，发到你自己的邮箱，查看导师收到的效果",
       body: <TestLetterStep mailboxes={mailboxes.data} materials={materials.data} hasTemplate={!!defaultTemplate} />,
     },
     {
       title: "添加导师",
       done: mentors.data.total > 0,
       result: `${mentors.data.total} 位导师`,
-      intro: "从导师库挑选，从学院官网智能整理，导入表格，或者逐位手动添加。",
+      intro: "从导师库挑选，从学院官网智能整理，导入表格，或者逐位手动添加",
       action: <AddMentors />,
     },
     {
       title: "第一个任务",
       done: tasks.data.total > 0,
       result: `${tasks.data.total} 个任务`,
-      intro: "在导师列表勾选要联系的导师，点“写信”新建任务，为每位导师写好首封邮件，审核后发出。",
+      intro: "在导师列表勾选要联系的导师，点“写信”新建任务，为每位导师写好首封邮件，审核后发出",
       action: (
         <Link to="/mentors" className={buttonVariants()}>
           去导师列表
@@ -348,7 +348,7 @@ function TestLetterStep({
   if (!mailbox || !hasTemplate)
     return (
       <p className="text-sm">
-        {!mailbox && !hasTemplate ? "先添加发信邮箱，再写模板。" : !mailbox ? "先添加发信邮箱。" : "先写模板。"}
+        {!mailbox && !hasTemplate ? "先添加发信邮箱，再写模板" : !mailbox ? "先添加发信邮箱" : "先写模板"}
       </p>
     );
   return <TestLetterPreview mailbox={mailbox} materials={materials} />;
@@ -362,7 +362,7 @@ function TestLetterPreview({ mailbox, materials }: { mailbox: Mailbox; materials
     // Kept for the rest of this run of the app: the step counts as done once sent.
     gcTime: Infinity,
     mutationFn: ({ letter: l }: { to: string; letter: TestLetter }) => {
-      if (!style.data) throw new Error("信件样式尚未加载，请稍后再试。");
+      if (!style.data) throw new Error("信件样式尚未加载，请稍后再试");
       return call("sendTestLetter", {
         mailboxId: mailbox.id,
         subject: l.subject,
@@ -388,16 +388,16 @@ function TestLetterPreview({ mailbox, materials }: { mailbox: Mailbox; materials
       {l.attachments.length > 0 ? (
         <Attachments files={materials.filter((m) => l.attachments.includes(m.id))} />
       ) : (
-        <p className="text-sm">没有附件：材料勾选了“默认附件”才随信发出。</p>
+        <p className="text-sm">无附件：勾选了“默认附件”的材料才随信发出</p>
       )}
       <p className="text-sm text-muted-foreground">
-        用的是模板“{l.templateName}”，示例导师是示例大学计算机学院的张明教授。
+        用的是模板“{l.templateName}”，示例导师是示例大学计算机学院的张明教授
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <Button disabled={last?.status === "pending"} onClick={() => send.mutate({ to: mailbox.address, letter: l })}>
           {last?.status === "pending" ? "正在发送…" : `发给自己（${mailbox.address}）`}
         </Button>
-        {last?.status === "success" && <p className="text-sm text-success">已发出，去邮箱的收件箱看看。</p>}
+        {last?.status === "success" && <p className="text-sm text-success">已发出，请到邮箱的收件箱查看</p>}
         {last?.error && <p className="text-sm text-destructive">未能发出：{errorMessage(last.error)}</p>}
       </div>
     </div>

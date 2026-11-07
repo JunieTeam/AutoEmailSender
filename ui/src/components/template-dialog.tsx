@@ -50,13 +50,13 @@ export function TemplateDialog({
   });
   const importWord = useMutation({
     mutationFn: async (file: File) => {
-      if (file.size > MAX_UPLOAD) throw new Error("文件超过 20 MB，无法导入。");
+      if (file.size > MAX_UPLOAD) throw new Error("文件超过 20 MB，无法导入");
       const [word, { pastedMarkdown }] = await Promise.all([
         call("importWordTemplate", { fileName: file.name, data: await base64(file) }),
         import("@/components/letter-editor"),
       ]);
       const bodyMd = pastedMarkdown(word.html);
-      if (bodyMd.trim() === "") throw new Error("文件中没有可导入的文字，请换一个 Word 文件。");
+      if (bodyMd.trim() === "") throw new Error("文件中无可导入的文字，请换一个 Word 文件");
       return { name: word.name, bodyMd };
     },
     onSuccess: ({ name, bodyMd }) => {
@@ -126,7 +126,7 @@ export function TemplateDialog({
                       <Confirm
                         side="bottom"
                         trigger={<WordButton pending={importWord.isPending} />}
-                        message="正文会换成 Word 文件里的文字。"
+                        message="正文将换成 Word 文件里的文字"
                         action="选择文件"
                         onConfirm={() => picker.current?.click()}
                       />

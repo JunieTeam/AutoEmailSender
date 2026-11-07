@@ -53,7 +53,7 @@ export function UpdateDialog({
         <DialogBody className="flex flex-col gap-3 text-sm">
           {update.publishedAt !== null && <p className="text-muted-foreground">{day(update.publishedAt)}发布</p>}
           <p className="max-h-72 overflow-y-auto leading-relaxed whitespace-pre-line wrap-anywhere">
-            {update.notes ?? "这个版本没有写更新说明。"}
+            {update.notes ?? "这个版本无更新说明"}
           </p>
         </DialogBody>
         <DialogFooter>

@@ -75,9 +75,7 @@ struct Checked {
 
 fn check(candidates: Vec<SubmittedCandidate>) -> Result<Vec<Checked>, SubmitError> {
     if candidates.is_empty() || candidates.len() > 100 {
-        return Err(SubmitError::Invalid(
-            "每次请提交 1～100 位候选导师。".into(),
-        ));
+        return Err(SubmitError::Invalid("每次请提交 1～100 位候选导师".into()));
     }
     let mut errors = Vec::new();
     let mut checked = Vec::new();
@@ -110,10 +108,10 @@ fn check(candidates: Vec<SubmittedCandidate>) -> Result<Vec<Checked>, SubmitErro
             error(format!("个人页（profileUrl）：{}", e.message()));
         }
         if c.papers.len() > 20 {
-            error("代表论文（papers）最多 20 篇。".into());
+            error("代表论文（papers）最多 20 篇".into());
         }
         if c.note.as_ref().is_some_and(|s| s.chars().count() > 500) {
-            error("说明（note）最多 500 字。".into());
+            error("说明（note）最多 500 字".into());
         }
         if let (Ok(mut fields), Ok(source), Ok(profile)) = (fields, source, profile) {
             // Written as profile links are, so a link found not to be theirs leaves the homepages.
@@ -143,7 +141,7 @@ fn check(candidates: Vec<SubmittedCandidate>) -> Result<Vec<Checked>, SubmitErro
         let total = errors.len();
         errors.truncate(10);
         if total > 10 {
-            errors.push(format!("另有 {} 条问题，共 {total} 条。", total - 10));
+            errors.push(format!("另有 {} 条问题，共 {total} 条", total - 10));
         }
         Err(SubmitError::Invalid(errors.join("\n")))
     }
@@ -163,7 +161,7 @@ pub async fn submit(
             .ok_or(SubmitError::Deleted)?;
         if kind != "agent" {
             return Err(SubmitError::Invalid(
-                "只能追加到 Agent 提交的整理记录。".into(),
+                "只能追加到 Agent 提交的整理记录".into(),
             ));
         }
         sqlx::query!(
@@ -216,7 +214,7 @@ pub async fn submit(
         .await?;
     if result.total > PERSON_LIMIT {
         return Err(SubmitError::Invalid(
-            "这条整理记录最多容纳 1000 位候选导师，请不带 crawlId 重新提交，新开一条记录。".into(),
+            "这条整理记录最多容纳 1000 位候选导师，请不带 crawlId 重新提交，新开一条记录".into(),
         ));
     }
     tx.commit().await?;

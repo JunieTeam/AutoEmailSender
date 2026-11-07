@@ -34,7 +34,7 @@ pub fn time(text: &str) -> Option<NaiveTime> {
 pub fn text(value: &str) -> Result<String, &'static str> {
     let value = value.trim();
     if value.is_empty() || value.chars().count() > 100 {
-        return Err("待办内容须为 1 到 100 个字。");
+        return Err("待办内容须为 1 到 100 个字");
     }
     Ok(value.to_owned())
 }
@@ -43,13 +43,13 @@ impl TodoForm {
     pub fn check(self) -> Result<Fields, &'static str> {
         let text = text(&self.text)?;
         if self.due_date.as_deref().is_some_and(|s| date(s).is_none()) {
-            return Err("截止日期须为有效的 YYYY-MM-DD 日期。");
+            return Err("截止日期须为有效的 YYYY-MM-DD 日期");
         }
         if self.due_time.as_deref().is_some_and(|s| time(s).is_none()) {
-            return Err("截止时间须为有效的 HH:MM 时间。");
+            return Err("截止时间须为有效的 HH:MM 时间");
         }
         if self.due_time.is_some() && self.due_date.is_none() {
-            return Err("请先填写截止日期，再填写时间。");
+            return Err("请先填写截止日期，再填写时间");
         }
         Ok(Fields {
             text,

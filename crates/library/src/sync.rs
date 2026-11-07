@@ -110,7 +110,7 @@ async fn changes(
                 .any(|c| c.revision <= after || c.revision > page.revision)
         {
             return Err(Error::Invalid(
-                "服务器返回的更新进度不正确，请稍后重试或升级应用。".into(),
+                "服务器返回的更新进度不正确，请稍后重试或升级应用".into(),
             ));
         }
         for change in &page.changes {
@@ -154,7 +154,7 @@ async fn check_account(conn: &mut SqliteConnection, email: &str) -> Result<(), E
     .await?;
     if !matches {
         return Err(Error::Invalid(
-            "登录账号已变化，请重新检查导师库更新。".into(),
+            "登录账号已变化，请重新检查导师库更新".into(),
         ));
     }
     Ok(())
@@ -178,7 +178,7 @@ pub async fn process(
     if let Some(record) = change.data.record() {
         if record.preview.summary.id != change.id || record.revision != change.revision {
             return Err(Error::Invalid(
-                "服务器返回的更新记录不正确，请稍后重试或升级应用。".into(),
+                "服务器返回的更新记录不正确，请稍后重试或升级应用".into(),
             ));
         }
         if record.revision < row.record.revision {

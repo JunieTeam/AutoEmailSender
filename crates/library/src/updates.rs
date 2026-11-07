@@ -307,7 +307,7 @@ pub async fn plan(conn: &mut SqliteConnection, choices: &Choices) -> Result<Plan
         let row = rows
             .iter()
             .find(|r| r.id == choice.update_id)
-            .ok_or_else(|| Error::Invalid("待处理更新已变化，请刷新后重新选择。".into()))?;
+            .ok_or_else(|| Error::Invalid("待处理更新已变化，请刷新后重新选择".into()))?;
         let Some(mut displayed) = visible(row, &current[&row.mentor_id]) else {
             applied.push(row.id);
             continue;
@@ -315,7 +315,7 @@ pub async fn plan(conn: &mut SqliteConnection, choices: &Choices) -> Result<Plan
         displayed.take = choice.take;
         if displayed != *choice {
             return Err(Error::Invalid(
-                "导师资料或待处理更新已变化，请刷新后重新选择。".into(),
+                "导师资料或待处理更新已变化，请刷新后重新选择".into(),
             ));
         }
         if choice.take {
@@ -330,7 +330,7 @@ pub async fn plan(conn: &mut SqliteConnection, choices: &Choices) -> Result<Plan
                 .await?;
                 if let Some(name) = owner {
                     return Err(Error::Invalid(format!(
-                        "这个邮箱已经是导师 {name} 的，先合并这两位。"
+                        "这个邮箱已经是导师 {name} 的，先合并这两位"
                     )));
                 }
             }
@@ -348,7 +348,7 @@ pub async fn plan(conn: &mut SqliteConnection, choices: &Choices) -> Result<Plan
                 .await?;
                 let latest = crate::profile(&record).map_err(Error::Invalid)?;
                 let position = affiliation_position(&latest.fields.affiliations, unit)
-                    .ok_or_else(|| Error::Invalid("待处理更新已变化，请刷新后重新选择。".into()))?;
+                    .ok_or_else(|| Error::Invalid("待处理更新已变化，请刷新后重新选择".into()))?;
                 incoming = Value::Affiliation(latest.fields.affiliations[position].clone());
             }
             take(

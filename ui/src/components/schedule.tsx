@@ -156,7 +156,7 @@ export function ScheduleFields({
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            按本机当前时区排期。错过窗口会排进后面的空位，没有空位的留待处理。
+            按本机当前时区排期。错过窗口会排进后面的空位，无空位的留待处理。
           </p>
         </>
       )}
@@ -190,7 +190,7 @@ export function ChangeSchedule({ task, onClose }: { task: TaskSummary; onClose: 
           <p className="text-sm text-muted-foreground">
             保存后，{task.progress.approved - task.progress.cloud}{" "}
             封已批准且尚未发出的邮件会按批准顺序重新排期；排不进的留待处理。
-            {task.progress.cloud > 0 && `已交给云端的 ${task.progress.cloud} 封不改，要改先撤回到本地。`}
+            {task.progress.cloud > 0 && `已交给云端的 ${task.progress.cloud} 封不受影响，如需修改，请先撤回到本地`}
           </p>
           {saved !== null && (
             <p role="status" className="text-sm text-success">
@@ -313,7 +313,7 @@ export function ScheduleActions({ id, initial }: { id: number; initial?: number 
             立即发送
           </Button>
         }
-        message="确认立即发送这封邮件？邮箱有余量且任务未暂停时就会发出。"
+        message="确认立即发送这封邮件？邮箱有余量且任务未暂停时即发出。"
         action="立即发送"
         onConfirm={() => action.mutate()}
       />

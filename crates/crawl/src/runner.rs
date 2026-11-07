@@ -22,10 +22,10 @@ use tracing::Instrument;
 use ts_rs::TS;
 /// Crawls share it: they can use the same model and websites.
 type Cooldown = model::background::Cooldown<i64>;
-const READ_FAILED: &str = "整理数据暂时无法读取，请继续或重启应用。";
-const SAVE_FAILED: &str = "网页资料暂时无法保存，请继续或重启应用。";
-const MODEL_READ_FAILED: &str = "模型配置暂时无法读取，请重试。";
-const CANDIDATE_READ_FAILED: &str = "候选资料暂时无法读取，请继续或重启应用。";
+const READ_FAILED: &str = "整理数据暂时无法读取，请继续或重启应用";
+const SAVE_FAILED: &str = "网页资料暂时无法保存，请继续或重启应用";
+const MODEL_READ_FAILED: &str = "模型配置暂时无法读取，请重试";
+const CANDIDATE_READ_FAILED: &str = "候选资料暂时无法读取，请继续或重启应用";
 #[derive(Clone, Default)]
 pub struct Crawler {
     wake: Arc<Notify>,
@@ -422,7 +422,7 @@ impl Reader<'_> {
             if answer.finish_reason == Some(model::Finish::Length) {
                 tracing::info!(step, reason = "output_truncated", "model output rejected");
                 return Err(ReadError::Failed(
-                    "模型的回答被截断，请换用支持更长输出的模型后重试。".into(),
+                    "模型的回答被截断，请换用支持更长输出的模型后重试".into(),
                 ));
             }
             match extract::parse(&answer.text) {
@@ -460,14 +460,14 @@ async fn process(
     let Some(chosen) = model::selected(db, c.model_id).await? else {
         tracing::info!(reason = "missing_model", "crawl cannot continue");
         return Ok(Outcome::Pause(
-            "尚未添加模型，请在“设置 › AI › 模型”中添加后继续。".into(),
+            "尚未添加模型，请在“设置 › AI › 模型”中添加后继续".into(),
             None,
         ));
     };
     if !chosen.agreed {
         tracing::info!(reason = "model_consent_required", "crawl cannot continue");
         return Ok(Outcome::Pause(
-            "模型配置需要确认，请确认网页内容将发往的服务商后继续。".into(),
+            "模型配置需要确认，请确认网页内容将发往的服务商后继续".into(),
             Some(chosen),
         ));
     }
@@ -712,7 +712,7 @@ async fn read_for_candidate(
             "page rejected"
         );
         let reason = format!(
-            "模型判断这页是别人的或多人的页面，页面上也没出现「{}」，没有补入",
+            "模型判断这页是别人的或多人的页面，页面上也未出现“{}”，未补入",
             target.name
         );
         // A subpage is only one the profile links to, never the candidate's own link.
@@ -1256,7 +1256,7 @@ async fn run_with_pages(
                             Err(e) => {
                                 crate::span(c.crawl).in_scope(|| tracing::error!("crawl database: {e}"));
                                 Outcome::Pause(
-                                    "整理数据暂时无法保存，请继续或重启应用。".into(),
+                                    "整理数据暂时无法保存，请继续或重启应用".into(),
                                     None,
                                 )
                             }
@@ -1278,7 +1278,7 @@ async fn run_with_pages(
                         crate::span(c.crawl).in_scope(|| tracing::error!("crawl worker: {e}"));
                         (
                             c,
-                            Outcome::Pause("整理意外中断，请继续或重启应用。".into(), None),
+                            Outcome::Pause("整理意外中断，请继续或重启应用".into(), None),
                         )
                     }
                 };

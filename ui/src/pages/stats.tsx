@@ -134,18 +134,18 @@ function Contact({
   if (p.contacted === 0 && p.trend.every((t) => t.sent === 0 && t.replies === 0))
     return (
       <Empty>
-        这段时间还没有发出的信。去
+        这段时间尚未发出邮件。可到
         <Link to="/tasks" className="mx-1 text-brand-text hover:underline">
           任务
         </Link>
-        里写第一封吧。
+        里写首封。
       </Empty>
     );
   const days = p.medianDays === null ? null : Math.max(1, Math.ceil(p.medianDays));
   return (
     <div className="space-y-10">
       <div className="grid grid-cols-4 rounded-xl bg-muted py-4 @max-[640px]:grid-cols-2 @max-[640px]:gap-y-4">
-        <Figure label="已联系" value={p.contacted} unit="位" detail="第一封信在这段时间发出" />
+        <Figure label="已联系" value={p.contacted} unit="位" detail="首封在这段时间发出" />
         <Figure
           label="已回复"
           value={p.replied}
@@ -156,7 +156,7 @@ function Contact({
           label="首次回复"
           value={days ?? "—"}
           unit={days === null ? "" : "天内"}
-          detail={days === null ? "还没有回信" : "一半的导师在这个时间内回复"}
+          detail={days === null ? "尚无回信" : "一半的导师在这个时间内回复"}
         />
         <Figure label="退信" value={p.bounced} unit="封" detail="这段时间发出后被退回" />
       </div>
@@ -201,7 +201,7 @@ function Contact({
               ))}
             </tbody>
           </table>
-          {p.schoolCount === 0 && <p className="py-6 text-sm text-muted-foreground">联系过的导师都还没有填学校。</p>}
+          {p.schoolCount === 0 && <p className="py-6 text-sm text-muted-foreground">联系过的导师均未填写学校</p>}
           {/* Also past the end, when the list shrank under the page shown. */}
           {(p.schoolCount > SCHOOLS_PER_PAGE || page > 1) && (
             <div className="mt-3 flex justify-end text-sm text-muted-foreground">
@@ -293,7 +293,7 @@ function Mentors({ overview: o }: { overview: MentorOverview }) {
         <Link to="/find" search={findSearch({})} className="mx-1 text-brand-text hover:underline">
           找导师
         </Link>
-        整理或添加。
+        整理或添加
       </Empty>
     );
   return (
@@ -310,7 +310,7 @@ function Mentors({ overview: o }: { overview: MentorOverview }) {
           ]}
           unit="位"
         />
-        {o.matching[5] > 0 && <p className="mt-3 text-sm text-muted-foreground">另有 {o.matching[5]} 位还没分析</p>}
+        {o.matching[5] > 0 && <p className="mt-3 text-sm text-muted-foreground">另有 {o.matching[5]} 位未分析</p>}
       </div>
       <div>
         <h3 className="mb-4 font-medium">学校</h3>
@@ -368,7 +368,7 @@ function Bars({
 }
 
 function Tokens({ usage }: { usage: TokenUsage }) {
-  if (usage.purposes.length === 0) return <Empty>这段时间没有用过模型。</Empty>;
+  if (usage.purposes.length === 0) return <Empty>这段时间未使用模型</Empty>;
   const unpriced = usage.total.unpricedCalls;
   return (
     <>
@@ -392,9 +392,7 @@ function Tokens({ usage }: { usage: TokenUsage }) {
         </table>
       </div>
       {unpriced > 0 && (
-        <p className="mt-3 text-sm text-muted-foreground">
-          有 {unpriced} 次调用的模型配置没填单价或已删除，费用里没有算它们。
-        </p>
+        <p className="mt-3 text-sm text-muted-foreground">有 {unpriced} 次调用的模型配置未填单价或已删除，未计入费用</p>
       )}
     </>
   );
@@ -426,7 +424,7 @@ function tokens(n: number): string {
 
 function cost(yuan: number | null): string {
   if (yuan === null) return "—";
-  return yuan > 0 && yuan < 0.01 ? "不到 ¥0.01" : `¥${yuan.toFixed(2)}`;
+  return yuan > 0 && yuan < 0.01 ? "不到 0.01 元" : `${yuan.toFixed(2)} 元`;
 }
 
 function Empty({ children }: { children: React.ReactNode }) {

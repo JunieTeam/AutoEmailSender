@@ -34,7 +34,7 @@ export function MailboxesSection() {
       <p className="text-sm text-muted-foreground">
         给导师发信、收回信用的邮箱，可以添加多个。授权码只存在这台电脑上，只用来登录邮箱。
       </p>
-      {error && <p className="text-sm text-destructive">邮箱没能加载：{errorMessage(error)}</p>}
+      {error && <p className="text-sm text-destructive">邮箱未能加载：{errorMessage(error)}</p>}
       {mailboxes.data && providers.data && (
         <>
           {mailboxes.data.length > 1 && <RotationRow />}
@@ -87,9 +87,9 @@ function RotationRow() {
           />
           <p className="text-sm text-muted-foreground">
             {query.data === "failover"
-              ? "按下面的顺序用第一个能发的邮箱，暂停或到了上限再换下一个。"
-              : "每封信轮流用最久没发过信的邮箱。"}
-            在导师资料里指定了发件邮箱的，总是从指定的邮箱发。
+              ? "按下面的顺序使用第一个可发信的邮箱，暂停或到达上限后换下一个。"
+              : "每封信轮流使用最久未发信的邮箱。"}
+            在导师资料里指定了发件邮箱的，总是从指定的邮箱发出。
           </p>
         </>
       )}
@@ -117,7 +117,7 @@ function MailboxRow({ mailbox: m, providers }: { mailbox: Mailbox; providers: Pr
           <p className="text-sm text-muted-foreground">
             {provider}，每天最多发 {m.dailyLimit} 封
           </p>
-          {m.needsSecret && <p className="text-sm text-warning">恢复后需要重新填写授权码，填好之前不收发信。</p>}
+          {m.needsSecret && <p className="text-sm text-warning">恢复后需要重新填写授权码，填好之前不收发信</p>}
           {m.receiveError && <p className="text-sm text-destructive">收信失败：{m.receiveError}</p>}
           {m.cloudPause && (
             <p className="text-sm text-warning">
@@ -149,7 +149,7 @@ function MailboxRow({ mailbox: m, providers }: { mailbox: Mailbox; providers: Pr
           {m.cloudEmails > 0 ? (
             <Confirm
               trigger={<Button variant="ghost">删除</Button>}
-              message={`有 ${m.cloudEmails} 封已交给云端的邮件从这个邮箱发出，请先在发送计划里把它们撤回到本地，再删除邮箱。`}
+              message={`有 ${m.cloudEmails} 封已交给云端的邮件从这个邮箱发出，请先在发送计划里把它们撤回到本地，再删除邮箱`}
               action="知道了"
               side="bottom"
               onConfirm={() => undefined}
@@ -171,7 +171,7 @@ function MailboxRow({ mailbox: m, providers }: { mailbox: Mailbox; providers: Pr
       </div>
       <p className="text-sm empty:hidden" aria-live="polite">
         {test.isPending && <span className="text-muted-foreground">正在发送测试信…</span>}
-        {test.isSuccess && <span className="text-muted-foreground">测试信已发到 {m.address}，去收件箱看看。</span>}
+        {test.isSuccess && <span className="text-muted-foreground">测试信已发到 {m.address}，请到收件箱查看</span>}
         {test.isError && <span className="text-destructive">{errorMessage(test.error)}</span>}
         {remove.isError && <span className="text-destructive">{errorMessage(remove.error)}</span>}
         {resume.isError && <span className="text-destructive">{errorMessage(resume.error)}</span>}

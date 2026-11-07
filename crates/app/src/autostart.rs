@@ -66,7 +66,7 @@ fn current_executable() -> std::io::Result<PathBuf> {
 
 fn check_location(executable: &Path) -> std::result::Result<(), String> {
     if cfg!(target_os = "macos") && executable.to_string_lossy().contains("/AppTranslocation/") {
-        return Err("请先把 Auto Email Sender 拖到“应用程序”文件夹，再从那里打开后开启。".into());
+        return Err("请先把 Auto Email Sender 拖到“应用程序”文件夹，再从那里打开后开启".into());
     }
     Ok(())
 }

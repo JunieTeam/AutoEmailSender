@@ -109,7 +109,12 @@ impl ServerHandler for Server {
                 .map(|input| ("describeOperation".into(), json!({"name":input.name}))),
             "call_operation" => serde_json::from_value::<CallInput>(arguments)
                 .map(|input| (input.name, Value::Object(input.input))),
-            name => return Err(ErrorData::invalid_params(format!("没有工具 {name}"), None)),
+            name => {
+                return Err(ErrorData::invalid_params(
+                    format!("不存在工具 {name}"),
+                    None,
+                ));
+            }
         };
         let result = match operation {
             Ok((op, input)) => tokio::select! {

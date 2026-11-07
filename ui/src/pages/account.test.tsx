@@ -65,7 +65,7 @@ it("shows the period after a redeem even when a read started before it answers l
     await act(async () => button("兑换")?.click());
     await vi.waitFor(() => expect(remote.redeem).toHaveBeenCalled());
     await act(async () => answerOldRead({ plusUntil: BEFORE }));
-    await vi.waitFor(() => expect(container.textContent).toContain("兑换成功，Plus 增加 7 天。"));
+    await vi.waitFor(() => expect(container.textContent).toContain("兑换成功，Plus 增加 7 天"));
     expect(container.textContent).toContain("1月8日");
     expect(container.textContent).not.toContain("1月1日");
   } finally {

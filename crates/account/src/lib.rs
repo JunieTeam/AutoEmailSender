@@ -372,7 +372,7 @@ impl Client {
                 || url.scheme() == "http" && url.host_str().is_some_and(net::proxy::is_local)
         }) {
             return Err(Error::Invalid(
-                "服务器给的付款地址不正确，请稍后重试或升级应用。",
+                "服务器给的付款地址不正确，请稍后重试或升级应用",
             ));
         }
         Ok(created)
@@ -637,7 +637,7 @@ async fn response<T: DeserializeOwned>(request: RequestBuilder) -> Result<T, Err
 fn checked_email(email: &str) -> Result<String, Error> {
     let email = cloud_api::normalize_email(email);
     if email.len() > 254 || !cloud_api::is_email(&email) {
-        return Err(Error::Invalid("请填写正确的邮箱地址。"));
+        return Err(Error::Invalid("请填写正确的邮箱地址"));
     }
     Ok(email)
 }
@@ -649,11 +649,11 @@ async fn verified(
 ) -> Result<(cloud_api::VerifyRequest, [u8; 32]), Error> {
     let email = checked_email(email)?;
     if password.chars().count() < 8 {
-        return Err(Error::Invalid("密码至少需要 8 位。"));
+        return Err(Error::Invalid("密码至少需要 8 位"));
     }
     let code = code.trim();
     if code.len() != 6 || !code.bytes().all(|c| c.is_ascii_digit()) {
-        return Err(Error::Invalid("请填写 6 位数字验证码。"));
+        return Err(Error::Invalid("请填写 6 位数字验证码"));
     }
     let keys = keys(&email, password).await?;
     Ok((
@@ -754,87 +754,85 @@ impl Error {
         match self {
             Self::Invalid(message) => (*message).into(),
             Self::Worker(_) | Self::Database(_) => {
-                "账号处理未能完成，请重试；仍然失败时导出日志联系开发者。".into()
+                "账号处理未能完成，请重试；仍然失败时导出日志联系开发者".into()
             }
             Self::Network(error) if error.is_decode() => {
-                "服务器返回的数据无法读取，请稍后重试或升级应用。".into()
+                "服务器返回的数据无法读取，请稍后重试或升级应用".into()
             }
             Self::Network(_) | Self::WebSocket(_) => {
-                "连不上服务器，请检查网络和代理设置后重试。".into()
+                "连不上服务器，请检查网络和代理设置后重试".into()
             }
-            Self::SignedOut => "登录已失效，请重新登录。".into(),
-            Self::AccountChanged => "要注销的账号已经不是当前登录的账号，请刷新后重试。".into(),
+            Self::SignedOut => "登录已失效，请重新登录".into(),
+            Self::AccountChanged => "要注销的账号已不是当前登录的账号，请刷新后重试".into(),
             Self::Deleting(at) => match date(*at) {
-                Some(date) => format!("账号正在注销，将于{date}删除。"),
-                None => "账号正在注销。".into(),
+                Some(date) => format!("账号正在注销，将于{date}删除"),
+                None => "账号正在注销".into(),
             },
-            Self::TermsOutdated => "尚未同意新版条款，同意后方可使用官方服务。".into(),
+            Self::TermsOutdated => "尚未同意新版条款，同意后方可使用官方服务".into(),
             Self::Server(error) => match error.code {
-                ErrorCode::InvalidInput => "填写的账号信息不正确，请检查后重试。".into(),
-                ErrorCode::EmailRegistered => "这个邮箱已注册，请直接登录。".into(),
+                ErrorCode::InvalidInput => "填写的账号信息不正确，请检查后重试".into(),
+                ErrorCode::EmailRegistered => "这个邮箱已注册，请直接登录".into(),
                 ErrorCode::AccountDeleting => match error.delete_at.and_then(date) {
                     Some(date) => format!(
-                        "该邮箱的账号正在注销，{date}后方可重新注册；如需撤销注销，请直接登录。"
+                        "该邮箱的账号正在注销，{date}后方可重新注册；如需撤销注销，请直接登录"
                     ),
-                    None => "该邮箱的账号正在注销；如需撤销注销，请直接登录。".into(),
+                    None => "该邮箱的账号正在注销；如需撤销注销，请直接登录".into(),
                 },
-                ErrorCode::EmailNotRegistered => "这个邮箱还没注册，请先注册。".into(),
-                ErrorCode::InvalidCode => "验证码不对或已过期，请重新获取验证码。".into(),
-                ErrorCode::InvalidCredentials => "邮箱或密码不对，请检查后重试。".into(),
+                ErrorCode::EmailNotRegistered => "这个邮箱尚未注册，请先注册".into(),
+                ErrorCode::InvalidCode => "验证码错误或已过期，请重新获取".into(),
+                ErrorCode::InvalidCredentials => "邮箱或密码错误，请检查后重试".into(),
                 ErrorCode::RateLimited => match error.retry_after_seconds {
                     // A busy server asks for a few seconds; the limits per hour, for minutes.
-                    Some(seconds @ ..60) => format!("请求太频繁，请 {seconds} 秒后再试。"),
+                    Some(seconds @ ..60) => format!("请求过于频繁，请 {seconds} 秒后再试"),
                     Some(seconds) => {
-                        format!("请求太频繁，请 {} 分钟后再试。", seconds.div_ceil(60))
+                        format!("请求过于频繁，请 {} 分钟后再试", seconds.div_ceil(60))
                     }
-                    None => "请求太频繁，请稍后再试。".into(),
+                    None => "请求过于频繁，请稍后再试".into(),
                 },
-                ErrorCode::SessionExpired => "登录已失效，请重新登录。".into(),
-                ErrorCode::MailUnavailable => "验证码暂时无法发送，请稍后重试。".into(),
-                ErrorCode::Internal => "服务器暂时无法处理，请稍后重试。".into(),
-                ErrorCode::QuotaExceeded => "今天还能添加的数量不够了，少选几位或明天再来。".into(),
-                ErrorCode::OrderNotFound => "未找到该订单，请重新下单。".into(),
-                ErrorCode::PlusUnavailable => "暂时无法购买，请稍后重试。".into(),
+                ErrorCode::SessionExpired => "登录已失效，请重新登录".into(),
+                ErrorCode::MailUnavailable => "验证码暂时无法发送，请稍后重试".into(),
+                ErrorCode::Internal => "服务器暂时无法处理，请稍后重试".into(),
+                ErrorCode::QuotaExceeded => "今天可添加的数量不足，请少选几位或明天再试".into(),
+                ErrorCode::OrderNotFound => "未找到该订单，请重新下单".into(),
+                ErrorCode::PlusUnavailable => "暂时无法购买，请稍后重试".into(),
                 ErrorCode::PlusRefunded => {
-                    "该账号已办理过无理由退款，不能再购买 Plus 和额度包。".into()
+                    "该账号已办理过无理由退款，不能再购买 Plus 和额度包".into()
                 }
-                ErrorCode::PlusRequired => "Plus 有效期内方可使用此功能。".into(),
-                ErrorCode::PlusTooLong => "加上这一档后超过一年，Plus 最多可购买至一年后。".into(),
-                ErrorCode::InviteNotFound => "没有这个邀请码，请检查后重试。".into(),
-                ErrorCode::InviteFull => "这个邀请码已经邀请满 4 位同学了。".into(),
-                ErrorCode::InviteOwn => "不能填自己的邀请码。".into(),
-                ErrorCode::InviteExpired => "注册超过 7 天，不能再填邀请码了。".into(),
-                ErrorCode::InviteUsed => "这个邮箱已经领过邀请奖励了。".into(),
-                ErrorCode::CodeNotFound => "没有这个兑换码，请检查后重试。".into(),
-                ErrorCode::CodeUsedUp => "这个兑换码已经被领完了。".into(),
-                ErrorCode::CodeExpired => "这个兑换码已经过期了。".into(),
-                ErrorCode::CodeUsed => "你已经用过这个兑换码了。".into(),
+                ErrorCode::PlusRequired => "Plus 有效期内方可使用此功能".into(),
+                ErrorCode::PlusTooLong => "加上这一档后超过一年，Plus 最多可购买至一年后".into(),
+                ErrorCode::InviteNotFound => "邀请码不存在，请检查后重试".into(),
+                ErrorCode::InviteFull => "这个邀请码已邀请满 4 位同学".into(),
+                ErrorCode::InviteOwn => "不能填写自己的邀请码".into(),
+                ErrorCode::InviteExpired => "注册已超过 7 天，不能再填写邀请码".into(),
+                ErrorCode::InviteUsed => "这个邮箱已领取过邀请奖励".into(),
+                ErrorCode::CodeNotFound => "兑换码不存在，请检查后重试".into(),
+                ErrorCode::CodeUsedUp => "这个兑换码已被领完".into(),
+                ErrorCode::CodeExpired => "这个兑换码已过期".into(),
+                ErrorCode::CodeUsed => "你已使用过这个兑换码".into(),
                 ErrorCode::EmailIneligible => {
-                    "用常用邮箱（QQ、163、Gmail 等）或学校邮箱注册的账号才能参加。".into()
+                    "用常用邮箱（QQ、163、Gmail 等）或学校邮箱注册的账号才能参加".into()
                 }
                 ErrorCode::BackupNotFound => {
-                    "云端的备份刚被另一台电脑替换或删除了，请刷新后重试。".into()
+                    "云端的备份刚被另一台电脑替换或删除了，请刷新后重试".into()
                 }
                 ErrorCode::BackupIncomplete | ErrorCode::BackupChanged => {
-                    "另一台电脑同时在备份，这次没能传完，稍后会再试。".into()
+                    "另一台电脑正在同时备份，本次未能上传完成，稍后会自动重试".into()
                 }
                 ErrorCode::BackupTooLarge => {
-                    "云端备份的空间暂时满了：没传完的数据一天内会清掉，之后再试。".into()
+                    "云端备份的空间暂时已满：未上传完的数据会在一天内清除，之后再试".into()
                 }
-                ErrorCode::CloudUnavailable => "云端定时发送暂时不可用，请稍后重试。".into(),
+                ErrorCode::CloudUnavailable => "云端定时发送暂时不可用，请稍后重试".into(),
                 ErrorCode::CloudTooLarge => {
-                    "交给云端的邮件超过上限：一封最大 50 MB，合计最多 500 封、200 MB。".into()
+                    "交给云端的邮件超过上限：一封最大 50 MB，合计最多 500 封、200 MB".into()
                 }
                 ErrorCode::UnknownMailbox => {
-                    "云端还没有这个发件邮箱，请重新打开“交给云端发送”再交一次。".into()
+                    "云端尚无这个发件邮箱，请重新打开“交给云端发送”再交一次".into()
                 }
                 // Logging in to another account gives the computer a new room, so this is not
                 // expected to happen.
-                ErrorCode::RoomTaken => {
-                    "手机远程的连接属于另一个账号，请导出日志发给开发者。".into()
-                }
+                ErrorCode::RoomTaken => "手机远程的连接属于另一个账号，请导出日志发给开发者".into(),
                 ErrorCode::NotFound | ErrorCode::MethodNotAllowed => {
-                    "服务器不支持这个操作，请升级应用后重试。".into()
+                    "服务器不支持这个操作，请升级应用后重试".into()
                 }
             },
         }

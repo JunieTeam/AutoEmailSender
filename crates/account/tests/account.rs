@@ -189,7 +189,7 @@ async fn invitation_and_redemption_send_normalized_codes_and_preserve_results(db
         assert!(error.message().contains("4 位"));
         let error = client.redeem(&db, "ABCDEFGH2345").await.unwrap_err();
         assert!(matches!(error, Error::Server(ref error) if error.code == ErrorCode::CodeUsed));
-        assert!(error.message().contains("已经用过"));
+        assert!(error.message().contains("已使用过"));
         assert!(matches!(
             client.fill_invite(&db, " - ").await,
             Err(Error::Invalid(_))

@@ -87,7 +87,7 @@ pub async fn write_mcp_config(ctx: &Context, input: McpConfigQuery) -> Result<()
         .iter()
         .find(|p| p.client == input.client)
         .cloned()
-        .ok_or_else(|| CallError::invalid("请先预览 MCP 配置，确认后再写入。".into()))?;
+        .ok_or_else(|| CallError::invalid("请先预览 MCP 配置，确认后再写入".into()))?;
     blocking(move || plan.write()).await
 }
 

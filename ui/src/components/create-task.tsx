@@ -202,12 +202,12 @@ function TaskSteps({
                       {m.previous && (
                         <p className="text-xs text-muted-foreground">
                           {m.previous.subject ?? "（无主题）"} · {sentFor(m.previous.sentAt, openedAt)}
-                          {m.previous.opened !== null && (m.previous.opened ? " · 已打开" : " · 没打开过")}
+                          {m.previous.opened !== null && (m.previous.opened ? " · 已打开" : " · 未打开过")}
                         </p>
                       )}
                       {kind === "first" && (m.contactCount > 0 || m.lastContactAt !== null) && (
                         <p className="text-xs text-warning">
-                          联系 {m.contactCount} 次{m.lastContactAt !== null && `，最近 ${day(m.lastContactAt)}`}
+                          联系 {m.contactCount} 次{m.lastContactAt !== null && `，最近一次在${day(m.lastContactAt)}`}
                         </p>
                       )}
                       {m.libraryStatus && (
@@ -221,7 +221,7 @@ function TaskSteps({
                 ))}
               </div>
               {eligible.length === 0 && (
-                <p className="text-muted-foreground">没有可以加入任务的导师，请返回导师列表重新选择。</p>
+                <p className="text-muted-foreground">无可加入任务的导师，请返回导师列表重新选择</p>
               )}
             </>
           )}
@@ -307,7 +307,7 @@ function TaskSteps({
                   <Link to="/settings/materials" className="text-brand-text">
                     设置 › 个人 › 材料
                   </Link>
-                  里添加。
+                  里添加
                 </p>
               )}
               {form.writer === "ai" && (
@@ -317,7 +317,7 @@ function TaskSteps({
                     约 {((plan.data?.inputTokens ?? 0) + (plan.data?.outputTokens ?? 0)).toLocaleString()} Token
                     {plan.data?.cost != null && `，约 ${plan.data.cost.toFixed(2)} 元`}
                   </p>
-                  <p className="text-xs text-muted-foreground">按字数估算，实际以服务商为准。</p>
+                  <p className="text-xs text-muted-foreground">按字数估算，实际以服务商为准</p>
                 </div>
               )}
             </>

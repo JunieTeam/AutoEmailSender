@@ -174,14 +174,14 @@ export function LetterSend({
 function problemText(p: Problem): string {
   if (p.kind === "placeholder") {
     const marker = p.name.startsWith("【请") ? p.name : `{${p.name}}`;
-    return `“${marker}”没有替换，请改成具体内容或删掉。`;
+    return `“${marker}”未替换，请改成具体内容或删掉`;
   }
-  if (p.kind === "no_salutation") return "正文里没有称呼导师。";
-  if (p.kind === "other_mentor") return `草稿里出现了任务中另一位导师的姓名“${p.name}”，请核对。`;
-  if (p.kind === "recently_contacted") return "最近 7 天内已经联系过这位导师，请核对是否需要再次联系。";
-  if (p.kind === "no_attachment") return "正文提到了附件，但还没有添加附件。";
+  if (p.kind === "no_salutation") return "正文未称呼导师";
+  if (p.kind === "other_mentor") return `草稿里出现了任务中另一位导师的姓名“${p.name}”，请核对`;
+  if (p.kind === "recently_contacted") return "最近 7 天内已联系过这位导师，请确认是否需要再次联系";
+  if (p.kind === "no_attachment") return "正文提到附件，但尚未添加附件";
   if (p.kind === "unsupported_claim") return `材料里找不到依据：“${p.quote}”`;
-  return `查不到 ${p.domain} 的收信服务器，请核对导师的邮箱地址。`;
+  return `查不到 ${p.domain} 的收信服务器，请核对导师的邮箱地址`;
 }
 
 /** Existing materials and an immediate upload share the same attachment picker. */
@@ -265,7 +265,7 @@ export function AttachMenu({
             <Link to="/settings/materials" className="text-brand-text">
               设置 › 个人 › 材料
             </Link>
-            里添加。
+            里添加
           </p>
         ) : (
           materials.map((m) => {

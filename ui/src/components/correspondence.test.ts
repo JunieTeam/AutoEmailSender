@@ -15,7 +15,7 @@ const sent: FollowUpEntry = {
   },
 };
 it("offers follow-up and a new letter for an unanswered sent email", () => {
-  expect(followUpActions(sent, now)).toEqual({ message: "已发出 5 天，还没回复", followUp: true, newLetter: true });
+  expect(followUpActions(sent, now)).toEqual({ message: "已发出 5 天，尚未回复", followUp: true, newLetter: true });
 });
 it("keeps the reason visible and only offers a new letter when a thread is blocked", () => {
   for (const reason of ["上一封被退回，请先核对邮箱", "上一封缺少邮件编号，无法在原线程追问"]) {
@@ -23,7 +23,7 @@ it("keeps the reason visible and only offers a new letter when a thread is block
   }
 });
 it("hides both actions while another first or follow-up email is unsent", () => {
-  for (const reason of [null, "上一封说不清发没发出，请先在往来里确认", "还有一封没发出的首封或追问"]) {
+  for (const reason of [null, "上一封无法确定是否已发出，请先在往来里确认", "还有一封未发出的首封或追问"]) {
     const actions = followUpActions({ ...sent, pending: true, reason }, now);
     expect(actions.followUp).toBe(false);
     expect(actions.newLetter).toBe(false);

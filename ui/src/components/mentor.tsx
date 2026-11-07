@@ -94,7 +94,7 @@ export function contactDetail(contact: Contact): string | null {
     : `${times}${day(contact.lastOutAt)}发出`;
 }
 
-export const BASIS_CHANGED = "材料或意向研究方向改过，可以重新分析";
+export const BASIS_CHANGED = "材料或意向研究方向已修改，可重新分析";
 
 /** After a reply's outcome was set or marked, or its marking failed or was retried. */
 export function refreshReplyOutcomes(queryClient: QueryClient) {

@@ -25,7 +25,7 @@ pub async fn fact_check_email(
     )
     .fetch_optional(&ctx.db)
     .await?
-    .ok_or_else(|| CallError::invalid("这封邮件已不在待审核状态，请刷新后重试。".into()))?;
+    .ok_or_else(|| CallError::invalid("这封邮件已不在待审核状态，请刷新后重试".into()))?;
     let (id, claim) = (input.id, row.generation_claim);
     let result: Result<Option<FactCheck>, CallError> = async {
         let (chosen, references) = if let Some(task_id) = row.task_id {
@@ -111,7 +111,7 @@ pub async fn fact_check_email(
         return result;
     }
     Err(CallError::invalid(
-        "这封邮件已重新生成或不在待审核状态，核对结果未保存。".into(),
+        "这封邮件已重新生成或不在待审核状态，核对结果未保存".into(),
     ))
 }
 

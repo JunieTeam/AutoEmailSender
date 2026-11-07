@@ -108,7 +108,7 @@ impl MailDomains {
 fn lookup_failed() -> CallError {
     CallError {
         code: ErrorCode::External,
-        message: "未能查询导师邮箱的域名。".into(),
+        message: "未能查询导师邮箱的域名".into(),
     }
 }
 

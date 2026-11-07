@@ -90,7 +90,7 @@ impl Field {
             Self::Research => "研究方向文字",
             Self::Papers => "多个代表论文只用换行隔开",
             Self::SourceUrl => "发现这位导师的来源网址",
-            Self::Tags => "多个标签用换行、分号或顿号隔开，没有的标签按名称新建",
+            Self::Tags => "多个标签用换行、分号或顿号隔开，不存在的标签按名称新建",
             Self::Note => "写给自己的备注，分享表格前请检查",
         }
     }
@@ -252,7 +252,7 @@ fn read_rows(sheets: &[Sheet], setup: &Setup, preview: &mut Preview) -> Vec<Row>
         return Vec::new();
     };
     let Some(h) = header(sheet) else {
-        preview.issue = Some("这张表没有内容，请换一张工作表或填写后重新导入".into());
+        preview.issue = Some("这张表无内容，请换一张工作表或填写后重新导入".into());
         return Vec::new();
     };
     let width = sheet.rows.iter().map(Vec::len).max().unwrap_or(0);

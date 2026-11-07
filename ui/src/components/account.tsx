@@ -107,7 +107,7 @@ export function AccountDialog({
           <DialogHeader>{MODES[mode].title}</DialogHeader>
           <DialogBody>
             <fieldset disabled={submit.isPending} className="flex min-w-0 flex-col gap-3.5">
-              {reset && <p className="text-sm text-success">密码已重置，请用新密码登录。</p>}
+              {reset && <p className="text-sm text-success">密码已重置，请用新密码登录</p>}
               <Field label="邮箱" id="account-email">
                 <div className="flex gap-2">
                   <Input
@@ -152,11 +152,11 @@ export function AccountDialog({
                       <LegalLink legal="terms" />和<LegalLink legal="privacy" />
                     </span>
                   </label>
-                  {unagreed && <p className="mt-1 text-sm text-warning">请先阅读并勾选同意条款，再发送验证码。</p>}
+                  {unagreed && <p className="mt-1 text-sm text-warning">请先阅读并勾选同意条款，再发送验证码</p>}
                 </div>
               )}
               {send.isSuccess && (
-                <p className="-mt-1.5 text-sm text-muted-foreground">验证码已发到 {send.variables}，10 分钟内有效。</p>
+                <p className="-mt-1.5 text-sm text-muted-foreground">验证码已发到 {send.variables}，10 分钟内有效</p>
               )}
               {mode !== "login" && (
                 <Field label="验证码" id="account-code">
@@ -183,12 +183,12 @@ export function AccountDialog({
               </Field>
               {mode === "register" && (
                 <p className="text-sm text-muted-foreground">
-                  密码也用来加密云端备份。忘记了可以用邮箱重置，但旧的云端备份就解不开了。
+                  密码也用来加密云端备份。忘记密码可以用邮箱重置，但旧的云端备份将无法解开。
                 </p>
               )}
               {mode === "reset" && (
                 <p className="text-sm text-muted-foreground">
-                  重置后，所有电脑上的应用都要重新登录，旧的云端备份也解不开了。
+                  重置后，所有电脑上的应用都要重新登录，旧的云端备份也将无法解开
                 </p>
               )}
               <p className="flex gap-4 text-sm">
@@ -262,7 +262,7 @@ export function TermsUpdate() {
 export function TermsNotice() {
   return (
     <div className="flex items-center justify-between gap-4">
-      <p className="text-sm text-warning">尚未同意新版条款，同意后方可使用官方服务。</p>
+      <p className="text-sm text-warning">尚未同意新版条款，同意后方可使用官方服务</p>
       <AgreeTermsButton />
     </div>
   );

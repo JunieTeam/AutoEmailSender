@@ -50,7 +50,7 @@ export function MergeDialog({ ids, onClose }: { ids: [number, number]; onClose: 
           {failed && <p className="text-sm text-destructive">未能加载：{errorMessage(failed)}</p>}
           {ready && kept && gone && (
             <div className="flex flex-col gap-4">
-              <p className="text-sm text-muted-foreground">选择保留哪一位，另一位的资料、邮件和往来都并进来。</p>
+              <p className="text-sm text-muted-foreground">选择保留哪一位，另一位的资料、邮件和往来都并入这一位</p>
               <div role="radiogroup" aria-label="保留的导师" className="grid grid-cols-2 gap-3 phone:grid-cols-1">
                 {[a, b].map((m) => (
                   <Choice
@@ -66,7 +66,7 @@ export function MergeDialog({ ids, onClose }: { ids: [number, number]; onClose: 
                 <li>{outcome(kept, gone, ready)}</li>
                 {ready.discardedDrafts.map((kind) => (
                   <li key={kind}>
-                    两位都有没写完的{kind === "reply" ? "回复" : "首封或追问"}，删掉{gone.name}的那封
+                    两位都有未写完的{kind === "reply" ? "回复" : "首封或追问"}，将删除{gone.name}的那封
                     {{ first: "首封", follow_up: "追问", reply: "回复" }[kind]}。
                   </li>
                 ))}
@@ -118,7 +118,7 @@ function Choice({
         {chosen && <span className="ml-2 text-brand-text">保留</span>}
       </span>
       {place && <span className="w-full truncate text-muted-foreground">{placeOf(place)}</span>}
-      <span className="w-full truncate text-muted-foreground">{m.emails.join("、") || "没有邮箱"}</span>
+      <span className="w-full truncate text-muted-foreground">{m.emails.join("、") || "无邮箱"}</span>
       <ContactLabel contact={m.contact} />
     </button>
   );
@@ -127,5 +127,5 @@ function Choice({
 /** What the kept mentor ends up with, in a sentence. */
 function outcome(kept: MentorDetail, gone: MentorDetail, preview: MergePreview): string {
   const alias = gone.name !== kept.name ? `，${gone.name}记为别名` : "";
-  return `保留${kept.name}：合并后有 ${preview.emails} 个邮箱、${preview.affiliations} 个单位${alias}。`;
+  return `保留${kept.name}：合并后有 ${preview.emails} 个邮箱、${preview.affiliations} 个单位${alias}`;
 }

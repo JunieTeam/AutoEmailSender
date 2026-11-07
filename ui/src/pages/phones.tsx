@@ -22,7 +22,7 @@ export function PhonesRow() {
       {state?.kind === "loggedIn" && (state.termsOutdated ? <TermsNotice /> : <Phones key={state.email} />)}
       {state && state.kind !== "loggedIn" && (
         <>
-          <p className="text-sm text-muted-foreground">登录后，可以用手机浏览器远程使用这台电脑上的应用。</p>
+          <p className="text-sm text-muted-foreground">登录后，可以用手机浏览器远程使用这台电脑上的应用</p>
           <div className="mt-1.5">
             <Button variant="quiet" onClick={() => setLogin(true)}>
               登录
@@ -105,7 +105,7 @@ function Phones() {
                       {phone.online
                         ? "在线"
                         : phone.seenAt === null
-                          ? "还没连接过"
+                          ? "尚未连接过"
                           : `最近连接 ${day(phone.seenAt)} ${time(phone.seenAt)}`}
                     </p>
                   </div>
@@ -217,7 +217,7 @@ function PairingDialog({
                 src={`data:image/svg+xml;utf8,${encodeURIComponent(code.svg)}`}
               />
               <p className="text-muted-foreground">
-                用手机的相机或微信扫一扫，{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")} 内有效。
+                用手机的相机或微信扫一扫，{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")} 内有效
               </p>
             </>
           )}

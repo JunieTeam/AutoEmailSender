@@ -1416,7 +1416,7 @@ async fn a_reply_never_rotates_to_an_unrelated_mailbox_after_its_sender_is_delet
         Next::Now
     );
     assert!(matches!(first_email(&db, mentor).await.delivery,
-        Delivery::Failed { error } if error.contains("没有能发信的邮箱")));
+        Delivery::Failed { error } if error.contains("无可发信的邮箱")));
     assert!(original_inbox.lock().unwrap().is_empty());
     assert!(other_inbox.lock().unwrap().is_empty());
     sqlx::query("UPDATE mentor SET mailbox_id = (SELECT max(id) FROM mailbox) WHERE id = ?")
@@ -1547,7 +1547,7 @@ async fn an_existing_reply_resend_can_retry_after_its_mailbox_is_replaced(db: Sq
         .find(|e| e.resend_of == Some(bounced))
         .unwrap();
     assert!(
-        matches!(&resent.delivery, Delivery::Failed { error } if error.contains("没有能发信的邮箱"))
+        matches!(&resent.delivery, Delivery::Failed { error } if error.contains("无可发信的邮箱"))
     );
     assert!(!email::withdraw(&db, resent.id, T + MINUTE).await.unwrap());
     let (net, replacement) = mailbox(&db, SECRET).await;

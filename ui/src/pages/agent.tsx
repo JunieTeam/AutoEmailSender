@@ -10,9 +10,9 @@ import { Row, Section, SwitchButton } from "./settings";
 const MAC = navigator.userAgent.includes("Mac");
 
 const CLIENTS: [McpClient, string, string][] = [
-  ["claudeDesktop", "Claude Desktop", "重新打开 Claude Desktop 后生效。"],
-  ["claudeCode", "Claude Code", "新开的 Claude Code 会话里生效。"],
-  ["cursor", "Cursor", "重新打开 Cursor 后生效。"],
+  ["claudeDesktop", "Claude Desktop", "重新打开 Claude Desktop 后生效"],
+  ["claudeCode", "Claude Code", "新开的 Claude Code 会话里生效"],
+  ["cursor", "Cursor", "重新打开 Cursor 后生效"],
 ];
 
 /** Settings › 应用 › 手机和 Agent (docs/ui.md). */
@@ -52,7 +52,7 @@ function AgentRows() {
             开启后，你自己的 Agent（Claude、Cursor 这类聊天和编程助手，或者你写的脚本）可以通过 MCP
             或命令行使用这个应用。界面上能做的它都能做，包括替你填邮箱授权码和 API Key，但看不到已经保存的。
           </p>
-          <p>发信给导师、永久删除、同意把数据发给模型服务商之前，应用会弹出“Agent 请求”，你点“允许”才会做。</p>
+          <p>发信给导师、永久删除、同意把数据发给模型服务商之前，应用会弹出“Agent 请求”，你点“允许”后才会执行</p>
           <p>Agent 读到的导师资料、邮件和材料文字，会交给它所用的模型服务商。应用开着时 Agent 才能连上。</p>
         </div>
         {access.error && <p className="mt-2 text-sm text-destructive">设置未能加载：{errorMessage(access.error)}</p>}
@@ -77,7 +77,7 @@ function McpRow() {
   return (
     <Row label="MCP">
       <p className="text-sm text-muted-foreground">
-        接入后，在这些工具里直接说要做什么，比如“把这个网页上的导师加进 Auto Email Sender”。
+        接入后，在这些工具里直接说要做什么，比如“把这个网页上的导师加进 Auto Email Sender”
       </p>
       <ul className="divide-y divide-border rounded-lg border border-border">
         {CLIENTS.map(([client, name, effect]) => (
@@ -213,15 +213,15 @@ function CliRow() {
         ) : state?.kind === "oldLocation" ? (
           <>
             终端里的 autoemail 还指向以前的应用（<span className="break-all">{state.target}</span>
-            ），更新后改用现在这个。
+            ），更新后将改用当前应用
           </>
         ) : state?.kind === "occupied" ? (
           <>
             <span className="break-all">{cli.data?.location}</span>{" "}
-            已经是别的程序，为了不覆盖它没有安装。把它删掉或改名后，回到这里安装。
+            已是其他程序，为避免覆盖，未安装。将它删除或改名后，回到这里安装。
           </>
         ) : (
-          `给只能运行命令的 Agent 和脚本用。${MAC ? "装好后在终端里直接输入 autoemail 就能用，安装时可能要输入电脑的密码。" : "装好后在新开的终端里直接输入 autoemail 就能用。"}`
+          `给只能运行命令的 Agent 和脚本用。${MAC ? "装好后在终端里直接输入 autoemail 即可使用，安装时可能要输入电脑的密码。" : "装好后在新开的终端里直接输入 autoemail 即可使用。"}`
         )}
       </p>
       <div className="flex gap-2">

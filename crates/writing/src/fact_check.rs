@@ -24,10 +24,10 @@ impl Error {
     pub fn message(&self) -> String {
         match self {
             Self::NoModel => "尚未添加模型。在“设置 › AI › 模型”里添加后再试。".into(),
-            Self::NotAgreed => "请先确认发给模型服务商的内容。".into(),
+            Self::NotAgreed => "请先确认发给模型服务商的内容".into(),
             Self::Model(error) => error.message(),
-            Self::InvalidAnswer => "模型没有返回完整的核对结果。请重试或换个模型。".into(),
-            Self::Db(_) => "核对结果暂时无法保存，请重试；仍然出错时，请导出日志。".into(),
+            Self::InvalidAnswer => "模型未返回完整的核对结果，请重试或换个模型".into(),
+            Self::Db(_) => "核对结果暂时无法保存，请重试；仍然出错时，请导出日志".into(),
         }
     }
 }
@@ -132,7 +132,7 @@ where
 fn parse(text: &str, letter: &Letter) -> Result<Vec<Finding>, String> {
     let mut text = model::output::thinking_block(text.trim())?.trim();
     if let Some(rest) = model::output::fence_content(text)? {
-        text = rest.strip_suffix("```").ok_or("代码围栏没有结束")?.trim();
+        text = rest.strip_suffix("```").ok_or("代码围栏未结束")?.trim();
     }
     let findings: Vec<Finding> = serde_json::from_str(text).map_err(|e| {
         let reason = match e.classify() {

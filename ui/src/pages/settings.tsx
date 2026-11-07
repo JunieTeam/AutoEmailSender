@@ -235,19 +235,19 @@ export function NotificationsSection() {
         get="getReplyNotifications"
         set="setReplyNotifications"
         label="新回信时发系统通知"
-        description="应用不在前台时，导师回信会弹出系统通知。"
+        description="应用不在前台时，导师回信会弹出系统通知"
       />
       <Toggle
         get="getBackgroundNotifications"
         set="setBackgroundNotifications"
         label="后台工作做完时通知"
-        description="应用不在前台时，匹配分析等后台工作完成后弹出系统通知；在前台时在内容页提醒。"
+        description="应用不在前台时，匹配分析等后台工作完成后弹出系统通知；在前台时在内容页提醒"
       />
       <Toggle
         get="getTodoReminders"
         set="setTodoReminders"
         label="待办提醒"
-        description="有截止日期的待办，在截止前一天上午 9:00 弹出系统通知。"
+        description="有截止日期的待办，在截止前一天上午 9:00 弹出系统通知"
       />
     </Section>
   );
@@ -258,13 +258,13 @@ export function ChecksSection() {
   return (
     <Section title="发送前检查">
       <div className="text-sm text-muted-foreground">
-        <p>草稿写好或修改后自动检查，问题列在正文下方，发送或批准时再提醒一次，可以忽略。总会检查：</p>
+        <p>草稿生成或修改后自动检查，问题列在正文下方，发送或批准时再提醒一次，可以忽略。总会检查：</p>
         <ul className="mt-1.5 list-disc pl-5">
-          <li>占位符没有替换，或留着“【请补充：……】”这样的标记</li>
-          <li>正文提到附件，却没有添加附件</li>
+          <li>占位符未替换，或留有“【请补充：……】”这样的标记</li>
+          <li>正文提到附件，却未添加附件</li>
           <li>出现了任务中另一位导师的姓名</li>
-          <li>正文里没有称呼导师</li>
-          <li>最近 7 天内已经联系过这位导师</li>
+          <li>正文未称呼导师</li>
+          <li>最近 7 天内已联系过这位导师</li>
           <li>导师邮箱的域名查不到收信服务器</li>
         </ul>
       </div>
@@ -350,13 +350,13 @@ export function ReplyProcessingSection() {
         get="getAiReplyOutcome"
         set="setAiReplyOutcome"
         label="AI 标记回信结果"
-        description="开启后，导师的回信（包括已经收到的）会发给默认模型的服务商，标出有意向、无名额、拒绝或无法判断。不开也可以在往来里自己标。"
+        description="开启后，导师的回信（包括已经收到的）会发给默认模型的服务商，标出有意向、无名额、拒绝或无法判断。不开启也可以在往来里手动标记。"
       />
       <AiSwitch
         get="getAiReplyTodos"
         set="setAiReplyTodos"
         label="回信待办"
-        description="开启后，导师的回信会发给默认模型的服务商，找出导师要你做的事和截止时间，列进待办；已经收到的只找最近 14 天的。不开也可以在往来里自己添加待办。"
+        description="开启后，导师的回信会发给默认模型的服务商，找出导师要你做的事和截止时间，列进待办；已收到的只提取最近 14 天的。不开启也可以在往来里手动添加待办。"
       />
     </Section>
   );
@@ -425,14 +425,14 @@ export function BackgroundSection() {
             onClick={() => save.mutate(!query.data)}
           />
         </label>
-        <p className="mt-2 text-sm text-muted-foreground">开机后在后台运行，不打开窗口，定时发送和收信照常进行。</p>
+        <p className="mt-2 text-sm text-muted-foreground">开机后在后台运行，不打开窗口，定时发送和收信不受影响</p>
         {query.error && (
           <p className="mt-2 text-sm text-destructive">开机启动的设置未能读取：{errorMessage(query.error)}</p>
         )}
         {save.error && <p className="mt-2 text-sm text-destructive">{errorMessage(save.error)}</p>}
       </div>
       <p className="text-sm text-muted-foreground">
-        关闭窗口后，应用也留在后台继续工作，可以从托盘或菜单栏里的图标打开或退出。
+        关闭窗口后，应用也留在后台继续工作，可以从托盘或菜单栏里的图标打开或退出
       </p>
     </Section>
   );

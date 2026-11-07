@@ -2299,7 +2299,7 @@ async fn b3_redirect_external_is_rejected(db: SqlitePool) {
     let Outcome::Failed(reason) = process_claim(&db, &site, &claim).await else {
         panic!("external redirect was not rejected")
     };
-    assert_eq!(reason, "页面超出了这次整理允许访问的网站。");
+    assert_eq!(reason, "页面超出了这次整理允许访问的网站");
     assert_eq!(*site.visits.lock().unwrap(), vec!["/old"]);
     assert!(provider.requests.try_recv().is_err());
     let identities: Vec<String> = sqlx::query_scalar("SELECT url FROM candidate_profile")

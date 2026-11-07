@@ -65,10 +65,10 @@ export function MentorPage() {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-muted px-5 py-2 text-sm phone:px-3">
             {trash.isError ? (
               <p className="grow text-destructive">
-                没能{TRASH_LABEL[trash.variables]}：{errorMessage(trash.error)}
+                未能{TRASH_LABEL[trash.variables]}：{errorMessage(trash.error)}
               </p>
             ) : (
-              <p className="grow">这位导师在回收站里。</p>
+              <p className="grow">这位导师在回收站里</p>
             )}
             {m.trashed && (
               <div className="flex gap-1">
@@ -188,7 +188,7 @@ function Header({
               <Trash2 strokeWidth={1.6} />
             </Button>
           }
-          message={`把${m.name}移入回收站？没发出的邮件会取消，恢复后也不会恢复。`}
+          message={`把${m.name}移入回收站？未发出的邮件会取消，恢复后也不会恢复。`}
           action="移入回收站"
           side="bottom"
           onConfirm={onTrash}
@@ -318,7 +318,7 @@ function LibraryNotice({ mentor: m }: { mentor: MentorDetail }) {
   if (!status && !removed) return null;
   return (
     <p className="bg-muted px-5 py-2 text-sm phone:px-3">
-      {status ? `导师库标注这位导师${LIBRARY_STATUS[status]}。` : "导师库已撤下这位导师的资料，以后不再更新。"}
+      {status ? `导师库标注这位导师${LIBRARY_STATUS[status]}` : "导师库已撤下这位导师的资料，以后不再更新"}
     </p>
   );
 }
@@ -365,7 +365,7 @@ function SendingMailbox({ mentor: m }: { mentor: MentorDetail }) {
           </NativeSelect>
         )}
         {choosing && m.contact.status !== "none" && (
-          <p className="mt-1 text-xs text-muted-foreground">换了邮箱后，导师看到的发件地址会变。</p>
+          <p className="mt-1 text-xs text-muted-foreground">更换发件邮箱后，导师看到的发件地址会随之改变</p>
         )}
         {error && <p className="mt-1 text-xs text-destructive">{errorMessage(error)}</p>}
       </dd>

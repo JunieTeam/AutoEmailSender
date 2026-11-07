@@ -52,10 +52,10 @@ export function addedMessage(r: LibraryAdded): string {
     [
       r.created > 0 && `已添加 ${r.created} 位`,
       r.supplemented > 0 && `补充了 ${r.supplemented} 位已有导师的资料`,
-      r.missing > 0 && `${r.missing} 位已不在导师库，没有添加`,
+      r.missing > 0 && `${r.missing} 位已不在导师库，未添加`,
     ]
       .filter(Boolean)
-      .join("，") || "所选导师都已在导师列表里，资料没有变化"
+      .join("，") || "所选导师都已在导师列表里，资料无变化"
   );
 }
 
@@ -107,7 +107,7 @@ export function LibraryAddDialog({
               资料不同 <strong>{differenceIds.size}</strong> 位
             </span>
             <span>
-              没有变化 <strong>{preview.unchanged}</strong> 位
+              无变化 <strong>{preview.unchanged}</strong> 位
             </span>
           </div>
           <IntakeChoices
@@ -176,11 +176,11 @@ export function LibraryUpdatesDialog({ onClose }: { onClose: () => void }) {
       <DialogContent className="w-[760px]">
         <DialogHeader>导师库的更新</DialogHeader>
         <DialogBody className="space-y-4">
-          {updates.data && items.length === 0 && <p className="text-sm text-muted-foreground">没有要处理的更新</p>}
+          {updates.data && items.length === 0 && <p className="text-sm text-muted-foreground">无待处理的更新</p>}
           {items.length > 0 && (
             <>
               <p className="text-sm text-muted-foreground">
-                导师库改了这些导师的资料，和你这里的不同。你没改过的项默认用导师库的，改过的默认保留你的；关掉不做改动，以后再选。
+                导师库更新了这些导师的资料，与本地的不同。你未修改过的项默认用导师库的，修改过的默认保留你的；关闭窗口则不做改动，以后再选。
               </p>
               <Differences
                 source="导师库"

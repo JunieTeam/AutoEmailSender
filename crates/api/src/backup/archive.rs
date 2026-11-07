@@ -17,7 +17,7 @@ const ENTRY_LIMIT: usize = 100_002;
 
 pub(super) fn invalid(detail: &str) -> Error {
     Error::Invalid(format!(
-        "备份文件不完整或格式不正确（{detail}），请重新选择本应用导出的 zip 备份。"
+        "备份文件不完整或格式不正确（{detail}），请重新选择本应用导出的 zip 备份"
     ))
 }
 

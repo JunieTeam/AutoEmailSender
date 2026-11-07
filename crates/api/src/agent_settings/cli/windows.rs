@@ -31,7 +31,7 @@ fn run(executable: &Path, action: &str) -> Result<bool, CallError> {
     use std::os::windows::process::CommandExt;
 
     let root = std::env::var_os("SystemRoot").ok_or_else(|| {
-        CallError::invalid("无法找到 Windows PowerShell：SystemRoot 未设置。".into())
+        CallError::invalid("无法找到 Windows PowerShell：SystemRoot 未设置".into())
     })?;
     let output =
         Command::new(PathBuf::from(root).join("System32/WindowsPowerShell/v1.0/powershell.exe"))

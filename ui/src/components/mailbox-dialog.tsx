@@ -207,7 +207,7 @@ export function MailboxDialog({
                       type="password"
                       autoComplete="off"
                       placeholder={
-                        secretSaved ? "不修改就留空" : mailbox?.needsSecret ? "从备份恢复后需要重新填写" : undefined
+                        secretSaved ? "留空则不修改" : mailbox?.needsSecret ? "从备份恢复后需要重新填写" : undefined
                       }
                       value={form.secret}
                       onChange={(e) => edit({ ...form, secret: e.target.value })}
@@ -288,8 +288,8 @@ export function MailboxDialog({
           {mailbox !== null && mailbox.cloudEmails > 0 && dirty && (
             <p className="px-6 pt-3 text-sm text-muted-foreground phone:px-4">
               {form.address.trim() === mailbox.address
-                ? `已交给云端的 ${mailbox.cloudEmails} 封将改用新的设置发出。`
-                : `有 ${mailbox.cloudEmails} 封已交给云端的邮件从这个邮箱发出，要改地址，请先把它们撤回到本地。`}
+                ? `已交给云端的 ${mailbox.cloudEmails} 封将改用新的设置发出`
+                : `有 ${mailbox.cloudEmails} 封已交给云端的邮件从这个邮箱发出，要改地址，请先把它们撤回到本地`}
             </p>
           )}
           <DialogFooter>
@@ -355,7 +355,7 @@ function ProviderField({
       </NativeSelect>
       {form.provider === "" && (
         <p className="mt-1.5 text-sm text-muted-foreground">
-          没认出这个邮箱的服务商。学校和公司的邮箱用的是腾讯、网易或阿里企业邮的，选对应的一项；都不是的选“其他”，在服务器设置里填写。
+          未能识别这个邮箱的服务商。学校和公司的邮箱用的是腾讯、网易或阿里企业邮的，选对应的一项；都不是的选“其他”，在服务器设置里填写。
         </p>
       )}
     </Field>

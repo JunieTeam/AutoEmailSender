@@ -147,7 +147,7 @@ export function ModelDialog({
                   autoComplete="off"
                   placeholder={
                     keySaved
-                      ? "不修改就留空"
+                      ? "留空则不修改"
                       : keyLost
                         ? "从备份恢复后需要重新填写"
                         : form.provider === CUSTOM
@@ -196,8 +196,8 @@ export function ModelDialog({
                   {models.isSuccess && (
                     <span className="text-muted-foreground">
                       {models.data.length > 0
-                        ? `获取到 ${models.data.length} 个模型，点输入框选择或输入名字筛选。`
-                        : "服务商没有列出模型，请手动填写。"}
+                        ? `获取到 ${models.data.length} 个模型，点输入框选择或输入名称筛选`
+                        : "服务商未列出模型，请手动填写"}
                     </span>
                   )}
                   {models.isError && <span className="text-destructive">{errorMessage(models.error)}</span>}

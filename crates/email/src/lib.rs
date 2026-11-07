@@ -723,7 +723,7 @@ pub async fn resend(db: &SqlitePool, id: i64, now: i64) -> Result<Approved, sqlx
 }
 
 /// Why an email the last run left being sent is only maybe sent.
-pub const INTERRUPTED: &str = "发送途中应用退出，无法确定是否已发出。";
+pub const INTERRUPTED: &str = "发送途中应用退出，无法确定是否已发出";
 
 /// Why an email to a mentor with no address failed.
 pub const NO_ADDRESS: &str = "导师尚未填写邮箱。在导师资料里填写后重试。";

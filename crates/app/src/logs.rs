@@ -148,7 +148,7 @@ fn crawl_content(
     ));
     let lines = crawl_lines(dir, detail.summary.id, created_at)?;
     out.push_str(if lines.is_empty() {
-        "没有找到这次整理的日志。\n"
+        "未找到这次整理的日志。\n"
     } else {
         &lines
     });
@@ -279,7 +279,7 @@ mod tests {
             started,
             "已暂停",
             "最近 14 天",
-            "没有找到",
+            "未找到",
         ] {
             assert!(empty.contains(value), "missing {value}");
         }

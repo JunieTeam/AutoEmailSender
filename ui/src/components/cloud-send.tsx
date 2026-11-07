@@ -14,27 +14,27 @@ import { refreshSchedule, scheduledAt } from "@/components/schedule";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { fileSize } from "@/format";
+import { fileSize, sentence } from "@/format";
 
 // docs/ui.md#任务: handing scheduled first emails to the official server, which sends them while the
 // computer is off.
 
 const BLOCKED: Record<CloudSendBlocked, string> = {
-  signed_out: "云端定时发送是 Plus 专享，请先登录。",
-  terms_outdated: "尚未同意新版条款，同意后方可使用官方服务。",
-  no_plus: "云端定时发送是 Plus 专享。",
+  signed_out: "云端定时发送是 Plus 专享，请先登录",
+  terms_outdated: "尚未同意新版条款，同意后方可使用官方服务",
+  no_plus: "云端定时发送是 Plus 专享",
 };
 
 const REASONS: Record<CloudSendUnfitReason, string> = {
   follow_up: "追问",
   tried: "之前发送过一次",
   task_paused: "任务已暂停",
-  no_address: "导师没有邮箱",
+  no_address: "导师无邮箱",
   too_soon: "时间太近",
   after_plus: "晚于 Plus 到期时间",
   foreign_mailbox: "境外邮箱",
   other_account: "负责邮箱有别的账号交给云端的邮件",
-  no_mailbox: "没有能从云端发信的邮箱",
+  no_mailbox: "无可从云端发信的邮箱",
   too_late: "排不进最晚发送时间",
   too_large: "超过上限",
 };
@@ -131,7 +131,7 @@ export function CloudSendDialog({ task, onClose }: { task?: number; onClose: () 
           <p className="grow text-sm text-destructive" role="alert">
             {handOff.error && errorMessage(handOff.error)}
             {!handOff.error && !handOff.data && missing.length > 0 && (
-              <span className="text-muted-foreground">勾选同意后才能交出；不想交出的，取消勾选用这个邮箱的邮件。</span>
+              <span className="text-muted-foreground">勾选同意后才能交出；不想交出的，取消勾选用这个邮箱的邮件</span>
             )}
           </p>
           {handOff.data ? (
@@ -184,9 +184,7 @@ function Choices({
     <>
       {preview.emails.length === 0 && (
         <p>
-          {preview.unfit.length === 0
-            ? "只有定时发送的首封可以交给云端，现在没有还没发出的定时首封。"
-            : "没有能交给云端的邮件。"}
+          {preview.unfit.length === 0 ? "只有定时发送的首封可以交给云端，当前无待发的定时首封" : "无可交给云端的邮件"}
         </p>
       )}
       {[...groups].map(([name, emails]) => (
@@ -227,10 +225,10 @@ function Choices({
 function HandedOff({ result }: { result: CloudHandedOff }) {
   return (
     <DialogBody className="flex flex-col gap-2 text-sm">
-      <p>{result.handed.length > 0 ? `已交给云端 ${result.handed.length} 封。` : "没有邮件交给云端。"}</p>
+      <p>{result.handed.length > 0 ? `已交给云端 ${result.handed.length} 封` : "未交出任何邮件"}</p>
       {result.loginFailed.map((m) => (
         <p key={m.mailboxId} className="text-destructive">
-          云端登录 {m.address} 失败：{m.error}这个邮箱的邮件留在本地发送。
+          云端登录 {m.address} 失败：{sentence(m.error)}这个邮箱的邮件留在本地发送。
         </p>
       ))}
       {result.kept.length > 0 && (
@@ -259,9 +257,7 @@ export function WithdrawFromCloud({ withdraw, onDone }: { withdraw: CloudWithdra
         撤回到本地
       </Button>
       {action.data && action.data.sending > 0 && (
-        <p className="w-full text-xs text-muted-foreground">
-          {action.data.sending} 封正在发送，撤不回了，稍后同步结果。
-        </p>
+        <p className="w-full text-xs text-muted-foreground">{action.data.sending} 封正在发送，无法撤回，稍后同步结果</p>
       )}
       {action.error && <p className="w-full text-xs text-destructive">未能撤回：{errorMessage(action.error)}</p>}
     </>

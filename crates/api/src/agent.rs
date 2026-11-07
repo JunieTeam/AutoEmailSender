@@ -206,7 +206,7 @@ impl Access {
             Ok(Err(_)) => Err(CallError::invalid("这个请求已经失效".into())),
             Err(_) => {
                 confirmation.decision = "timeout";
-                Err(CallError::invalid("你没有在应用里确认".into()))
+                Err(CallError::invalid("你未在应用里确认".into()))
             }
         }
     }
@@ -237,7 +237,7 @@ pub async fn answer_agent_request(ctx: &Context, input: AgentAnswer) -> Result<(
         let count = requests.pending[index].request.description.letters.len();
         if input.allow && input.rendered.as_ref().map_or(0, Vec::len) != count {
             return Err(CallError::invalid(
-                "请为每封待发邮件提供对应的 HTML 和纯文本渲染结果。".into(),
+                "请为每封待发邮件提供对应的 HTML 和纯文本渲染结果".into(),
             ));
         }
         requests
@@ -289,7 +289,7 @@ pub async fn set_agent_access(ctx: &Context, input: AgentAccess) -> Result<(), C
         .agent_access
         .commands
         .get()
-        .ok_or_else(|| CallError::invalid("请在桌面应用中设置 Agent 连接。".into()))?;
+        .ok_or_else(|| CallError::invalid("请在桌面应用中设置 Agent 连接".into()))?;
     let (reply, result) = oneshot::channel();
     commands
         .send(Change {

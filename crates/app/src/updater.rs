@@ -39,7 +39,7 @@ enum Phase<U> {
 impl<U: Clone> Phase<U> {
     fn begin_download(&mut self) -> Result<U, String> {
         let Self::Available { update, .. } = self else {
-            return Err("当前没有可下载的更新，或更新已经在下载。".into());
+            return Err("当前无可下载的更新，或更新正在下载".into());
         };
         let update = update.clone();
         *self = Self::Downloading {
@@ -66,7 +66,7 @@ impl<U: Clone> Phase<U> {
     fn installation(&self) -> Result<(U, Arc<[u8]>), String> {
         match self {
             Self::Ready { update, bytes } => Ok((update.clone(), bytes.clone())),
-            _ => Err("更新还没有下载完成，请先下载再重启。".into()),
+            _ => Err("更新尚未下载完成，请先下载再重启".into()),
         }
     }
 }
@@ -148,7 +148,7 @@ async fn check(app: &AppHandle) -> Result<UpdateStatus, String> {
         return Ok(state.status());
     }
     let Ok(_operation) = state.operation.try_lock() else {
-        return Err("正在检查、下载或安装更新，请稍后再试。".into());
+        return Err("正在检查、下载或安装更新，请稍后再试".into());
     };
     // Keep a downloaded package and its release together until the user installs it.
     if matches!(*state.phase(), Phase::Ready { .. }) {
@@ -156,7 +156,7 @@ async fn check(app: &AppHandle) -> Result<UpdateStatus, String> {
     }
     let net = app
         .try_state::<Arc<api::Context>>()
-        .ok_or("应用尚未就绪，无法检查更新，请先处理启动错误。")?
+        .ok_or("应用尚未就绪，无法检查更新，请先处理启动错误")?
         .net
         .clone();
     let exit_app = app.clone();
@@ -204,7 +204,7 @@ fn check_error(error: tauri_plugin_updater::Error) -> String {
         }
         _ => "更新配置或更新清单不正确",
     };
-    format!("检查更新失败：{reason}，请检查网络和系统代理后重试。")
+    format!("检查更新失败：{reason}，请检查网络和系统代理后重试")
 }
 
 #[tauri::command]
@@ -213,7 +213,7 @@ pub async fn download_update(app: AppHandle) -> Result<(), String> {
     let _operation = state
         .operation
         .try_lock()
-        .map_err(|_| "正在检查、下载或安装更新，请稍后再试。".to_owned())?;
+        .map_err(|_| "正在检查、下载或安装更新，请稍后再试".to_owned())?;
     let mut update = state.phase().begin_download()?;
     update.timeout = Some(Duration::from_secs(30 * 60));
     changed(&app);
@@ -256,15 +256,15 @@ fn download_error(error: tauri_plugin_updater::Error) -> String {
         | Error::SignedVersionMismatch { .. }
         | Error::MissingSignedVersion => (
             "signature",
-            "更新包签名校验失败，未安装，请重新下载；仍失败时请从官网下载。",
+            "更新包签名校验失败，未安装，请重新下载；仍失败时请从官网下载",
         ),
         Error::Reqwest(error) if error.is_timeout() => {
-            ("timeout", "更新下载超时，请检查网络和系统代理后重试。")
+            ("timeout", "更新下载超时，请检查网络和系统代理后重试")
         }
         Error::Reqwest(_) | Error::Network(_) => {
-            ("network", "更新下载失败，请检查网络和系统代理后重试。")
+            ("network", "更新下载失败，请检查网络和系统代理后重试")
         }
-        _ => ("package", "更新包无法读取或校验，未安装，请重新下载。"),
+        _ => ("package", "更新包无法读取或校验，未安装，请重新下载"),
     };
     tracing::warn!(category, "update download failed");
     reason.into()
@@ -278,17 +278,17 @@ pub async fn restart_update(app: AppHandle) -> Result<(), String> {
         let _operation = state
             .operation
             .try_lock()
-            .map_err(|_| "正在检查、下载或安装更新，请稍后再试。".to_owned())?;
+            .map_err(|_| "正在检查、下载或安装更新，请稍后再试".to_owned())?;
         let (update, bytes) = state.phase().installation()?;
         update.install(&*bytes).map_err(|error| {
             tracing::error!("update installation failed: {error}");
             show_tray(&install_app, true);
-            "更新未能安装，请检查应用所在目录的权限后重试。".to_owned()
+            "更新未能安装，请检查应用所在目录的权限后重试".to_owned()
         })?;
         install_app.restart();
     })
     .await
-    .map_err(|error| format!("更新处理未能完成：{error}，请重试。"))?
+    .map_err(|error| format!("更新处理未能完成：{error}，请重试"))?
 }
 
 fn show_tray(app: &AppHandle, visible: bool) {

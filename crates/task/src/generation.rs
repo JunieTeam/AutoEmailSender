@@ -78,13 +78,13 @@ async fn generate(
     };
     let Some(chosen) = model::selected(&mut *tx, t.model_config_id).await? else {
         return Ok(Outcome::Pause(
-            "尚未添加模型，请在设置中添加后继续。".into(),
+            "尚未添加模型，请在设置中添加后继续".into(),
             None,
         ));
     };
     if !chosen.agreed {
         return Ok(Outcome::Pause(
-            "模型配置已改变，请先确认发给服务商的内容。".into(),
+            "模型配置已改变，请先确认发给服务商的内容".into(),
             Some(chosen),
         ));
     }
@@ -269,7 +269,7 @@ async fn generate(
             }
         }
         Err(writing::Error::NotALetter { .. }) => {
-            Outcome::Failed("模型未能写出完整的草稿，请重试或换个模型。".into())
+            Outcome::Failed("模型未能写出完整的草稿，请重试或换个模型".into())
         }
         Err(writing::Error::Db(e)) => return Err(e),
         Err(writing::Error::NoMentor) => Outcome::Requeue,
@@ -542,7 +542,7 @@ pub async fn run(
                                     requeue(
                                         &db,
                                         claim,
-                                        Some(("草稿生成意外中断，请继续或重启应用。", None)),
+                                        Some(("草稿生成意外中断，请继续或重启应用", None)),
                                         now(),
                                     )
                                 })

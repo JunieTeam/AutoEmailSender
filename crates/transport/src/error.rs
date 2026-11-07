@@ -139,10 +139,10 @@ impl MailError {
     pub fn message(&self) -> String {
         match self {
             MailError::Resolve { host, .. } => {
-                format!("找不到服务器 {host}。检查服务器地址有没有填错，网络是否连通。")
+                format!("找不到服务器 {host}。请检查服务器地址是否填错、网络是否连通。")
             }
             MailError::Connect { host, port, .. } => format!(
-                "连不上 {host} 的 {port} 端口。检查服务器地址和端口有没有填错，网络是否连通。"
+                "连不上 {host} 的 {port} 端口。请检查服务器地址和端口是否填错、网络是否连通。"
             ),
             MailError::ProxyDown { proxy, .. } => {
                 format!("连不上系统代理 {proxy}。确认代理软件在运行，或者关掉系统代理。")
@@ -181,7 +181,7 @@ impl MailError {
                 邮箱设置里有没有开启 IMAP/SMTP 服务；\
                 学校和公司的邮箱还可能被管理员关闭了客户端登录，需要问管理员。"
             ),
-            MailError::Refused { reply, .. } => format!("服务器拒绝了请求（{reply}）。"),
+            MailError::Refused { reply, .. } => format!("服务器拒绝了请求（{reply}）"),
             MailError::Broken(e) => {
                 format!("和服务器通信出错（{e}）。稍后再试；一直出错时，导出日志发给开发者。")
             }
@@ -189,7 +189,7 @@ impl MailError {
                 "服务器的回复看不懂。稍后再试；一直出错时，导出日志发给开发者。".into()
             }
             MailError::Recipient(address) => {
-                format!("收件地址 {address} 无法使用。检查导师的邮箱有没有填错。")
+                format!("收件地址 {address} 无法使用。请检查导师的邮箱是否填错。")
             }
         }
     }

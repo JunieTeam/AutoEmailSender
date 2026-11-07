@@ -93,7 +93,7 @@ export function Shell() {
     const updateChanged = listen("update-changed", () => queryClient.invalidateQueries({ queryKey: ["updateStatus"] }));
     const draftsDone = listen<DraftsFinished>("drafts-finished", ({ payload: p }) => {
       refreshTasks(queryClient);
-      setCompleted(`任务“${p.name}”的草稿写好了：${p.generated} 封，失败 ${p.failed} 封`);
+      setCompleted(`任务“${p.name}”的草稿已生成：${p.generated} 封，失败 ${p.failed} 封`);
     });
     return () => {
       void crawlChanged.then((f) => f());
@@ -483,7 +483,7 @@ function Background({ className }: { className?: string }) {
                 <Link to="/find" search={findSearch({ tab: "crawl", detail: c.id })} className={ITEM}>
                   <Entry
                     title={crawlName(c)}
-                    detail={c.error ?? (c.state === "paused" ? "已暂停" : `${c.failed} 个页面没能打开`)}
+                    detail={c.error ?? (c.state === "paused" ? "已暂停" : `${c.failed} 个页面未能打开`)}
                   />
                 </Link>
                 {c.state === "paused" && (
@@ -530,12 +530,15 @@ function Background({ className }: { className?: string }) {
             )}
             {work.cloudFailure && (
               <Link to="/settings/backup" className={ITEM}>
-                <Entry title={`云端备份 ${work.cloudFailure.days} 天没成功`} detail={work.cloudFailure.message} />
+                <Entry title={`云端备份已连续 ${work.cloudFailure.days} 天未成功`} detail={work.cloudFailure.message} />
               </Link>
             )}
             {work.libraryFailure && (
               <Link to="/find" search={findSearch({ tab: "library" })} className={ITEM}>
-                <Entry title={`导师库 ${work.libraryFailure.days} 天没同步上`} detail={work.libraryFailure.message} />
+                <Entry
+                  title={`导师库已连续 ${work.libraryFailure.days} 天未能同步`}
+                  detail={work.libraryFailure.message}
+                />
               </Link>
             )}
           </Group>
@@ -606,7 +609,7 @@ function Background({ className }: { className?: string }) {
             {work.receiving && (
               <div className="flex items-center gap-2">
                 <Link to="/conversations" className={ITEM}>
-                  <Entry title="收信" detail={received ?? "还没有收过信"} />
+                  <Entry title="收信" detail={received ?? "尚未收信"} />
                 </Link>
                 <Button variant="quiet" size="sm" disabled={receiving} onClick={receive}>
                   立即收信
@@ -624,7 +627,7 @@ function Background({ className }: { className?: string }) {
             ))}
             {work.drafted.map((t) => (
               <Link key={t.id} to="/tasks/$id" params={{ id: t.id }} className={ITEM}>
-                <Entry title={t.name} detail={`写好 ${t.generated} 封草稿，去任务`} />
+                <Entry title={t.name} detail={`生成 ${t.generated} 封草稿，去任务`} />
               </Link>
             ))}
             {work.matched > 0 && (
@@ -640,7 +643,7 @@ function Background({ className }: { className?: string }) {
           </Group>
         )}
         {work.waiting === 0 && work.running === 0 && work.next === null && !work.receiving && work.finished === 0 && (
-          <p className="text-muted-foreground">现在没有后台工作</p>
+          <p className="text-muted-foreground">当前无后台工作</p>
         )}
         {error && <p className="text-destructive">{errorMessage(error)}</p>}
       </PopoverContent>

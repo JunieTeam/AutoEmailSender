@@ -246,7 +246,7 @@ export function ImportDialog({ onClose, onImported }: { onClose: () => void; onI
                       资料不同 <strong>{differenceIds.size}</strong> 位
                     </span>
                     <span>
-                      没有变化 <strong>{preview.unchanged}</strong> 位
+                      无变化 <strong>{preview.unchanged}</strong> 位
                     </span>
                   </div>
                   <IntakeChoices preview={preview} decisions={decisions} onChange={choose} />

@@ -144,7 +144,7 @@ async fn an_allowed_phone_calls_what_the_window_may_and_hears_its_events(db: Sql
     assert_eq!(error["code"], "bad_input");
     for op in ["addPhone", "answerAgentRequest", "setAgentAccess"] {
         let error = phone.call(op, json!({})).await.unwrap_err();
-        assert_eq!(error["message"], "这个操作只能在电脑上做。");
+        assert_eq!(error["message"], "这个操作只能在电脑上完成");
     }
     phone.call("listTags", json!({})).await.unwrap();
     assert_eq!(setup.events.recv().await, Some(Seen::Called));

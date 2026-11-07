@@ -7,7 +7,7 @@ import { TermsNotice, useAccount, useTermsOutdated } from "@/components/account"
 import { PayDialog, REFUNDED, usePlusItems, yuan } from "@/components/plus";
 import { TRACKING_CAVEAT } from "@/components/tracking";
 import { buttonVariants, Button } from "@/components/ui/button";
-import { day } from "@/format";
+import { day, sentence } from "@/format";
 import { useNow } from "@/now";
 import { Section, SwitchButton } from "./settings";
 
@@ -63,17 +63,17 @@ export function TrackingSection() {
         {status.error && <p className="mt-2 text-sm text-destructive">设置未能加载：{errorMessage(status.error)}</p>}
         {save.error && <p className="mt-2 text-sm text-destructive">{errorMessage(save.error)}</p>}
       </div>
-      {data && !data.account && <Prompt text="登录并开通 Plus 后可使用。" action="去登录" />}
+      {data && !data.account && <Prompt text="登录并开通 Plus 后可使用" action="去登录" />}
       {data?.account?.kind === "unreadable" && (
         <p className="text-sm text-destructive">额度未能读取：{data.account.reason}</p>
       )}
       {server && outdated && <TermsNotice />}
       {server && !outdated && !plus && (
         <div className="flex flex-col gap-1.5">
-          <Prompt text="开通 Plus 后可使用邮件追踪，每 30 天 500 封。" action="开通 Plus" />
+          <Prompt text="开通 Plus 后可使用邮件追踪，每 30 天 500 封" action="开通 Plus" />
           {server.tracking.packLeft > 0 && (
             <p className="text-sm text-muted-foreground">
-              额度包还剩 {server.tracking.packLeft} 封，Plus 有效时可继续使用。
+              额度包还剩 {server.tracking.packLeft} 封，Plus 有效时可继续使用
             </p>
           )}
         </div>
@@ -83,15 +83,17 @@ export function TrackingSection() {
       )}
       {enabled && quota && (
         <>
-          {!plus && <p className="text-sm text-warning">Plus 已到期，之后发出的邮件不带追踪图片，已追踪的照常更新。</p>}
+          {!plus && <p className="text-sm text-warning">Plus 已到期，之后发出的邮件不带追踪图片，已追踪的照常更新</p>}
           {plus && quota.used >= quota.limit && quota.packLeft === 0 && (
             <p className="text-sm text-warning">
-              最近 30 天的 {quota.limit} 封和额度包均已用完，之后发出的邮件不带追踪图片。
+              最近 30 天的 {quota.limit} 封和额度包均已用完，之后发出的邮件不带追踪图片
             </p>
           )}
         </>
       )}
-      {data?.failure && <p className="text-sm text-destructive">同步打开记录失败：{data.failure}之后会自动重试。</p>}
+      {data?.failure && (
+        <p className="text-sm text-destructive">同步打开记录失败：{sentence(data.failure)}之后会自动重试。</p>
+      )}
     </Section>
   );
 }

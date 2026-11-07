@@ -19,7 +19,7 @@ export function ModelsSection() {
       <p className="text-sm text-muted-foreground">
         分析匹配度、写邮件草稿用的 AI 模型，可以添加多个。API Key 只存在这台电脑上，只发给对应的服务商。
       </p>
-      {error && <p className="text-sm text-destructive">模型没能加载：{errorMessage(error)}</p>}
+      {error && <p className="text-sm text-destructive">模型未能加载：{errorMessage(error)}</p>}
       {configs.data && providers.data && (
         <>
           {configs.data.length > 0 && (
@@ -59,7 +59,7 @@ function ModelRow({ config: c, providers }: { config: ModelConfig; providers: Mo
             {c.isDefault && <DefaultMark />}
           </p>
           <p className="truncate text-sm text-muted-foreground">{c.name ? `${source}，${c.model}` : source}</p>
-          {c.needsApiKey && <p className="text-sm text-warning">恢复后需要重新填写 API Key，填好之前不能用。</p>}
+          {c.needsApiKey && <p className="text-sm text-warning">恢复后需要重新填写 API Key，填好之前无法使用</p>}
         </div>
         <div className="flex flex-wrap gap-1">
           <Button variant="quiet" disabled={test.isPending} onClick={() => test.mutate()}>
@@ -88,7 +88,7 @@ function ModelRow({ config: c, providers }: { config: ModelConfig; providers: Mo
       </div>
       <p className="text-sm empty:hidden" aria-live="polite">
         {test.isPending && <span className="text-muted-foreground">正在测试…</span>}
-        {test.isSuccess && <span className="text-muted-foreground">模型回复正常。</span>}
+        {test.isSuccess && <span className="text-muted-foreground">模型回复正常</span>}
         {test.isError && <span className="text-destructive">{errorMessage(test.error)}</span>}
         {remove.isError && <span className="text-destructive">{errorMessage(remove.error)}</span>}
         {makeDefault.isError && <span className="text-destructive">{errorMessage(makeDefault.error)}</span>}

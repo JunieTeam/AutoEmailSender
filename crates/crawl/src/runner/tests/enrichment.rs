@@ -1078,7 +1078,7 @@ async fn enrichment_child_checks_identity_before_filling_any_field(db: SqlitePoo
             .unwrap();
         assert_eq!(child.status == PageStatus::Success, success);
         if !success {
-            assert!(child.error.as_ref().unwrap().contains("没有补入"));
+            assert!(child.error.as_ref().unwrap().contains("未补入"));
             assert_eq!(d.evidence.len(), 1);
             assert!(d.candidate.enrichment.enrich_changes.is_empty());
         }

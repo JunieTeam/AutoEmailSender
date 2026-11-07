@@ -60,7 +60,7 @@ export function useWriting(
         await waitForSaves(queryClient, ["saveReplyDraft", mentorId]);
         // Canceled while the draft was saving, so that the core had nothing to withdraw yet.
         const current = queryClient.getMutationCache().find<Letter, Error, WritingEdit>({ mutationKey });
-        if (current?.state.variables?.request !== letter.request) throw new Error("这个请求已经取消");
+        if (current?.state.variables?.request !== letter.request) throw new Error("这个请求已取消");
         return call("writeReply", {
           mentorId,
           replyTo,
@@ -183,7 +183,7 @@ export function ModelAction({
             <Link to="/settings/models" className="text-brand-text">
               设置 › AI › 模型
             </Link>
-            里添加。
+            里添加
           </PopoverContent>
         </Popover>
       ) : !chosen.agreed ? (
@@ -299,7 +299,7 @@ export function Rewrite({ before, after }: { before: Letter; after: Letter }) {
       {facts && (
         <p className="flex items-start gap-2 text-sm text-warning">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" strokeWidth={1.8} />
-          改动里有日期、数字或链接，已标黄，请核对后再采用。
+          改动里有日期、数字或链接，已标黄，请核对后再采用
         </p>
       )}
     </div>

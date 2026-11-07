@@ -190,7 +190,7 @@ function Composer({
     mutationFn: (e: FirstEmail) => {
       const saved = queryClient.getQueryData<FirstDraft | null>(["getFirstDraft", mentorId]);
       if (!saved || saved.subject !== e.subject.trim() || saved.bodyMd !== e.bodyMd)
-        throw new Error("草稿尚未保存成功，请修改后重试。");
+        throw new Error("草稿未能保存，请修改后重试");
       return call("approveFirstEmail", e);
     },
     onSuccess: async () => {
@@ -219,14 +219,14 @@ function Composer({
     setBody({ version: body.version + 1, markdown: next.bodyMd });
   }
   const blocker = !address ? (
-    "导师尚未填写邮箱，可在资料里填写。"
+    "导师尚未填写邮箱，可在资料里填写"
   ) : mailboxes.data?.length === 0 ? (
     <>
       尚未添加发信的邮箱，可在
       <Link to="/settings/mailboxes" className="text-brand-text">
         设置 › 邮件 › 邮箱
       </Link>
-      里添加。
+      里添加
     </>
   ) : null;
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -508,7 +508,7 @@ export function TemplateMenu({
             <Link to="/settings/templates" className="text-brand-text">
               设置 › 个人 › 模板
             </Link>
-            里添加。
+            里添加
           </p>
         ) : (
           templates.data?.map((t) => (

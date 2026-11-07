@@ -372,7 +372,7 @@ async fn confirmations_follow_the_real_channel_and_cli_until_answer_expiry_or_di
     tokio::time::advance(std::time::Duration::from_secs(301)).await;
     let expired = frame(&mut second).await?;
     tokio::time::resume();
-    assert_eq!(expired["error"]["message"], "你没有在应用里确认");
+    assert_eq!(expired["error"]["message"], "你未在应用里确认");
     assert!(pending(&ctx).await?.is_empty());
     assert!(answer(&ctx, &requests[1]["id"], true).await.is_err());
 

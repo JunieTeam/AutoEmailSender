@@ -197,8 +197,8 @@ async fn follow_up_eligibility_and_concurrent_task_creation(db: SqlitePool) {
     for (i, reason) in [
         "已回信",
         "被退回",
-        "说不清",
-        "没发出的首封或追问",
+        "无法确定是否已发出",
+        "未发出的首封或追问",
         "尚未填写邮箱",
     ]
     .iter()
@@ -864,7 +864,7 @@ async fn missing_parent_mailbox_blocks_follow_up_in_plan_and_sender(db: SqlitePo
     }
     for d in items(&db, t).await {
         assert_eq!(d.state, DraftState::Failed);
-        assert!(d.error.unwrap().contains("没有能发信的邮箱"));
+        assert!(d.error.unwrap().contains("无可发信的邮箱"));
     }
 }
 

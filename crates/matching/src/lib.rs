@@ -16,11 +16,11 @@ use ts_rs::TS;
 pub use model::background::CONCURRENCY;
 /// Enough for a brief reason and three short lists; an estimate, not an output limit.
 pub const OUTPUT_TOKENS: i64 = 800;
-const INVALID: &str = "模型没有按要求回答，可以重试或换个模型";
+const INVALID: &str = "模型未按要求回答，可重试或换个模型";
 pub const NO_MODEL: &str = "尚未添加模型。在“设置 › AI › 模型”里添加后再试。";
-pub const NOT_AGREED: &str = "使用 AI 前，请先确认发给模型服务商的内容。";
+pub const NOT_AGREED: &str = "使用 AI 前，请先确认发给模型服务商的内容";
 pub const NO_BASIS: &str =
-    "还没有匹配依据。请在“设置 › 个人”里添加用于匹配分析的材料或填写意向研究方向。";
+    "尚无匹配依据。请在“设置 › 个人”里添加用于匹配分析的材料或填写意向研究方向。";
 
 #[derive(Debug)]
 pub enum Error {
@@ -140,7 +140,7 @@ fn parse(text: &str) -> Result<queue::MatchAnswer, String> {
         text = rest.trim_end().strip_suffix("```").unwrap_or(rest).trim();
     }
     let start = text.find('{').ok_or("缺少 JSON 对象")?;
-    let end = text.rfind('}').ok_or("JSON 对象没有结束")?;
+    let end = text.rfind('}').ok_or("JSON 对象未结束")?;
     if end < start {
         return Err("缺少 JSON 对象".into());
     }
@@ -408,7 +408,7 @@ pub async fn run(
                             Ok(o) => o,
                             Err(e) => {
                                 tracing::error!(mentor_id = id, "match database: {e}");
-                                Outcome::Pause("匹配分析的数据暂时无法读取，请重试；仍然出错时，导出日志发给开发者。".into(), None)
+                                Outcome::Pause("匹配分析的数据暂时无法读取，请重试；仍然出错时，导出日志发给开发者".into(), None)
                             }
                         };
                         let completed_at = now();

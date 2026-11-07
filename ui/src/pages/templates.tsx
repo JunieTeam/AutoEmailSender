@@ -19,7 +19,7 @@ export function TemplatesSection() {
       <p className="text-sm text-muted-foreground">
         套用模板写信时，占位符换成每位导师的信息。也可以让 AI 逐一撰写，不用模板。
       </p>
-      {error && <p className="text-sm text-destructive">模板没能加载：{errorMessage(error)}</p>}
+      {error && <p className="text-sm text-destructive">模板未能加载：{errorMessage(error)}</p>}
       {templates.data && placeholders.data && (
         <>
           {templates.data.length > 0 && (
@@ -74,7 +74,7 @@ function TemplateRow({ template: t, placeholders }: { template: TemplateSummary;
                 删除
               </Button>
             }
-            message="删除这个模板？已经用它写好的草稿不受影响。"
+            message="删除这个模板？已用它生成的草稿不受影响。"
             action="删除"
             side="bottom"
             onConfirm={() => remove.mutate()}
@@ -98,7 +98,7 @@ function EditTemplate({ id, placeholders, onClose }: { id: number; placeholders:
     gcTime: 0,
   });
   if (template.error) {
-    return <p className="text-sm text-destructive">模板没能打开：{errorMessage(template.error)}</p>;
+    return <p className="text-sm text-destructive">模板未能打开：{errorMessage(template.error)}</p>;
   }
   return template.data && <TemplateDialog template={template.data} placeholders={placeholders} onClose={onClose} />;
 }

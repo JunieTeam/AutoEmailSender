@@ -353,7 +353,7 @@ function LinkButton({
             />
             <Button type="submit">{href.trim() || !active ? "确定" : "去掉链接"}</Button>
           </div>
-          {refused && <p className="text-sm text-destructive">只能链接到网页或邮箱地址。</p>}
+          {refused && <p className="text-sm text-destructive">只能链接到网页或邮箱地址</p>}
         </form>
       </PopoverContent>
     </Popover>

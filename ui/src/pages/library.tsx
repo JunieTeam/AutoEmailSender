@@ -27,7 +27,7 @@ export function LibraryTab() {
   if (!state) return null;
   if (state.kind === "loggedIn" && state.termsOutdated) {
     return (
-      <Notice title="尚未同意新版条款" detail="同意新版《用户服务协议》和《隐私政策》后，方可使用导师库。">
+      <Notice title="尚未同意新版条款" detail="同意新版《用户服务协议》和《隐私政策》后，方可使用导师库">
         <div className="mt-4">
           <AgreeTermsButton />
         </div>
@@ -38,9 +38,9 @@ export function LibraryTab() {
   return (
     <Notice
       title="登录后使用导师库"
-      detail="导师库是维护者整理的各校导师资料，登录后可以浏览，选好的导师直接添加到导师列表。"
+      detail="导师库是维护者整理的各校导师资料，登录后可以浏览，选好的导师直接添加到导师列表"
     >
-      {state.kind === "expired" && <p className="mt-2 text-sm text-warning">登录已失效，请重新登录。</p>}
+      {state.kind === "expired" && <p className="mt-2 text-sm text-warning">登录已失效，请重新登录</p>}
       <div className="mt-4 flex justify-center gap-2">
         <Button onClick={() => setDialog("login")}>登录</Button>
         <Button variant="quiet" onClick={() => setDialog("register")}>
@@ -172,7 +172,7 @@ function Library() {
               </label>
             )}
             {list.data?.total === 0 && (
-              <p className="py-12 text-center text-muted-foreground">{s.q ? `没有找到“${s.q}”` : "这里还没有导师"}</p>
+              <p className="py-12 text-center text-muted-foreground">{s.q ? `未找到“${s.q}”` : "这里尚无导师"}</p>
             )}
             {items.map((m) => (
               <Fragment key={m.id}>
@@ -201,7 +201,7 @@ function Library() {
               </div>
             )}
             <p className="mt-6 text-xs text-faint">
-              服务器会记下你添加过哪些导师，用来计算每天的数量和推送资料更新；你的标签、备注、往来和匹配结果不会上传。
+              服务器会记下你添加过哪些导师，用来计算每天的数量和推送资料更新；你的标签、备注、往来和匹配结果不会上传
             </p>
           </div>
         </section>
@@ -386,7 +386,7 @@ function Row({
               可能已有
             </span>
           )}
-          {m.emailCount === 0 && <span className="text-xs text-warning">没有邮箱</span>}
+          {m.emailCount === 0 && <span className="text-xs text-warning">无邮箱</span>}
         </span>
         <span className="mt-0.5 block truncate text-sm text-muted-foreground">
           {[m.university !== university && m.university, m.school, m.department, m.title].filter(Boolean).join(" · ")}
@@ -421,7 +421,7 @@ function Preview({ id }: { id: string }) {
         ))}
       </dd>
       <dt>邮箱</dt>
-      <dd>{p.emailCount > 0 ? `有 ${p.emailCount} 个邮箱，添加后可见` : <Missing>没有邮箱</Missing>}</dd>
+      <dd>{p.emailCount > 0 ? `有 ${p.emailCount} 个邮箱，添加后可见` : <Missing>无邮箱</Missing>}</dd>
       <dt>研究方向</dt>
       <dd className="whitespace-pre-wrap">{p.research ?? <Missing>未填写</Missing>}</dd>
       {p.papers.length > 0 && (

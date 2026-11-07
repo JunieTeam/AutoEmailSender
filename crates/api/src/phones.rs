@@ -219,11 +219,11 @@ pub struct PhoneCode {
 
 pub async fn add_phone(ctx: &Context, _: Nothing) -> Result<PhoneCode, CallError> {
     if !profile::phone_access(&ctx.db).await? {
-        return Err(CallError::invalid("请先打开“允许手机连接”。".into()));
+        return Err(CallError::invalid("请先打开“允许手机连接”".into()));
     }
     if paired_count(&ctx.db).await? >= MAX_PHONES {
         return Err(CallError::invalid(format!(
-            "最多配对 {MAX_PHONES} 部手机，先撤销一部。"
+            "最多配对 {MAX_PHONES} 部手机，先撤销一部"
         )));
     }
     let room = room(&ctx.db).await?.ok_or(account::Error::SignedOut)?;
@@ -289,9 +289,7 @@ pub async fn answer_phone_pairing(
             }) => (room, device, key, connection, name),
             other => {
                 state.pairing = other;
-                return Err(CallError::invalid(
-                    "手机已经断开，请重新生成二维码。".into(),
-                ));
+                return Err(CallError::invalid("手机已经断开，请重新生成二维码".into()));
             }
         }
     };
@@ -321,7 +319,7 @@ async fn save_phone(
     // A phone may have been paired from another code meanwhile.
     if paired_count(db).await? >= MAX_PHONES {
         return Err(CallError::invalid(format!(
-            "最多配对 {MAX_PHONES} 部手机，先撤销一部。"
+            "最多配对 {MAX_PHONES} 部手机，先撤销一部"
         )));
     }
     let key = key.as_slice();
@@ -340,7 +338,7 @@ async fn save_phone(
     .await?;
     if saved.rows_affected() == 0 {
         return Err(CallError::invalid(
-            "登录的账号变了，请重新添加这部手机。".into(),
+            "登录的账号变了，请重新添加这部手机".into(),
         ));
     }
     Ok(())
@@ -978,7 +976,7 @@ async fn seen(ctx: &Context, device: &str) {
 /// A phone's call: what the window may do, except what only the window may.
 async fn call(ctx: &Context, op: &str, input: Value) -> Result<Value, CallError> {
     if crate::window_only(op) {
-        return Err(CallError::invalid("这个操作只能在电脑上做。".into()));
+        return Err(CallError::invalid("这个操作只能在电脑上完成".into()));
     }
     let output = crate::call(ctx, op, input).await?;
     ctx.phones.emit(Event::Called);

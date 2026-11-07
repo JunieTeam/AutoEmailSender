@@ -73,11 +73,11 @@ impl ModelError {
                 国内用 OpenAI、Gemini 这类国外服务要开代理。"
             ),
             ModelError::TimedOut { address } => format!(
-                "{address} 迟迟没有响应。稍后再试；国内用 OpenAI、Gemini 这类国外服务要开代理。"
+                "{address} 长时间未响应。请稍后再试；在国内使用 OpenAI、Gemini 这类国外服务需要开启代理。"
             ),
             ModelError::Refused { status, reply, .. } => match status {
                 401 | 403 => format!(
-                    "API Key 不正确或没有权限（服务商回复：{reply}）。检查 API Key 有没有填错、是否已停用。"
+                    "API Key 不正确或无权限（服务商回复：{reply}）。请检查 API Key 是否填错、是否已停用。"
                 ),
                 402 => format!("账户余额不足（服务商回复：{reply}）。到服务商网站充值后再试。"),
                 404 => format!(
@@ -89,14 +89,14 @@ impl ModelError {
                 ),
                 500.. => format!("服务商出错了（{status}：{reply}）。稍后再试。"),
                 _ => format!(
-                    "服务商拒绝了请求（{status}：{reply}）。检查模型名有没有填错，这个模型是否支持对话。"
+                    "服务商拒绝了请求（{status}：{reply}）。请检查模型名是否填错、这个模型是否支持对话。"
                 ),
             },
             ModelError::Failed(reply) => {
                 format!("服务商中途出错了（服务商回复：{reply}）。稍后再试。")
             }
             ModelError::NoAnswer { finish_reason } => format!(
-                "模型没有给出回答（结束原因：{}）。换个模型再试。",
+                "模型未给出回答（结束原因：{}）。请换个模型再试。",
                 match finish_reason {
                     None => "未说明",
                     Some(crate::Finish::Stop) => "正常结束",

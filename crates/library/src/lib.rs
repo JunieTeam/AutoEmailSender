@@ -61,7 +61,7 @@ pub async fn list(
             .is_some_and(|q| !(1..=50).contains(&q.trim().chars().count()))
     {
         return Err(Error::Invalid(
-            "请填写 1–50 个字的关键词，页码从 1 开始。".into(),
+            "请填写 1–50 个字的关键词，页码从 1 开始".into(),
         ));
     }
     let path = {
@@ -243,10 +243,10 @@ impl Error {
             Self::Account(account::Error::Server(cloud_api::ApiError {
                 code: cloud_api::ErrorCode::NotFound,
                 ..
-            })) => "这位导师已不在导师库，请刷新列表。".into(),
+            })) => "这位导师已不在导师库，请刷新列表".into(),
             Self::Account(error) => error.message(),
             Self::Invalid(message) => message.clone(),
-            _ => "导师库处理未能完成，请重试；仍然失败时导出日志联系开发者。".into(),
+            _ => "导师库处理未能完成，请重试；仍然失败时导出日志联系开发者".into(),
         }
     }
 }

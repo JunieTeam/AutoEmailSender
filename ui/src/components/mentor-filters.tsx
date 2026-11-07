@@ -125,7 +125,7 @@ export function MentorFilters({ search, onChange }: { search: FilterSearch; onCh
       <Choices
         label="标签"
         choices={o?.tags.map((t) => ({ value: t.id, label: t.name, count: t.count })) ?? []}
-        missing={{ label: "没有标签", count: o?.untagged ?? 0 }}
+        missing={{ label: "无标签", count: o?.untagged ?? 0 }}
         selected={search.tag ?? []}
         error={options.error}
         onChange={(values) => onChange({ ...search, tag: values.length > 0 ? values : undefined })}
@@ -208,7 +208,7 @@ function Choices<T extends string | number>({
           className="mb-1 h-9"
         />
       )}
-      {error && <p className="px-2.5 py-2 text-destructive">没能加载：{errorMessage(error)}</p>}
+      {error && <p className="px-2.5 py-2 text-destructive">未能加载：{errorMessage(error)}</p>}
       <div className="max-h-72 overflow-y-auto">
         {listed.map((c) => (
           <Option

@@ -13,7 +13,7 @@ export function StartupFailure({ reason }: { reason: string }) {
         <img src={appIcon} alt="" className="size-10" />
         <h1 className="mt-5 text-lg font-semibold">Auto Email Sender 未能启动</h1>
         <p className="mt-2 text-sm break-words whitespace-pre-wrap text-muted-foreground">{reason}</p>
-        <p className="mt-4 text-sm">请导出日志发给开发者，以便查明原因。</p>
+        <p className="mt-4 text-sm">请导出日志发给开发者，以便查明原因</p>
         <div className="mt-6 flex items-center gap-3">
           <Button disabled={exported.isPending} onClick={() => exported.mutate()}>
             导出日志

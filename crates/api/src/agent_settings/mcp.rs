@@ -11,7 +11,7 @@ use ts_rs::TS;
 use super::{paths::plain_path, shell::command_line};
 use crate::CallError;
 
-const CLAUDE_UNAVAILABLE: &str = "找不到 claude 命令，请在终端里运行下面的命令。";
+const CLAUDE_UNAVAILABLE: &str = "找不到 claude 命令，请在终端里运行下面的命令";
 
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -152,7 +152,7 @@ impl Plan {
         }
         if current != self.original {
             return Err(CallError::invalid(
-                "配置在预览后发生了变化，请重新预览并确认。".into(),
+                "配置在预览后发生了变化，请重新预览并确认".into(),
             ));
         }
         if let Some(claude) = &self.claude {
@@ -199,7 +199,7 @@ impl Plan {
         temporary.as_file().sync_all().map_err(file_error)?;
         // A second check narrows the interval in which another editor could change the file.
         if self.current()? != self.original {
-            return Err(CallError::invalid("配置已变化，请重新预览并确认。".into()));
+            return Err(CallError::invalid("配置已变化，请重新预览并确认".into()));
         }
         temporary
             .persist(&self.path)
@@ -210,7 +210,7 @@ impl Plan {
     fn current(&self) -> Result<Option<String>, CallError> {
         if resolve(&self.logical_path)? != self.path {
             return Err(CallError::invalid(
-                "配置文件的链接指向已变化，请重新预览并确认。".into(),
+                "配置文件的链接指向已变化，请重新预览并确认".into(),
             ));
         }
         read(&self.path)
@@ -272,7 +272,7 @@ pub(super) fn config_text(executable: &Path) -> Result<String, CallError> {
 fn object(source: &str) -> Result<BTreeMap<String, &RawValue>, CallError> {
     serde_json::from_str(source).map_err(|e| {
         CallError::invalid(format!(
-            "MCP 配置必须是合法的 JSON 对象，不能包含注释（第 {} 行，第 {} 列）；原文件未改动。",
+            "MCP 配置必须是合法的 JSON 对象，不能包含注释（第 {} 行，第 {} 列）；原文件未改动",
             e.line(),
             e.column(),
         ))
@@ -311,7 +311,7 @@ fn file_error(e: io::Error) -> CallError {
 fn env_path(name: &str) -> Result<PathBuf, CallError> {
     std::env::var_os(name)
         .map(PathBuf::from)
-        .ok_or_else(|| CallError::invalid(format!("无法找到用户目录：{name} 未设置。")))
+        .ok_or_else(|| CallError::invalid(format!("无法找到用户目录：{name} 未设置")))
 }
 
 fn home() -> Result<PathBuf, CallError> {
@@ -419,7 +419,7 @@ fn run(args: &[String]) -> Result<(), CallError> {
     if !result.status.success() {
         // Client output can contain credentials from its configuration.
         return Err(CallError::invalid(format!(
-            "Claude Code 未能更新 MCP 配置（{}），请检查 Claude Code 的配置和文件权限后重试。",
+            "Claude Code 未能更新 MCP 配置（{}），请检查 Claude Code 的配置和文件权限后重试",
             result.status
         )));
     }

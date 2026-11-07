@@ -88,8 +88,8 @@ impl Error {
             Self::Database(_) => "备份数据库无法读取或处理，文件可能已损坏。请换一份备份重试；\
                 仍然失败时导出日志发给开发者。"
                 .into(),
-            Self::Migration(_) => "这份备份的数据库和本应用的对不上，不能恢复。".into(),
-            Self::Worker(_) => "备份处理未能完成，请重试；仍然失败时导出日志发给开发者。".into(),
+            Self::Migration(_) => "这份备份的数据库和本应用的对不上，不能恢复".into(),
+            Self::Worker(_) => "备份处理未能完成，请重试；仍然失败时导出日志发给开发者".into(),
         }
     }
 }
@@ -159,7 +159,7 @@ struct Snapshot {
 async fn snapshot(db: &SqlitePool, path: &Path) -> Result<Snapshot> {
     let name = path
         .to_str()
-        .ok_or_else(|| Error::Invalid("保存位置不能用于 SQLite 备份，请选择其他目录。".into()))?;
+        .ok_or_else(|| Error::Invalid("保存位置不能用于 SQLite 备份，请选择其他目录".into()))?;
     sqlx::query("VACUUM INTO ?").bind(name).execute(db).await?;
     let mut conn = SqliteConnection::connect_with(
         &SqliteConnectOptions::new()
@@ -263,12 +263,12 @@ async fn stage(
 async fn inspect(dir: &Path, stage: &Path, manifest: &Manifest) -> Result<RestoreInfo> {
     if manifest.application != APPLICATION {
         return Err(Error::Invalid(
-            "这不是 Auto Email Sender 导出的备份，请选择本应用的备份文件。".into(),
+            "这不是 Auto Email Sender 导出的备份，请选择本应用的备份文件".into(),
         ));
     }
     if manifest.database_version > database_version() {
         return Err(Error::Invalid(
-            "备份的数据库版本比当前应用新，请先升级应用再恢复。".into(),
+            "备份的数据库版本比当前应用新，请先升级应用再恢复".into(),
         ));
     }
     let mut conn = SqliteConnection::connect_with(
@@ -302,21 +302,19 @@ async fn inspect_version(conn: &mut SqliteConnection, manifest_version: i64) -> 
         .fetch_all(&mut *conn)
         .await?;
     if integrity != ["ok"] {
-        return Err(Error::Invalid(
-            "备份数据库已损坏，请换一份备份文件。".into(),
-        ));
+        return Err(Error::Invalid("备份数据库已损坏，请换一份备份文件".into()));
     }
     let version: Option<i64> = sqlx::query_scalar("SELECT max(version) FROM _sqlx_migrations")
         .fetch_one(&mut *conn)
         .await?;
     if version.is_some_and(|v| v > database_version()) {
         return Err(Error::Invalid(
-            "备份的数据库版本比当前应用新，请先升级应用再恢复。".into(),
+            "备份的数据库版本比当前应用新，请先升级应用再恢复".into(),
         ));
     }
     if version != Some(manifest_version) {
         return Err(Error::Invalid(
-            "备份记录的数据库版本不一致或不受支持，请选择完整的本应用备份。".into(),
+            "备份记录的数据库版本不一致或不受支持，请选择完整的本应用备份".into(),
         ));
     }
     Ok(())
@@ -344,7 +342,7 @@ async fn inspect_schema(conn: &mut SqliteConnection) -> Result<()> {
             .map_err(Error::Migration)?;
         if actual != database_schema(&mut expected).await? {
             return Err(Error::Invalid(
-                "这份备份的数据库和本应用的对不上，不能恢复。".into(),
+                "这份备份的数据库和本应用的对不上，不能恢复".into(),
             ));
         }
         Ok(())
@@ -365,7 +363,7 @@ async fn inspect_database(
         .await?;
     if violation.is_some() {
         return Err(Error::Invalid(
-            "备份数据库的关联数据不完整，请换一份备份文件。".into(),
+            "备份数据库的关联数据不完整，请换一份备份文件".into(),
         ));
     }
     let materials: Vec<(i64, i64)> = sqlx::query_as("SELECT id, size FROM material")
@@ -375,7 +373,7 @@ async fn inspect_database(
         let path = material::file(&stage.join("materials"), id);
         if !path.is_file() || fs::metadata(path)?.len() != u64::try_from(size).unwrap_or(u64::MAX) {
             return Err(Error::Invalid(format!(
-                "备份缺少材料文件或材料大小不正确（编号 {id}），请重新导出完整备份。"
+                "备份缺少材料文件或材料大小不正确（编号 {id}），请重新导出完整备份"
             )));
         }
     }
@@ -402,7 +400,7 @@ pub fn cancel(dir: &Path) -> Result<()> {
 
 fn ensure_not_pending(dir: &Path) -> Result<()> {
     if dir.join(PENDING).try_exists()? {
-        return Err(Error::Invalid("恢复已确认，请重启应用完成恢复。".into()));
+        return Err(Error::Invalid("恢复已确认，请重启应用完成恢复".into()));
     }
     Ok(())
 }
@@ -414,14 +412,14 @@ pub async fn confirm(db: &SqlitePool, dir: &Path, exported_at: i64, now: i64) ->
     let stage = dir.join("restore");
     let manifest = archive::manifest(&stage.join("manifest.json")).map_err(|e| match e {
         Error::Io { source: e, .. } if e.kind() == io::ErrorKind::NotFound => {
-            Error::Invalid("请先选择并检查备份文件，再确认恢复。".into())
+            Error::Invalid("请先选择并检查备份文件，再确认恢复".into())
         }
         e => e,
     })?;
     // Another restore checked or downloaded meanwhile has taken the stage.
     if manifest.exported_at != exported_at {
         return Err(Error::Invalid(
-            "要恢复的备份已经换成了另一份，请关掉这个窗口，重新选择备份。".into(),
+            "要恢复的备份已经换成了另一份，请关掉这个窗口，重新选择备份".into(),
         ));
     }
     inspect(dir, &stage, &manifest).await?;
@@ -498,7 +496,7 @@ pub fn apply_pending(dir: &Path) -> Result<bool> {
             rename(&stage.join(name), &dir.join(name))?;
         } else if !dir.join(name).try_exists()? {
             return Err(Error::Invalid(
-                "恢复暂存文件不完整，现有数据已保留，请导出日志联系开发者。".into(),
+                "恢复暂存文件不完整，现有数据已保留，请导出日志联系开发者".into(),
             ));
         }
     }

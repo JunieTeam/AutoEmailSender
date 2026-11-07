@@ -41,11 +41,11 @@ pub async fn set_ai_reply_todos(ctx: &Context, input: AiReplyTodos) -> Result<()
     if input.enabled {
         let chosen = model::chosen(&ctx.db)
             .await?
-            .ok_or_else(|| CallError::invalid("请先在“设置 › AI › 模型”里添加模型。".into()))?;
+            .ok_or_else(|| CallError::invalid("请先在“设置 › AI › 模型”里添加模型".into()))?;
         if !chosen.agreed {
             return Err(CallError {
                 code: ErrorCode::NeedsAgreement,
-                message: "请先确认发给模型服务商的内容，再开启回信待办。".into(),
+                message: "请先确认发给模型服务商的内容，再开启回信待办".into(),
             });
         }
     }
@@ -74,7 +74,7 @@ pub async fn add_todo(ctx: &Context, input: NewTodo) -> Result<i64, CallError> {
         .map_err(|error| CallError::invalid(error.into()))?;
     let id = email::todos::add(&ctx.db, input.mentor_id, &fields, now())
         .await?
-        .ok_or_else(|| CallError::invalid("导师不存在或已在回收站里，请刷新后重试。".into()))?;
+        .ok_or_else(|| CallError::invalid("导师不存在或已在回收站里，请刷新后重试".into()))?;
     ctx.todo_reminders.wake();
     Ok(id)
 }
@@ -86,7 +86,7 @@ pub async fn update_todo(ctx: &Context, input: TodoEdit) -> Result<(), CallError
         .map_err(|error| CallError::invalid(error.into()))?;
     require_applied(
         email::todos::update(&ctx.db, input.id, &fields, now()).await?,
-        "这条待办已删除或导师已在回收站里，请刷新后重试。",
+        "这条待办已删除或导师已在回收站里，请刷新后重试",
     )?;
     ctx.todo_reminders.wake();
     Ok(())
@@ -95,7 +95,7 @@ pub async fn update_todo(ctx: &Context, input: TodoEdit) -> Result<(), CallError
 pub async fn set_todo_done(ctx: &Context, input: TodoDone) -> Result<(), CallError> {
     require_applied(
         email::todos::set_done(&ctx.db, input.id, input.done, now()).await?,
-        "这条待办已删除或导师已在回收站里，请刷新后重试。",
+        "这条待办已删除或导师已在回收站里，请刷新后重试",
     )?;
     ctx.todo_reminders.wake();
     Ok(())
@@ -104,7 +104,7 @@ pub async fn set_todo_done(ctx: &Context, input: TodoDone) -> Result<(), CallErr
 pub async fn delete_todo(ctx: &Context, input: TodoId) -> Result<(), CallError> {
     require_applied(
         email::todos::delete(&ctx.db, input.id).await?,
-        "这条待办已删除或导师已在回收站里，请刷新后重试。",
+        "这条待办已删除或导师已在回收站里，请刷新后重试",
     )?;
     ctx.todo_reminders.wake();
     Ok(())
@@ -121,7 +121,7 @@ pub async fn retry_reply_todos(ctx: &Context, input: ReplyMessage) -> Result<(),
     require_applied(
         email::outcome::retry_action(&ctx.db, input.message_id, email::outcome::Action::Todos)
             .await?,
-        "这封回信没有提取失败的待办可重试。",
+        "这封回信没有提取失败的待办可重试",
     )?;
     ctx.reply_processor.wake();
     Ok(())

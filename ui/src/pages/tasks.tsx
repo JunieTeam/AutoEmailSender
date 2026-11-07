@@ -141,7 +141,7 @@ export function TasksPage() {
             {query.error ? (
               <Notice title="任务列表未能加载" detail={errorMessage(query.error)} />
             ) : query.data?.total === 0 ? (
-              <Notice title="尚未创建任务" detail="在导师列表勾选导师，按“写信”或“追问”创建任务。" />
+              <Notice title="尚未创建任务" detail="在导师列表勾选导师，按“写信”或“追问”创建任务" />
             ) : (
               query.data?.tasks.map((t) => (
                 <Link
@@ -383,10 +383,10 @@ export function TaskReviewPage() {
                 disabled={!restart.data?.ids.length || prepareRestart.isPending}
                 onClick={() => prepareRestart.mutate()}
               >
-                重新发起没成功的
+                重新发起未成功的
               </Button>
               {restart.data?.ids.length === 0 && (
-                <p className="px-2 text-xs text-muted-foreground">没有已取消、发送失败、生成失败或退信的导师。</p>
+                <p className="px-2 text-xs text-muted-foreground">无已取消、发送失败、生成失败或退信的导师</p>
               )}
               {(restart.error ?? prepareRestart.error) && (
                 <p className="px-2 text-sm text-destructive">{errorMessage(restart.error ?? prepareRestart.error)}</p>
@@ -418,7 +418,7 @@ export function TaskReviewPage() {
                   trigger={<Button variant="ghost">停止任务</Button>}
                   message={`停止后，未发出的邮件全部取消，任务无法继续。正在发送的邮件会完成发送。${
                     t.progress.cloud > 0
-                      ? `已交给云端的 ${t.progress.cloud} 封会去云端撤回；连不上服务器时，到点仍可能发出。`
+                      ? `已交给云端的 ${t.progress.cloud} 封会去云端撤回；连不上服务器时，到点仍可能发出`
                       : ""
                   }`}
                   action="停止任务"
@@ -433,7 +433,7 @@ export function TaskReviewPage() {
                 }
                 message={
                   t.progress.cloud > 0
-                    ? `有 ${t.progress.cloud} 封邮件已交给云端，请先把它们撤回到本地再删除任务。`
+                    ? `有 ${t.progress.cloud} 封邮件已交给云端，请先把它们撤回到本地再删除任务`
                     : "删除任务和未发出的邮件？发出过的邮件保留在导师往来中。有正在发送的邮件时无法删除。"
                 }
                 action="删除任务"
@@ -456,7 +456,7 @@ export function TaskReviewPage() {
         )}
         {withdrawCloud.data && withdrawCloud.data.sending > 0 && (
           <p className="text-sm text-muted-foreground">
-            {withdrawCloud.data.sending} 封正在发送，撤不回了，稍后同步结果。
+            {withdrawCloud.data.sending} 封正在发送，无法撤回，稍后同步结果
           </p>
         )}
       </header>
@@ -504,7 +504,7 @@ export function TaskReviewPage() {
             {list.error ? (
               <Notice title="草稿列表未能加载" detail={errorMessage(list.error)} />
             ) : list.data?.total === 0 ? (
-              <Notice title="没有符合条件的邮件" detail="换个筛选条件查看。" />
+              <Notice title="无符合条件的邮件" detail="可更换筛选条件查看" />
             ) : (
               list.data?.drafts.map((d) => (
                 <button
@@ -547,7 +547,7 @@ export function TaskReviewPage() {
             }}
           />
         ) : (
-          <Notice title="选择一封草稿开始审核" detail="草稿会陆续出现在左边。" />
+          <Notice title="选择一封草稿开始审核" detail="草稿会陆续出现在左边" />
         )}
       </div>
       {changingSchedule && <ChangeSchedule task={t} onClose={() => setChangingSchedule(false)} />}
@@ -632,7 +632,7 @@ function DraftDetail({
         {d.state === "generating" ? (
           <Notice
             title="AI 正在写"
-            detail={task.state === "paused" ? "任务已暂停，继续后生成排队中的草稿。" : "可以先审核其他草稿。"}
+            detail={task.state === "paused" ? "任务已暂停，继续后生成排队中的草稿" : "可先审核其他草稿"}
           />
         ) : d.state === "generation_failed" ? (
           <div className="space-y-3 p-5">
@@ -709,7 +709,7 @@ function DraftDetail({
           {d.cancelReason && (
             <p className="w-full text-sm text-warning">
               已取消：{d.cancelReason}
-              {d.state !== "canceled" && "，等待发送结果。"}
+              {d.state !== "canceled" && "，等待发送结果"}
               {task.kind === "follow_up" && ["导师已回信", "上一封被退回"].includes(d.cancelReason) && (
                 <Link to="/mentors/$mentorId" params={{ mentorId: mentor.id }} className="ml-3 text-brand-text">
                   去回复
@@ -811,7 +811,7 @@ function BulkApproval({ task, onClose }: { task: TaskSummary; onClose: () => voi
           {task.schedule.kind === "window" && (
             <p className="text-sm">
               {timing.data
-                ? `预计排进：${timing.data.dates.map((d) => day(new Date(`${d}T12:00`).getTime())).join("、") || "没有可用窗口"}。${timing.data.unplaced > 0 ? `${timing.data.unplaced} 封没有空位，将留待处理。` : ""}`
+                ? `预计排进：${timing.data.dates.map((d) => day(new Date(`${d}T12:00`).getTime())).join("、") || "无可用窗口"}。${timing.data.unplaced > 0 ? `${timing.data.unplaced} 封无空位，将留待处理。` : ""}`
                 : "正在核对剩余窗口…"}
             </p>
           )}
@@ -821,7 +821,7 @@ function BulkApproval({ task, onClose }: { task: TaskSummary; onClose: () => voi
               ? "任务已暂停，继续任务后才会发出。"
               : task.schedule.kind === "window"
                 ? "批准后按所选窗口排期。"
-                : "批准后立即交给发信循环，按邮箱余量依次发出。"}
+                : "批准后按邮箱余量依次发出。"}
             之后生成的草稿不包括在内。
           </p>
           <p className="text-sm text-muted-foreground">附件按各封草稿当前的清单发送，请在批准前核对。</p>
@@ -869,7 +869,7 @@ function PauseWithCloud({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger render={<Button variant="quiet" disabled={disabled} />}>暂停</PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-3">
-        <p>其中 {count} 封已交给云端，会照常发出。</p>
+        <p>其中 {count} 封已交给云端，会照常发出</p>
         <label className="mt-2 flex items-center gap-2">
           <Checkbox checked={withdraw} onCheckedChange={setWithdraw} />
           <span>一起撤回到本地</span>

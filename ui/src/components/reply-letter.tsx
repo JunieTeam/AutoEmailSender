@@ -249,8 +249,8 @@ function Composer({
     mutationFn: async (current: ReplyDraftEdit) => {
       const saved = queryClient.getQueryData<ReplyDraft | FollowUpDraft | null>([draftQuery, mentorId]);
       if (!saved || saved.replyTo !== current.replyTo || (saved.bodyMd ?? "") !== current.bodyMd)
-        throw new Error(`${label}尚未保存成功。请修改正文重试保存后再发送。`);
-      if (!style.data) throw new Error("信件样式尚未加载，请稍后再试。");
+        throw new Error(`${label}未能保存，请修改正文后重试`);
+      if (!style.data) throw new Error("信件样式尚未加载，请稍后再试");
       await call(followUp ? "approveFollowUp" : "approveReply", {
         mentorId,
         draftId: saved.id,
@@ -279,13 +279,13 @@ function Composer({
     setBody({ version: body.version + 1, markdown });
   }
   const blocker = !address
-    ? "导师尚未填写邮箱，可在资料里填写。"
+    ? "导师尚未填写邮箱，可在资料里填写"
     : !shownTarget
       ? followUp
-        ? "上一封已不在往来里，请放弃这份追问后重新选择。"
-        : "回的那封信已不在往来里。请点另一封回信旁的“回复”。"
+        ? "上一封已不在往来里，请放弃这份追问后重新选择"
+        : "回复的那封信已不在往来里，请点另一封回信旁的“回复”"
       : !shownTarget.messageId
-        ? "这封来信没有 Message-ID，无法在原线程回复。请到邮箱里回复。"
+        ? "这封信缺少邮件编号，无法在原线程里回复，请到邮箱里回复"
         : null;
   const approveError = approvals.at(-1)?.error;
   const sendButton = useRef<HTMLButtonElement>(null);

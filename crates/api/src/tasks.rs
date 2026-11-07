@@ -44,7 +44,7 @@ pub async fn list_tasks(ctx: &Context, q: task::TaskQuery) -> Result<task::TaskP
 pub async fn get_task(ctx: &Context, key: TaskId) -> Result<task::TaskSummary, CallError> {
     task::get(&ctx.db, key.id)
         .await?
-        .ok_or_else(|| CallError::not_found("任务已被删除。"))
+        .ok_or_else(|| CallError::not_found("任务已被删除"))
 }
 pub async fn list_task_drafts(
     ctx: &Context,
@@ -61,7 +61,7 @@ pub async fn get_task_draft(
 ) -> Result<task::TaskDraft, CallError> {
     task::draft(&ctx.db, &key)
         .await?
-        .ok_or_else(|| CallError::not_found("这封邮件已被删除。"))
+        .ok_or_else(|| CallError::not_found("这封邮件已被删除"))
 }
 pub async fn save_task_draft(ctx: &Context, edit: task::DraftEdit) -> Result<(), CallError> {
     Ok(task::save(&ctx.db, &edit, now()).await?)
@@ -161,7 +161,7 @@ pub async fn approve_task_emails(
 ) -> Result<u64, CallError> {
     if mailbox::list(&ctx.db, now()).await?.is_empty() {
         return Err(CallError::invalid(
-            "尚未添加发信的邮箱，请在设置中添加。".into(),
+            "尚未添加发信的邮箱，请在设置中添加".into(),
         ));
     }
     let n = task::approve(&ctx.db, &input, now()).await?;
@@ -251,12 +251,12 @@ pub async fn reschedule_email(ctx: &Context, edit: RescheduleEmail) -> Result<()
     let at = now();
     if edit.planned_at <= at {
         return Err(CallError::invalid(
-            "所选时间已过，请选择未来的日期和时间。".into(),
+            "所选时间已过，请选择未来的日期和时间".into(),
         ));
     }
     require_applied(
         email::schedule::reschedule(&ctx.db, edit.id, edit.planned_at, at).await?,
-        "这封邮件已不在待发送状态。",
+        "这封邮件已不在待发送状态",
     )?;
     ctx.sender.wake();
     Ok(())
@@ -264,7 +264,7 @@ pub async fn reschedule_email(ctx: &Context, edit: RescheduleEmail) -> Result<()
 pub async fn send_email_now(ctx: &Context, key: EmailId) -> Result<(), CallError> {
     require_applied(
         email::schedule::send_now(&ctx.db, key.id, now()).await?,
-        "这封邮件已不在待发送状态。",
+        "这封邮件已不在待发送状态",
     )?;
     ctx.sender.wake();
     Ok(())
@@ -285,5 +285,5 @@ pub async fn scheduled_work(
 pub async fn restart_task(ctx: &Context, key: TaskId) -> Result<task::NewTask, CallError> {
     task::restart(&ctx.db, key.id)
         .await?
-        .ok_or_else(|| CallError::not_found("任务已被删除。"))
+        .ok_or_else(|| CallError::not_found("任务已被删除"))
 }

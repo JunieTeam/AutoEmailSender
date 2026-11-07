@@ -98,7 +98,7 @@ async fn validate_source(conn: &mut SqliteConnection, form: &NewTask) -> Result<
         .await?;
         if !valid {
             return Err(Error::Invalid(
-                "原任务已删除或已变化，请重新打开“重新发起”。".into(),
+                "原任务已删除或已变化，请重新打开“重新发起”".into(),
             ));
         }
     }
@@ -238,7 +238,7 @@ async fn template_content(
             .fetch_one(conn)
             .await?
         {
-            return Err(Error::Invalid("原任务已被删除，请重新选择模板。".into()));
+            return Err(Error::Invalid("原任务已被删除，请重新选择模板".into()));
         }
         return Ok(template);
     }
@@ -251,7 +251,7 @@ async fn template_content(
             )
             .fetch_optional(conn)
             .await?
-            .ok_or_else(|| Error::Invalid("模板已被删除，请重新选择。".into()))?,
+            .ok_or_else(|| Error::Invalid("模板已被删除，请重新选择".into()))?,
         )),
         None => Ok(None),
     }
@@ -403,9 +403,9 @@ pub async fn create(db: &SqlitePool, form: &NewTask, now: i64) -> Result<i64> {
     if form.writer == Writer::Ai {
         let chosen = chosen
             .as_ref()
-            .ok_or_else(|| Error::Invalid("尚未添加模型，请先在设置中添加。".into()))?;
+            .ok_or_else(|| Error::Invalid("尚未添加模型，请先在设置中添加".into()))?;
         if !chosen.agreed {
-            return Err(Error::Invalid("请先确认发给模型服务商的内容。".into()));
+            return Err(Error::Invalid("请先确认发给模型服务商的内容".into()));
         }
     }
     let model_config_id = chosen.as_ref().map(|c| c.id);
@@ -440,7 +440,7 @@ pub async fn create(db: &SqlitePool, form: &NewTask, now: i64) -> Result<i64> {
     ids.dedup();
     if ids.is_empty() || ids.len() != mentors.len() || mentors.iter().any(|m| m.reason.is_some()) {
         return Err(Error::Invalid(
-            "有导师无法加入任务，请重新核对导师列表。".into(),
+            "有导师无法加入任务，请重新核对导师列表".into(),
         ));
     }
     let materials = [
@@ -461,7 +461,7 @@ pub async fn create(db: &SqlitePool, form: &NewTask, now: i64) -> Result<i64> {
             .is_some();
             if !valid {
                 return Err(Error::Invalid(
-                    "所选材料已被删除或没有可供写信的文字，请重新选择。".into(),
+                    "所选材料已被删除或无可供写信的文字，请重新选择".into(),
                 ));
             }
         }
@@ -605,13 +605,13 @@ pub async fn delete(db: &SqlitePool, id: i64, now: i64) -> Result<()> {
     .await?;
     if busy.cloud > 0 {
         return Err(Error::Invalid(format!(
-            "有 {} 封邮件已交给云端，请先撤回到本地再删除。",
+            "有 {} 封邮件已交给云端，请先撤回到本地再删除",
             busy.cloud
         )));
     }
     if busy.sending > 0 {
         return Err(Error::Invalid(
-            "有正在发送的邮件，请发送结束后再删除。".into(),
+            "有正在发送的邮件，请发送结束后再删除".into(),
         ));
     }
     // A retry waiting to go keeps an earlier attempt's delivery evidence; canceled, it stays.
@@ -655,7 +655,7 @@ pub async fn change_schedule(db: &SqlitePool, edit: &ScheduleEdit, now: i64) -> 
     .await?
     .is_none()
     {
-        return Err(Error::Invalid("任务已停止或已删除。".into()));
+        return Err(Error::Invalid("任务已停止或已删除".into()));
     }
     email::schedule::save(&mut tx, edit.id, &schedule).await?;
     let count = sqlx::query!(

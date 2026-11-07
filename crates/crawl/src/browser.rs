@@ -26,7 +26,7 @@ pub enum BrowserError {
 impl BrowserError {
     pub fn message(&self) -> String {
         match self {
-            Self::TimedOut => "网页在浏览器里 20 秒内没有加载完".into(),
+            Self::TimedOut => "网页在浏览器里 20 秒内未加载完成".into(),
             Self::Failed(reason) => reason.clone(),
         }
     }

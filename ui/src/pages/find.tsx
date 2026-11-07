@@ -45,7 +45,7 @@ const STAGES: Record<CrawlStage, string> = {
   enrich: "正在补全信息",
   paused: "已暂停",
   done: "已完成",
-  failed: "没能完成",
+  failed: "未能完成",
   canceled: "已取消",
 };
 /** A crawl by where it started, or an Agent submission by its school, short enough for a menu or a line. */
@@ -169,7 +169,7 @@ function Crawls() {
           aria-invalid={!!urls.trim() && validation.isError}
         />
         <p id="crawl-usage" className="text-sm text-muted-foreground">
-          一位导师约 5000 Token{cost !== null && `，按已填单价约 ¥${cost.toFixed(3)}／位`}
+          一位导师约 5000 Token{cost !== null && `，按已填单价约 ${cost.toFixed(3)} 元`}
           。实际用量随人数和网页长度变化，另计寻找名单的用量。
         </p>
         <p className="text-sm text-muted-foreground">
@@ -242,7 +242,7 @@ function CrawlRecord({ crawl: c, expanded }: { crawl: CrawlSummary; expanded: bo
                   STAGES[c.stage],
                   `找到 ${c.candidates} 位导师`,
                   `读完 ${c.profiles} 位的个人页`,
-                  c.remaining > 0 && `还有 ${c.remaining} 页没读`,
+                  c.remaining > 0 && `还有 ${c.remaining} 页未读`,
                 ]
             )
               .concat(c.enrichRemaining > 0 && `补全还剩 ${c.enrichRemaining} 位`)
@@ -267,7 +267,7 @@ function CrawlRecord({ crawl: c, expanded }: { crawl: CrawlSummary; expanded: bo
         </div>
       </div>
       {c.error && <p className="mt-2 text-sm text-warning">{c.error}</p>}
-      {c.failed > 0 && <p className="mt-2 text-sm text-warning">{c.failed} 个页面没能打开，名单可能不完整</p>}
+      {c.failed > 0 && <p className="mt-2 text-sm text-warning">{c.failed} 个页面未能打开，名单可能不完整</p>}
       {expanded && <CrawlDetails id={c.id} modelId={c.modelConfigId} modelIds={c.modelIds} />}
     </section>
   );
@@ -411,7 +411,7 @@ function CrawlDetails({ id, modelId, modelIds }: { id: number; modelId: number |
                   删除这次整理
                 </Button>
               }
-              message="删除这次整理？运行记录、读过的页面和还没处理的候选会一起删除；已经接受的导师不受影响。"
+              message="删除这次整理？运行记录、读过的页面和尚未处理的候选会一起删除；已接受的导师不受影响。"
               action="删除"
               onConfirm={() => remove.mutate()}
             />
@@ -664,7 +664,7 @@ const ENRICH_FIELDS: Record<EnrichField, string> = {
   title: "职称",
 };
 const ENRICH_SKIP = {
-  missing_profile: "没有个人页",
+  missing_profile: "无个人页",
   deleted_crawl: "原整理记录已删除",
   complete: "资料已全",
   active: "正在补全",
@@ -722,7 +722,7 @@ function EnrichDialog({
           <p className="text-muted-foreground">
             每位预计读取 1～4 页，约 5000～20000 Token；本次约 {(count * 5000).toLocaleString()}～
             {(count * 20000).toLocaleString()} Token
-            {cost !== null && `，约 ¥${cost.toFixed(2)}～¥${(cost * 4).toFixed(2)}`}
+            {cost !== null && `，约 ${cost.toFixed(2)}～${(cost * 4).toFixed(2)} 元`}
             。仅为估算，以实际页面和服务商报告为准。
           </p>
           <p className="text-muted-foreground">

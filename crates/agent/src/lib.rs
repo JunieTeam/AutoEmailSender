@@ -70,7 +70,7 @@ pub fn listen(dir: &Path, _credentials: &Credentials) -> io::Result<Listener> {
         if path.as_os_str().as_encoded_bytes().len() > 103 {
             return io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Agent 连接路径超过 macOS 的 103 字节上限，请缩短数据目录路径后重试。",
+                "Agent 连接路径超过 macOS 的 103 字节上限，请缩短数据目录路径后重试",
             );
         }
         error

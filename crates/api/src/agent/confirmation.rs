@@ -128,7 +128,7 @@ async fn email_targets(conn: &mut SqliteConnection, ids: &[i64]) -> Result<Vec<S
             }
             // Replies and follow-ups stay in their conversation's mailbox and never rotate.
             if row.unowned {
-                senders.push("没有负责邮箱，要先在导师资料里指定".into());
+                senders.push("无负责邮箱，请先在导师资料里指定".into());
             }
             format!(
                 "{}：{address}（{} 封）；发件邮箱：{}；原定发送时间：{}",
@@ -222,7 +222,7 @@ async fn cloud_hand_off(
         )
         .fetch_optional(&mut *conn)
         .await?
-        .ok_or_else(|| CallError::not_found("有一封邮件找不到了，可能已被删除。"))?;
+        .ok_or_else(|| CallError::not_found("有一封邮件找不到了，可能已被删除"))?;
         targets.push(format!(
             "{}：{}；主题：{}；{}从 {} 发出",
             row.name,
@@ -365,7 +365,7 @@ async fn signed_in(conn: &mut SqliteConnection) -> Result<String, sqlx::Error> {
     let email = sqlx::query_scalar!("SELECT email FROM account")
         .fetch_optional(conn)
         .await?;
-    Ok(email.map_or_else(|| "现在没有登录".into(), |email| format!("账号 {email}")))
+    Ok(email.map_or_else(|| "当前未登录".into(), |email| format!("账号 {email}")))
 }
 
 /// What the order buys and for how much, as the server sells it now.
@@ -396,7 +396,7 @@ async fn plus_order(
         )
     } else {
         return Err(CallError::invalid(
-            "没有这一档，先用 getPlusItems 查看能买的".into(),
+            "不存在这一档，请先用 getPlusItems 查看可购买的档位".into(),
         ));
     };
     let method = match input.method {
@@ -468,7 +468,7 @@ async fn describe(
                 "删除云端备份并关闭自动备份，本机数据不动",
                 match email {
                     Some(email) => format!("账号 {email} 在官方服务器上的云端备份"),
-                    None => "官方服务器上的云端备份（现在没有登录）".into(),
+                    None => "官方服务器上的云端备份（当前未登录）".into(),
                 },
             )
         }
@@ -480,7 +480,7 @@ async fn describe(
                 .map(|email| email.id)
                 .collect::<Vec<_>>();
             if ids.iter().collect::<BTreeSet<_>>().len() != ids.len() {
-                return Err(CallError::invalid("同一封邮件不能重复批准。".into()));
+                return Err(CallError::invalid("同一封邮件不能重复批准".into()));
             }
             let schedule = email::schedule::get(conn, input.task_id).await?.form();
             let mut description = Description::new(
@@ -499,7 +499,7 @@ async fn describe(
                 )
                 .fetch_optional(&mut *conn)
                 .await?
-                .ok_or_else(|| CallError::invalid("草稿已不在任务里，请刷新后重新批准。".into()))?;
+                .ok_or_else(|| CallError::invalid("草稿已不在任务里，请刷新后重新批准".into()))?;
                 let previous = if current.kind == "follow_up" {
                     previous(
                         conn,
@@ -573,7 +573,7 @@ async fn describe(
                 .as_ref()
                 .map(|p| email::reply_subject(p.subject.as_deref().unwrap_or("")))
                 .ok_or_else(|| {
-                    CallError::invalid("回的那封信已不在往来里，请刷新后重新选择。".into())
+                    CallError::invalid("回的那封信已不在往来里，请刷新后重新选择".into())
                 })?;
             let mut description = Description::new(
                 if op == "approveFollowUp" {
@@ -673,7 +673,7 @@ async fn describe(
             .fetch_one(&mut *conn)
             .await?;
             object(
-                &format!("永久删除 1 个任务和其中 {count} 封没发出的邮件（包括已批准的）"),
+                &format!("永久删除 1 个任务和其中 {count} 封未发出的邮件（包括已批准的）"),
                 task_target(conn, input.id).await?,
             )
         }
@@ -984,7 +984,7 @@ async fn describe(
                 .collect();
             Description::new(
                 format!(
-                    "更改 1 位导师的发件邮箱：影响已批准还没发出的 {} 封邮件",
+                    "更改 1 位导师的发件邮箱：影响已批准尚未发出的 {} 封邮件",
                     ids.len()
                 ),
                 targets,
@@ -1127,12 +1127,12 @@ async fn changed_recipient(
     let Some(row) = row else { return Ok(None) };
     let action = if address.is_some() {
         format!(
-            "改 1 位导师的发信地址：已批准还没发出的 {} 封会发到新地址",
+            "修改 1 位导师的发信地址：已批准尚未发出的 {} 封会发到新地址",
             row.count
         )
     } else {
         format!(
-            "移除 1 位导师的发信地址：已批准还没发出的 {} 封将没有收件地址",
+            "移除 1 位导师的发信地址：已批准尚未发出的 {} 封将无收件地址",
             row.count
         )
     };
@@ -1180,7 +1180,7 @@ async fn imported_recipients(
     }
     let count: i64 = rows.iter().map(|row| row.count).sum();
     let action = format!(
-        "改 {} 位导师的发信地址：影响已批准还没发出的 {count} 封邮件",
+        "修改 {} 位导师的发信地址：影响已批准尚未发出的 {count} 封邮件",
         rows.len()
     );
     let targets = rows

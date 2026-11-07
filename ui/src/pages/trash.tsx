@@ -36,7 +36,7 @@ export function TrashPage() {
     onSuccess: (_, { ids }) => setSelected((s) => new Set([...s].filter((id) => !ids.includes(id)))),
     onSettled: () => refreshMentors(queryClient),
   });
-  const failed = act.variables?.op === "restoreMentors" ? "没能恢复" : "没能永久删除";
+  const failed = act.variables?.op === "restoreMentors" ? "未能恢复" : "未能永久删除";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -62,9 +62,9 @@ export function TrashPage() {
           className={`@container min-h-0 flex-1 overflow-y-auto px-4 phone:px-0 ${selected.size > 0 ? "pb-20" : ""}`}
         >
           {query.isError ? (
-            <Notice title="回收站没能加载" detail={errorMessage(query.error)} />
+            <Notice title="回收站未能加载" detail={errorMessage(query.error)} />
           ) : query.data?.total === 0 ? (
-            <Notice title="回收站是空的" detail="移入回收站的导师会出现在这里，可以恢复或永久删除。" />
+            <Notice title="回收站是空的" detail="移入回收站的导师会出现在这里，可以恢复或永久删除" />
           ) : (
             <MentorTable
               mentors={query.data?.mentors ?? []}

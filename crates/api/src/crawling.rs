@@ -42,7 +42,7 @@ pub(super) async fn submit_candidates(
 }
 async fn crawl_ready(ctx: &Context, id: Option<i64>) -> Result<model::Chosen, CallError> {
     let m = model::selected(&ctx.db, id).await?.ok_or_else(|| {
-        CallError::invalid("尚未添加模型，请在“设置 › AI › 模型”中添加后再开始。".into())
+        CallError::invalid("尚未添加模型，请在“设置 › AI › 模型”中添加后再开始".into())
     })?;
     if !m.agreed {
         return Err(CallError {

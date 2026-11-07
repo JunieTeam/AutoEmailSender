@@ -69,13 +69,13 @@ pub async fn eligibility(
     } else if previous.as_ref().is_some_and(|p| p.bounced) {
         Some("上一封被退回，请先核对邮箱")
     } else if previous.as_ref().is_some_and(|p| p.uncertain) {
-        Some("上一封说不清发没发出，请先在往来里确认")
+        Some("上一封无法确定是否已发出，请先在往来里确认")
     } else if row.trashed_at.is_some() {
         Some("导师在回收站里")
     } else if !row.address {
         Some("导师尚未填写邮箱")
     } else if row.pending {
-        Some("还有一封没发出的首封或追问")
+        Some("还有一封未发出的首封或追问")
     } else if previous.as_ref().is_none_or(|p| p.message_id.is_none()) {
         Some("上一封缺少邮件编号，无法在原线程追问")
     } else {

@@ -46,8 +46,8 @@ export function LetterStyleSection() {
   const style = useQuery({ queryKey: ["getLetterStyle"], queryFn: () => call("getLetterStyle", {}) });
   return (
     <Section title="信件样式">
-      <p className="text-sm text-muted-foreground">每封信都用这套样式，改了马上保存；已经批准的信不受影响。</p>
-      {style.error && <p className="text-sm text-destructive">信件样式没能加载：{errorMessage(style.error)}</p>}
+      <p className="text-sm text-muted-foreground">每封信都用这套样式，修改后立即保存；已批准的信不受影响</p>
+      {style.error && <p className="text-sm text-destructive">信件样式未能加载：{errorMessage(style.error)}</p>}
       {style.data && <LetterStyleFields />}
     </Section>
   );
@@ -143,7 +143,7 @@ function LetterStyleFields() {
           className="rounded-lg border border-border bg-white px-6 py-5 text-black"
           dangerouslySetInnerHTML={{ __html: letterHtml(SAMPLE, style) }}
         />
-        {!style.font && <p className="text-sm text-muted-foreground">实际的字体由收件人的邮箱和设备决定。</p>}
+        {!style.font && <p className="text-sm text-muted-foreground">实际的字体由收件人的邮箱和设备决定</p>}
       </div>
     </div>
   );

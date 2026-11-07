@@ -69,7 +69,7 @@ it("shows cancellation and requires confirmation before finishing uncertain mail
   await vi.waitFor(() => expect(container.textContent).toContain("导师已移入回收站"));
   expect(container.textContent).not.toContain("重新发送");
   const trigger = Array.from(container.querySelectorAll("button")).find(
-    (button) => button.textContent === "确认没发出",
+    (button) => button.textContent === "确认未发出",
   );
   expect(trigger).toBeDefined();
   await act(async () => trigger?.click());
@@ -77,10 +77,10 @@ it("shows cancellation and requires confirmation before finishing uncertain mail
   expect(popup?.textContent).toContain("不再发送");
   expect(container.textContent).toContain("申请硕士");
   const confirm = Array.from(popup?.querySelectorAll("button") ?? []).find(
-    (button) => button.textContent === "确认没发出",
+    (button) => button.textContent === "确认未发出",
   );
   expect(confirm).toBeDefined();
   await act(async () => confirm?.click());
   await vi.waitFor(() => expect(container.textContent).not.toContain("申请硕士"));
-  expect(container.textContent).toContain("当前没有待处理邮件");
+  expect(container.textContent).toContain("当前无待处理邮件");
 });

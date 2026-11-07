@@ -87,7 +87,7 @@ impl Error {
         use db::OpenError;
         match self {
             Self::InUse => {
-                "数据目录正在使用中，请先关闭这个工作树的桌面开发版或浏览器预览，再重试。".into()
+                "数据目录正在使用中，请先关闭这个工作树的桌面开发版或浏览器预览，再重试".into()
             }
             Self::Restore(e) => format!("恢复尚未完成，原数据已保留，请重启重试。{}", e.message()),
             Self::DataDir(e) => format!("数据目录无法使用：{e}"),
