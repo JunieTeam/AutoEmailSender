@@ -23,20 +23,22 @@ pub async fn publish(tag: &str, dir: &Path) -> crate::Result {
     let notes_path = dir.join("notes.md");
     let notes = std::fs::read_to_string(&notes_path)
         .map_err(|e| format!("读不到更新说明 {}：{e}", notes_path.display()))?;
-    let key = |file: &Path| format!("{version}/{}", name(file));
+    // Each run gets a directory of its own and overwrites nothing: the CDN keeps files for a
+    // month, so a client still on the previous manifest would get a package failing its signature.
+    let now = chrono::Utc::now();
+    let folder = format!("{version}/{}", now.format("%Y%m%dT%H%M%SZ"));
+    let key = |file: &Path| format!("{folder}/{}", name(file));
     let manifest = serde_json::to_vec_pretty(&serde_json::json!({
         "version": version,
         "notes": notes.trim(),
-        "pub_date": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "pub_date": now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         "platforms": {
             "darwin-aarch64": { "signature": macos_signature, "url": format!("{MIRROR}{}", key(&macos)) },
             "windows-x86_64": { "signature": windows_signature, "url": format!("{MIRROR}{}", key(&windows)) },
         },
     }))?;
     let net = net::Net::new(Vec::new()).map_err(|e| format!("准备网络连接失败：{e}"))?;
-    // Each file is read back through the CDN before the manifest leading to it goes up: the CDN
-    // keeps a version's files for a month, and one still cached from an earlier upload under the
-    // same name would fail every download's signature check.
+    // Each file is read back through the CDN before the manifest leads clients to it.
     for file in [&macos, &windows, &dmg] {
         let key = key(file);
         rclone(
@@ -48,7 +50,7 @@ pub async fn publish(tag: &str, dir: &Path) -> crate::Result {
         )?;
         if served(&net, &format!("{MIRROR}{key}")).await? != std::fs::read(file)? {
             return Err(format!(
-                "备用地址上的 {key} 和本地的不一样，多半是 CDN 还缓存着之前传的同名文件；没有上传清单"
+                "从备用地址读回的 {key} 和本地的不一样，没有上传清单；先查 CDN 的回源和缓存配置"
             )
             .into());
         }
@@ -127,8 +129,8 @@ fn only(dir: &Path, suffix: &str) -> crate::Result<PathBuf> {
         })
 }
 
-/// The file's name on the mirror: spaces become dots, as on GitHub, so local builds and GitHub's
-/// files are named alike.
+/// The file's name on the mirror, with spaces turned into dots as GitHub does, so that its URL
+/// needs no escaping.
 fn name(file: &Path) -> String {
     file.file_name()
         .unwrap_or_else(|| unreachable!("only files from the directory listing are named"))

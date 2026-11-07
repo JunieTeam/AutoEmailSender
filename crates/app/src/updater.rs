@@ -82,9 +82,11 @@ impl<U: Clone> Phase<U> {
         })
     }
 
-    fn finish_download(&mut self, update: U, result: Result<Vec<u8>, String>) {
+    /// `update` is the release the download began with; a finished download brings the release
+    /// its bytes were checked against, which may be the mirror's.
+    fn finish_download(&mut self, update: U, result: Result<(U, Vec<u8>), String>) {
         *self = match result {
-            Ok(bytes) => Self::Ready {
+            Ok((update, bytes)) => Self::Ready {
                 update,
                 bytes: bytes.into(),
             },
@@ -186,10 +188,15 @@ async fn check(app: &AppHandle) -> Result<UpdateStatus, String> {
     if matches!(*state.phase(), Phase::Ready { .. }) {
         return Ok(state.status());
     }
-    let result = updater(app, vec![url(GITHUB_MANIFEST), mirror_manifest()])?
-        .check()
-        .await
-        .map_err(check_error)?;
+    let result = match check_at(app, url(GITHUB_MANIFEST)).await {
+        Ok(result) => result,
+        // Not left to the plugin's list of endpoints: it gives up on the rest when one answers
+        // with something other than a manifest, such as a network's sign-in page.
+        Err(_) => {
+            tracing::info!("update check falls back to the mirror");
+            check_at(app, mirror_manifest()).await?
+        }
+    };
     if let Some(update) = &result {
         tracing::info!(
             version = update.version,
@@ -208,8 +215,8 @@ async fn check(app: &AppHandle) -> Result<UpdateStatus, String> {
     Ok(state.status())
 }
 
-/// The plugin's updater for `endpoints`, tried in order, through the app's network settings.
-fn updater(app: &AppHandle, endpoints: Vec<Url>) -> Result<tauri_plugin_updater::Updater, String> {
+/// Checks the manifest at `address` alone, through the app's network settings.
+async fn check_at(app: &AppHandle, address: Url) -> Result<Option<Update>, String> {
     let net = app
         .try_state::<Arc<api::Context>>()
         .ok_or("应用尚未就绪，无法检查更新，请先处理启动错误")?
@@ -217,7 +224,7 @@ fn updater(app: &AppHandle, endpoints: Vec<Url>) -> Result<tauri_plugin_updater:
         .clone();
     let exit_app = app.clone();
     app.updater_builder()
-        .endpoints(endpoints)
+        .endpoints(vec![address])
         .map_err(check_error)?
         .timeout(CHECK_TIMEOUT)
         .configure_client(move |builder| net.configure_http(builder))
@@ -229,6 +236,9 @@ fn updater(app: &AppHandle, endpoints: Vec<Url>) -> Result<tauri_plugin_updater:
             show_tray(&exit_app, false);
         })
         .build()
+        .map_err(check_error)?
+        .check()
+        .await
         .map_err(check_error)
 }
 
@@ -281,45 +291,50 @@ pub async fn download_update(app: AppHandle) -> Result<(), String> {
     response
 }
 
-/// Downloads `update`. A download from GitHub that fails, or that turns out too slow after
-/// `PATIENCE`, starts over from the mirror when the mirror has the same release.
-async fn fetch(app: &AppHandle, update: &Update) -> Result<Vec<u8>, Error> {
+/// Downloads `update`, starting over from the mirror when the mirror has the same release and
+/// GitHub fails, or turns out too slow after `PATIENCE`. The bytes come with the release whose
+/// signature they passed, which installing checks again: the mirror may hold another build of
+/// the version, one published while GitHub was out of reach.
+async fn fetch(app: &AppHandle, update: &Update) -> Result<(Update, Vec<u8>), Error> {
     let mut github = Box::pin(update.download(progress(app), || {}));
     if update.download_url.as_str().starts_with(MIRROR) {
-        return github.await;
+        return Ok((update.clone(), (&mut github).await?));
     }
-    let state = app.state::<Updater>();
-    let failed = tokio::select! {
-        result = &mut github => match result {
-            Ok(bytes) => return Ok(bytes),
-            Err(error) => Some(error),
-        },
-        () = tokio::time::sleep(PATIENCE) => {
-            if !state.phase().too_slow() {
-                return github.await;
-            }
-            None
-        }
+    let finished = tokio::select! {
+        result = &mut github => Some(result),
+        () = tokio::time::sleep(PATIENCE) => None,
     };
-    let mut mirror = match failed {
-        Some(error) => {
-            let (category, _) = download_failure(&error);
-            tracing::warn!(category, "update download from GitHub failed");
-            match mirror_release(app, &update.version).await {
-                Some(mirror) => mirror,
-                None => return Err(error),
-            }
-        }
+    let state = app.state::<Updater>();
+    let slow = finished.is_none() && state.phase().too_slow();
+    let (failed, mirror) = match finished {
+        Some(Ok(bytes)) => return Ok((update.clone(), bytes)),
+        Some(Err(error)) => (Some(error), mirror_release(app, &update.version).await),
+        None if !slow => match (&mut github).await {
+            Ok(bytes) => return Ok((update.clone(), bytes)),
+            Err(error) => (Some(error), mirror_release(app, &update.version).await),
+        },
         None => {
             tracing::info!("update download from GitHub is too slow");
+            let mut asking = std::pin::pin!(mirror_release(app, &update.version));
             // GitHub goes on meanwhile, and is kept if it finishes first.
             tokio::select! {
-                result = &mut github => return result,
-                mirror = mirror_release(app, &update.version) => match mirror {
-                    Some(mirror) => mirror,
-                    None => return github.await,
+                result = &mut github => match result {
+                    Ok(bytes) => return Ok((update.clone(), bytes)),
+                    Err(error) => (Some(error), asking.await),
                 },
+                mirror = &mut asking => (None, mirror),
             }
+        }
+    };
+    let mut mirror = match (failed, mirror) {
+        (Some(error), None) => return Err(error),
+        (None, None) => return Ok((update.clone(), (&mut github).await?)),
+        (failed, Some(mirror)) => {
+            if let Some(error) = failed {
+                let (category, _) = download_failure(&error);
+                tracing::warn!(category, "update download from GitHub failed");
+            }
+            mirror
         }
     };
     drop(github);
@@ -327,16 +342,13 @@ async fn fetch(app: &AppHandle, update: &Update) -> Result<Vec<u8>, Error> {
     state.phase().set_progress(0, None);
     changed(app);
     mirror.timeout = Some(DOWNLOAD_TIMEOUT);
-    mirror.download(progress(app), || {}).await
+    let bytes = mirror.download(progress(app), || {}).await?;
+    Ok((mirror, bytes))
 }
 
 /// The mirror's copy of `version`, when the mirror is up and has it.
 async fn mirror_release(app: &AppHandle, version: &str) -> Option<Update> {
-    let checked = match updater(app, vec![mirror_manifest()]) {
-        Ok(updater) => updater.check().await.map_err(check_error),
-        Err(error) => Err(error),
-    };
-    match checked {
+    match check_at(app, mirror_manifest()).await {
         Ok(Some(update)) if update.version == version => Some(update),
         Ok(_) => {
             tracing::info!("update mirror has no copy of this release");
@@ -433,9 +445,10 @@ mod tests {
         phase.finish_download(update, Err("bad signature".into()));
         assert!(matches!(&phase, Phase::Available { error: Some(_), .. }));
         let update = phase.begin_download()?;
-        phase.finish_download(update, Ok(vec![1, 2, 3]));
+        phase.finish_download(update, Ok(("3.0.1 from the mirror", vec![1, 2, 3])));
+        // Installing checks the bytes against the release they were downloaded with.
         let (version, bytes) = phase.installation()?;
-        assert_eq!(version, "3.0.1");
+        assert_eq!(version, "3.0.1 from the mirror");
         assert_eq!(&*bytes, &[1, 2, 3]);
         assert!(phase.begin_download().is_err());
         Ok(())
