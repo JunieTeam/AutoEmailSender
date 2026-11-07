@@ -260,14 +260,20 @@ fn check_error(error: Error) -> String {
                 "update request failed"
             );
             if error.is_timeout() {
-                "连接超时"
+                "连接超时，请检查网络和系统代理后重试"
             } else {
-                "无法连接更新服务或读取更新清单"
+                "无法连接更新服务或读取更新清单，请检查网络和系统代理后重试"
             }
         }
-        _ => "更新配置或更新清单不正确",
+        // An error status, such as GitHub's with no release published, or the mirror's once its
+        // traffic for the month is used up.
+        Error::ReleaseNotFound => {
+            tracing::warn!("update manifest not found");
+            "更新服务暂时不可用，请稍后再试"
+        }
+        _ => "更新配置或更新清单不正确，请检查网络和系统代理后重试",
     };
-    format!("检查更新失败：{reason}，请检查网络和系统代理后重试")
+    format!("检查更新失败：{reason}")
 }
 
 #[tauri::command]

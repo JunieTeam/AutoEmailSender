@@ -23,10 +23,15 @@ pub async fn publish(tag: &str, dir: &Path) -> crate::Result {
     let notes_path = dir.join("notes.md");
     let notes = std::fs::read_to_string(&notes_path)
         .map_err(|e| format!("读不到更新说明 {}：{e}", notes_path.display()))?;
-    // Each run gets a directory of its own and overwrites nothing: the CDN keeps files for a
-    // month, so a client still on the previous manifest would get a package failing its signature.
+    // Each run gets a directory of its own, even two started in the same second, and overwrites
+    // nothing: the CDN keeps files for a month, so a client still on the previous manifest would
+    // get a package failing its signature.
     let now = chrono::Utc::now();
-    let folder = format!("{version}/{}", now.format("%Y%m%dT%H%M%SZ"));
+    let folder = format!(
+        "{version}/{}-{}",
+        now.format("%Y%m%dT%H%M%SZ"),
+        uuid::Uuid::new_v4().simple()
+    );
     let key = |file: &Path| format!("{folder}/{}", name(file));
     let manifest = serde_json::to_vec_pretty(&serde_json::json!({
         "version": version,

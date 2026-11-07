@@ -259,7 +259,7 @@
 4. 工作流分别构建 Apple Silicon macOS 与 Windows x64，使用 `tauri-apps/tauri-action@v1`，只创建普通版本的**草稿** Release，不自动公开。两个平台依次上传到同一草稿并合并 `latest.json`，避免更新清单互相覆盖。更新说明同时成为 Release 正文和清单的 `notes`。
 5. 检查草稿中的 DMG、`.app.tar.gz` 与 `.sig`、NSIS `-setup.exe` 与 `.sig`，以及唯一的更新清单 `latest.json`。核对清单版本、说明、发布日期，以及 `darwin-aarch64`、`windows-x86_64` 的下载链接和签名；签名应与上传的 `.sig` 一致。没有 `latest.yml` 或 `appcast.xml`。
 6. 下载草稿产物做全新安装与升级验收，macOS 执行 `codesign --verify --deep --strict --verbose=2 "Auto Email Sender.app"`。两个平台的检查都通过后，维护者手动发布草稿（不勾选预发布）。公开后从更新地址读取 `latest.json` 并再测一次真实升级。
-7. 复制到备用地址：用 `gh release download <标签> -D <目录>` 下载两个平台的更新包、`.sig` 和 DMG，把更新说明存成 `<目录>/notes.md`，运行 `cargo xtask publish-update <标签> <目录>`。命令先核对每个更新包签名里的版本就是标签上的版本，再按这些文件生成指向备用地址的 `latest.json`。每次运行都传到新的目录 `<版本>/<发布时间>/`，不覆盖已有的文件：CDN 会把文件缓存 30 天，覆盖了的话，还拿着旧清单的客户端会下到和签名对不上的包。传完从备用地址读回来和本地的逐字节比较，都一样才传清单，最后读回清单核对；中断了重跑就行，没被清单用到的目录留着不碍事。上传用 `rclone`（Homebrew 和 winget 都能装，支持腾讯云 COS），远端名和存储桶写在 `xtask/src/update.rs`；它用的密钥只能读写这个存储桶，保存在本机 `rclone` 的配置里，不进仓库。
+7. 复制到备用地址：用 `gh release download <标签> -D <目录>` 下载两个平台的更新包、`.sig` 和 DMG，把更新说明存成 `<目录>/notes.md`，运行 `cargo xtask publish-update <标签> <目录>`。命令先核对每个更新包签名里的版本就是标签上的版本，再按这些文件生成指向备用地址的 `latest.json`。每次运行都传到新的目录 `<版本>/<发布时间>-<随机编号>/`，不覆盖已有的文件：CDN 会把文件缓存 30 天，覆盖了的话，还拿着旧清单的客户端会下到和签名对不上的包。传完从备用地址读回来和本地的逐字节比较，都一样才传清单，最后读回清单核对；中断了重跑就行，没被清单用到的目录留着不碍事。上传用 `rclone`（Homebrew 和 winget 都能装，支持腾讯云 COS），远端名和存储桶写在 `xtask/src/update.rs`；它用的密钥只能读写这个存储桶，保存在本机 `rclone` 的配置里，不进仓库。
 
 工作流只响应 `workflow_dispatch`，push、PR 和推标签均不触发。构建失败可能留下不完整草稿，补跑通过并核对两平台产物后再发布；同一标签若已经公开，Action 会拒绝修改为草稿。
 
