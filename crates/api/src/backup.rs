@@ -88,7 +88,7 @@ impl Error {
             Self::Database(_) => "备份数据库无法读取或处理，文件可能已损坏。请换一份备份重试；\
                 仍然失败时导出日志发给开发者。"
                 .into(),
-            Self::Migration(_) => "这份备份的数据库和本应用的对不上，不能恢复".into(),
+            Self::Migration(_) => "这份备份的数据库与本应用不匹配，无法恢复".into(),
             Self::Worker(_) => "备份处理未能完成，请重试；仍然失败时导出日志发给开发者".into(),
         }
     }
@@ -342,7 +342,7 @@ async fn inspect_schema(conn: &mut SqliteConnection) -> Result<()> {
             .map_err(Error::Migration)?;
         if actual != database_schema(&mut expected).await? {
             return Err(Error::Invalid(
-                "这份备份的数据库和本应用的对不上，不能恢复".into(),
+                "这份备份的数据库与本应用不匹配，无法恢复".into(),
             ));
         }
         Ok(())

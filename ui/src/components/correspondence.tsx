@@ -525,7 +525,7 @@ function Seen({
           />
         )}
         {m.kind === "reply" && !mentor.trashed && (
-          <Button variant="quiet" size="sm" data-reply disabled={!m.canReply} onClick={onReply}>
+          <Button variant="quiet" size="sm" disabled={!m.canReply} onClick={onReply}>
             回复
           </Button>
         )}

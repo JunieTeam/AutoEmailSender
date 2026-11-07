@@ -760,7 +760,7 @@ impl Error {
                 "服务器返回的数据无法读取，请稍后重试或升级应用".into()
             }
             Self::Network(_) | Self::WebSocket(_) => {
-                "连不上服务器，请检查网络和代理设置后重试".into()
+                "无法连接服务器，请检查网络和代理设置后重试".into()
             }
             Self::SignedOut => "登录已失效，请重新登录".into(),
             Self::AccountChanged => "要注销的账号已不是当前登录的账号，请刷新后重试".into(),

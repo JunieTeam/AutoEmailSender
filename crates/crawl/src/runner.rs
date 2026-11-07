@@ -194,7 +194,7 @@ impl Pages {
                 tracing::info!(url = c.url.as_str(), category, "browser read failed");
                 ReadError::Failed(match e {
                     BrowserError::TimedOut if relaxed_certificate => {
-                        "网站的证书有问题，浏览器打不开".into()
+                        "网站的证书有问题，浏览器无法打开".into()
                     }
                     e => e.message(),
                 })

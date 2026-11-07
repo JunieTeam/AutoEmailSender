@@ -196,7 +196,7 @@ async fn browser_failures_preserve_http_text_and_preview_still_needs_browser(db:
         (Err(BrowserError::TimedOut), "20 秒"),
         (
             Err(BrowserError::Failed(
-                "网站的证书有问题，浏览器打不开".into(),
+                "网站的证书有问题，浏览器无法打开".into(),
             )),
             "证书",
         ),

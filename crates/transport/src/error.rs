@@ -139,10 +139,10 @@ impl MailError {
     pub fn message(&self) -> String {
         match self {
             MailError::Resolve { host, .. } => {
-                format!("找不到服务器 {host}。请检查服务器地址是否填错、网络是否连通。")
+                format!("找不到服务器 {host}。请检查服务器地址是否正确、网络是否连通。")
             }
             MailError::Connect { host, port, .. } => format!(
-                "连不上 {host} 的 {port} 端口。请检查服务器地址和端口是否填错、网络是否连通。"
+                "无法连接 {host} 的 {port} 端口。请检查服务器地址和端口是否正确、网络是否连通。"
             ),
             MailError::ProxyDown { proxy, .. } => {
                 format!("无法连接系统代理 {proxy}。请确认代理软件正在运行，或关闭系统代理。")

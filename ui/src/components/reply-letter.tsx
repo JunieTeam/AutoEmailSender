@@ -187,11 +187,6 @@ function Composer({
     },
   });
   const uploading = useUploading(mentorId);
-  const uploadFailed =
-    useMutationState({
-      filters: { mutationKey: ["uploadLetterMaterial", mentorId, followUp ? "follow_up" : "reply"] },
-      select: (m) => m.state.status,
-    }).at(-1) === "error";
   const chosen = useQuery({
     queryKey: ["getReplyTarget", mentorId, selected?.id],
     queryFn: selected ? () => call("getReplyTarget", { mentorId, id: selected.id }) : skipToken,
@@ -219,7 +214,8 @@ function Composer({
   }, [answer, fills]);
   const locked = approving || discard.isPending || uploading || busy || review !== undefined;
   const canSelect = !approving && !discard.isPending && !uploading;
-  // docs/ui.md#交互: a line until clicked; kept open while there is anything in it.
+  // docs/ui.md#交互: a line until clicked, then open until sent or folded back by the user, which it
+  // can be only while there is nothing in it.
   const [expanded, setExpanded] = useState(false);
   const [focusing, setFocusing] = useState(false);
   if (canSelect && selecting && selected && chosen.data?.messageId) {
@@ -301,19 +297,17 @@ function Composer({
         : null;
   const approveError = approvals.at(-1)?.error;
   // Anything shown in the box, an error included, keeps it open: folded, it would go unseen.
-  const failed =
-    uploadFailed ||
-    !!(
-      discard.error ??
-      writing.latest?.error ??
-      last?.error ??
-      checks.error ??
-      chosen.error ??
-      style.error ??
-      approveError
-    );
-  const open =
-    expanded ||
+  // An error that comes up while folded, such as for the letter chosen to answer, opens it.
+  const failed = !!(
+    discard.error ??
+    writing.latest?.error ??
+    last?.error ??
+    checks.error ??
+    chosen.error ??
+    style.error ??
+    approveError
+  );
+  const held =
     followUp ||
     !!draft ||
     letter.bodyMd.trim() !== "" ||
@@ -323,6 +317,7 @@ function Composer({
     review !== undefined ||
     approving ||
     failed;
+  const open = expanded || held;
   const sendButton = useRef<HTMLButtonElement>(null);
   return (
     <section aria-label={`${label}导师`} className="mt-auto shrink-0 border-t border-border bg-background">
@@ -341,19 +336,6 @@ function Composer({
       <Collapsible open={open}>
         <CollapsibleContent
           className="flex max-h-[65dvh] flex-col gap-2 overflow-y-auto px-5 py-3 phone:px-3 [&>*]:shrink-0"
-          // Leaving an empty box folds it back, but not for its own menus and dialogs, which sit
-          // outside the app root, nor for "回复" on another letter, which only changes the target.
-          onBlur={(e) => {
-            const to = e.relatedTarget;
-            if (
-              to instanceof Element &&
-              (e.currentTarget.contains(to) ||
-                !document.getElementById("root")?.contains(to) ||
-                to.closest("[data-reply]"))
-            )
-              return;
-            setExpanded(false);
-          }}
           onKeyDown={(e) => {
             if (
               e.key === "Enter" &&
@@ -379,6 +361,11 @@ function Composer({
                 </p>
               )}
             </div>
+            {!held && (
+              <Button variant="ghost" size="sm" onClick={() => setExpanded(false)}>
+                收起
+              </Button>
+            )}
             {followUp && (
               <Confirm
                 trigger={

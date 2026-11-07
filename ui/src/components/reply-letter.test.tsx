@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, type ReactNode } from "react";
+import { act, type ReactNode, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import type {
@@ -211,12 +211,15 @@ function setup(correspondence = false) {
   const root = createRoot(container);
   const render = (visible = true, extra?: ReactNode) =>
     act(async () =>
+      // StrictMode as in the app, which creates and drops a first editor before the one shown.
       root.render(
-        <QueryClientProvider client={client}>
-          {visible &&
-            (correspondence ? <Correspondence mentor={mentor} /> : <ReplyLetter mentor={mentor} selected={null} />)}
-          {extra}
-        </QueryClientProvider>,
+        <StrictMode>
+          <QueryClientProvider client={client}>
+            {visible &&
+              (correspondence ? <Correspondence mentor={mentor} /> : <ReplyLetter mentor={mentor} selected={null} />)}
+            {extra}
+          </QueryClientProvider>
+        </StrictMode>,
       ),
     );
   return {
@@ -608,6 +611,30 @@ it("opens the folded reply to say why the letter chosen to answer could not be r
     await act(async () => view.button("回复").click());
     await vi.waitFor(() => expect(view.container.textContent).toContain("未能发送：回复的那封信已不在往来里"));
     expect(() => view.button("回复 王伟…")).toThrow();
+  } finally {
+    await view.close();
+  }
+});
+
+it("folds back at the user's word only while nothing is in the reply", async () => {
+  const view = setup();
+  try {
+    await view.render();
+    await view.openReply();
+    await act(async () => view.button("收起").click());
+    await vi.waitFor(() => view.button("回复 王伟…"));
+    remote.draft = {
+      factCheck: null,
+      id: 5,
+      replyTo: remote.target.messageId ?? "",
+      bodyMd: "王老师您好",
+      attachments: [],
+      target: remote.target,
+    };
+    await view.render(false);
+    await view.render();
+    await vi.waitFor(() => expect(view.container.querySelector(".tiptap")?.textContent).toBe("王老师您好"));
+    expect(() => view.button("收起")).toThrow();
   } finally {
     await view.close();
   }

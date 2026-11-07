@@ -4,7 +4,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { type Editor, EditorContent, Extension, getSchema, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Bold, Braces, Italic, Link, List, ListOrdered } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FIELD, Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -143,8 +143,9 @@ export function LetterEditor({
   quotes?: string[];
   compact?: boolean;
   /**
-   * Asks for the cursor at the end, once: `onFocused` reports it taken, so that rebuilding the
-   * editor, say for an AI draft, does not take the focus back from wherever the user went.
+   * Asks for the cursor at the end. `onFocused` reports it taken once the editor really has the
+   * focus, so that rebuilding the editor, say for an AI draft, does not take the focus back from
+   * wherever the user went.
    */
   focus?: boolean;
   onFocused?: () => void;
@@ -164,9 +165,11 @@ export function LetterEditor({
     ],
     content: toHtml(markdown),
     parseOptions: letterParsing,
-    // A focus asked for along with the editor waits until the editor is ready.
+    // A focus asked for along with the editor waits until the editor is on the page. A first
+    // instance created and dropped again, as under StrictMode, never gets it, so only the focus
+    // itself ends the request.
     autofocus: focus ? "end" : false,
-    onCreate: () => {
+    onFocus: () => {
       if (focus) onFocused?.();
     },
     editorProps: {
@@ -185,13 +188,10 @@ export function LetterEditor({
     }
   }, [editor, quotes]);
   const [tools, setTools] = useState(false);
+  // A focus asked for once the editor is already on the page.
   const asked = useRef(focus);
-  const focusTaken = useEffectEvent(() => onFocused?.());
   useEffect(() => {
-    if (focus && !asked.current) {
-      editor.commands.focus("end");
-      focusTaken();
-    }
+    if (focus && !asked.current) editor.commands.focus("end");
     asked.current = focus;
   }, [editor, focus]);
   return (

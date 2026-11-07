@@ -86,7 +86,7 @@ impl CrawlError {
             Self::SlowDown(_) => "网站要求放慢访问，请稍后重试".into(),
             Self::ContentType => "这个地址返回的不是网页，请改用名单页或导师个人页".into(),
             Self::Document(_) => "这个 PDF 文件读不出文字，可能已损坏或加密".into(),
-            Self::Http(_) => "连不上网页。请检查网络和系统代理，稍后重试。".into(),
+            Self::Http(_) => "无法打开网页。请检查网络和系统代理，稍后重试。".into(),
             Self::Worker(_) => "读取网页内容失败，请重试；一直失败时请导出日志".into(),
         }
     }

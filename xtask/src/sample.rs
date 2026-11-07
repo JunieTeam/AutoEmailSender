@@ -606,7 +606,7 @@ pub async fn crawls(db: &SqlitePool, at: i64) -> Result {
             "未补到资料的导师",
             "done",
             serde_json::json!([]),
-            Some("页面上没有可补充的资料"),
+            Some("页面上无可补充的资料"),
         ),
     ] {
         let url = format!(

@@ -57,7 +57,7 @@ async fn run() -> Result<bool, String> {
                     let mut input = String::new();
                     std::io::stdin()
                         .read_to_string(&mut input)
-                        .map_err(|error| format!("读不了标准输入：{error}"))?;
+                        .map_err(|error| format!("无法读取标准输入：{error}"))?;
                     input
                 }
                 Some(input) => (*input).to_owned(),

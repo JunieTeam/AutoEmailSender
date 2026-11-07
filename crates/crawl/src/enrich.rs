@@ -359,7 +359,7 @@ pub(crate) async fn complete(conn: &mut SqliteConnection, id: i64) -> Result<(),
             WHERE candidate_id = ?1 AND status != 'success'
             ORDER BY status = 'needs_browser' DESC, kind = 'enrich_profile' DESC, id
             LIMIT 1
-        ), '页面上没有可补充的资料') END
+        ), '页面上无可补充的资料') END
         WHERE id = ?1 AND review = 'pending' AND enrich IN ('queued', 'running')
         AND NOT EXISTS (
             SELECT 1

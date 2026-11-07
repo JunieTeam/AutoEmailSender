@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 
 import { TAG_COLORS } from "@/api/types";
 import { composing } from "@/composing";
+import { Loading } from "@/components/loading";
 
 /** The colour for the next new tag: the presets in turn. */
 function nextColor(count: number): string {
@@ -99,6 +100,11 @@ export function TagSaveError({ mentorId }: { mentorId: number }) {
   );
 }
 
+/** Said where the tags would be listed, which a failed load would otherwise leave looking empty. */
+function TagsFailed({ error }: { error: Error | null }) {
+  return error && <p className="px-2 text-sm text-destructive">标签未能加载：{errorMessage(error)}</p>;
+}
+
 /** Shows the mentor's tags from the page's cache, which each tick updates at once. */
 function TagChoices({ mentorId, selected, onManage }: { mentorId: number; selected: Tag[]; onManage: () => void }) {
   const queryClient = useQueryClient();
@@ -132,6 +138,7 @@ function TagChoices({ mentorId, selected, onManage }: { mentorId: number; select
   }
   return (
     <div className="flex flex-col gap-1">
+      <TagsFailed error={tags.error} />
       {tags.data?.map((t) => (
         <label key={t.id} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-muted">
           <Checkbox checked={selected.some((s) => s.id === t.id)} onCheckedChange={() => void toggle(t)} />
@@ -222,6 +229,7 @@ export function AddTagButton({ mentorIds, add }: { mentorIds: number[]; add: Ret
         }
       />
       <PopoverContent side="top" className="flex flex-col gap-1">
+        <TagsFailed error={tags.error} />
         {tags.data?.map((t) => (
           <button
             key={t.id}
@@ -281,7 +289,9 @@ function TagManager({ onClose }: { onClose: () => void }) {
       <DialogContent className="w-[480px]">
         <DialogHeader>管理标签</DialogHeader>
         <DialogBody className="flex flex-col gap-1.5 pb-5">
-          {list.length === 0 && <p className="py-6 text-center text-muted-foreground">尚无标签</p>}
+          <TagsFailed error={tags.error} />
+          {tags.isPending && <Loading />}
+          {tags.data?.length === 0 && <p className="py-6 text-center text-muted-foreground">尚无标签</p>}
           {list.map((t, i) => (
             <TagRow
               key={t.id}

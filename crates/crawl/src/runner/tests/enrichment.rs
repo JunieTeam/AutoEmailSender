@@ -455,7 +455,7 @@ async fn enrichment_failure_reasons_and_single_page_retry(db: SqlitePool) {
         vec!["a@example.edu"]
     );
     for (path, html, expected) in [
-        ("/empty", "<p>张三</p>", "页面上没有"),
+        ("/empty", "<p>张三</p>", "页面上无可补充"),
         (
             "/browser",
             "<div id='app'></div><script src='/main.js'></script><noscript>请启用 JavaScript</noscript>",

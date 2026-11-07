@@ -141,7 +141,7 @@ function Phones() {
 function StatusLine({ status }: { status: RelayStatus }) {
   if (status.kind === "online") return <p className="mt-2 text-sm text-success">手机现在可以连接</p>;
   if (status.kind === "failed") {
-    return <p className="mt-2 text-sm text-warning">连不上服务器：{status.reason}（会自动重试）</p>;
+    return <p className="mt-2 text-sm text-warning">无法连接服务器：{status.reason}（会自动重试）</p>;
   }
   return <p className="mt-2 text-sm text-muted-foreground">正在连接服务器…</p>;
 }

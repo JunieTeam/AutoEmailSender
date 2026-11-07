@@ -69,8 +69,8 @@ impl ModelError {
                 format!("{address} 的证书不受信任，连接可能被拦截。请更换网络后重试。")
             }
             ModelError::Unreachable { address, .. } => format!(
-                "连不上 {address}。检查网络是否连通；开了系统代理的，确认代理软件在运行；\
-                国内用 OpenAI、Gemini 这类国外服务要开代理。"
+                "无法连接 {address}。请检查网络是否连通；开启了系统代理的，请确认代理软件正在运行；\
+                在国内使用 OpenAI、Gemini 这类国外服务需要开启代理。"
             ),
             ModelError::TimedOut { address } => format!(
                 "{address} 长时间未响应。请稍后再试；在国内使用 OpenAI、Gemini 这类国外服务需要开启代理。"

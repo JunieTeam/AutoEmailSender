@@ -441,7 +441,7 @@ export function TaskReviewPage() {
                   trigger={<Button variant="ghost">停止任务</Button>}
                   message={`停止后，未发出的邮件全部取消，任务无法继续。正在发送的邮件会完成发送。${
                     t.progress.cloud > 0
-                      ? `已交给云端的 ${t.progress.cloud} 封会去云端撤回；连不上服务器时，到点仍可能发出。`
+                      ? `已交给云端的 ${t.progress.cloud} 封会去云端撤回；无法连接服务器时，到点仍可能发出。`
                       : ""
                   }`}
                   action="停止任务"

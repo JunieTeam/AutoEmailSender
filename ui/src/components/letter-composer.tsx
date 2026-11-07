@@ -302,8 +302,13 @@ export function AttachMenu({
         <Button variant="ghost" disabled={disabled} onClick={() => picker.current?.click()}>
           {last?.status === "pending" ? "正在提取文字…" : "添加新材料"}
         </Button>
-        {last?.error && <p className="p-1.5 text-sm text-destructive">{errorMessage(last.error)}</p>}
       </PopoverContent>
+      {/* Outside the menu, which the user may have closed while the file was being read. */}
+      {last?.error && (
+        <p role="alert" className="order-last basis-full text-sm text-destructive">
+          未能添加附件：{errorMessage(last.error)}
+        </p>
+      )}
     </Popover>
   );
 }

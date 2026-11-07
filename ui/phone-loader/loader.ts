@@ -56,9 +56,9 @@ async function open(pairing: Pairing) {
   }
   const others = pairings().length > 1;
   show(
-    text(found ? "电脑上的应用没有连上：请确认它开着、已登录、能联网。" : "连不上服务器，请检查手机的网络。"),
+    text(found ? "电脑上的应用未连接：请确认它已打开、已登录并可以联网" : "无法连接服务器，请检查手机的网络"),
     button("重试", () => void open(pairing)),
-    ...(others ? [button("换一台电脑", choose)] : []),
+    ...(others ? [button("选择其他电脑", choose)] : []),
   );
   timer = setTimeout(() => void open(pairing), AGAIN);
 }
@@ -66,15 +66,15 @@ async function open(pairing: Pairing) {
 function choose() {
   const list = pairings();
   if (list.length === 0) {
-    show(text("在电脑上的应用里打开 设置 › 手机和 Agent，按“添加手机”，用手机扫描二维码。"));
+    show(text("在电脑上的应用里打开“设置 › 手机和 Agent”，点“添加手机”，用手机扫描二维码"));
     return;
   }
   const items = list.map((pairing) => {
     const li = document.createElement("li");
     li.append(
-      button(pairing.computer ?? "还没连上过的电脑", () => void open(pairing)),
+      button(pairing.computer ?? "尚未连接过的电脑", () => void open(pairing)),
       // Only this phone's record; the computer keeps its own until revoked there.
-      button("删掉", () => {
+      button("删除", () => {
         forget(pairing.room);
         choose();
       }),
@@ -97,7 +97,7 @@ function start(code: Pairing | null) {
   } catch (error) {
     if (error instanceof Unreadable) {
       show(
-        text("这部手机上记下的电脑读不出来了，清除后才能接着用。清除以后，没连上的电脑要重新扫码。"),
+        text("这部手机上保存的电脑信息无法读取，清除后方可继续使用。清除后，尚未连接的电脑需要重新扫码。"),
         button("清除", () => {
           forgetAll();
           start(code);
@@ -107,7 +107,7 @@ function start(code: Pairing | null) {
       // The browser keeps no data for the page, as in private browsing on some phones.
       show(
         text(
-          "这个浏览器不让网页保存数据，记不住配对：请关掉无痕浏览，或者允许这个网站保存数据，再在电脑上重新生成二维码。",
+          "这个浏览器不允许网页保存数据，无法记住配对：请关闭无痕浏览，或允许这个网站保存数据，再在电脑上重新生成二维码",
         ),
       );
     } else {
