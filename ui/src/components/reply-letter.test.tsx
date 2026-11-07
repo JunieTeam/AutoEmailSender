@@ -36,6 +36,7 @@ const remote = vi.hoisted(
     write?: (input: ReplyDraftEdit) => Promise<Letter>;
     check?: (draft: ReplyDraft) => Promise<FactCheck>;
     listing?: Promise<void>;
+    targetError?: Error;
   } => ({
     target: {
       id: 1,
@@ -68,7 +69,10 @@ vi.mock("@/api/call", () => ({
     input: ReplyDraftEdit & { id?: number; ids?: number[]; column?: string; draftId?: number },
   ) => {
     if (op === "getReplyDraft") return remote.draft;
-    if (op === "getReplyTarget") return remote.target;
+    if (op === "getReplyTarget") {
+      if (input.id != null && remote.targetError) throw remote.targetError;
+      return remote.target;
+    }
     if (op === "writeReply" && remote.write) return remote.write(input);
     if (op === "saveReplyDraft") {
       remote.saves.push(input);
@@ -241,6 +245,7 @@ function setup(correspondence = false) {
       remote.merged = false;
       remote.approved = null;
       remote.saves = [];
+      remote.targetError = undefined;
     },
   };
 }
@@ -563,6 +568,46 @@ it("checks a reply AI drafted once it is saved, and marks what the materials do 
       expect(view.container.querySelector(".tiptap .bg-warning-soft")?.textContent).toBe("获得了国家奖学金"),
     );
     expect(checked).toEqual([body]);
+  } finally {
+    await view.close();
+  }
+});
+
+it("puts the cursor in the reply it opens, and an AI draft arriving later leaves the focus where the user moved it", async () => {
+  let complete: ((letter: Letter) => void) | undefined;
+  remote.write = () =>
+    new Promise((resolve) => {
+      complete = resolve;
+    });
+  const elsewhere = document.createElement("input");
+  document.body.append(elsewhere);
+  const view = setup();
+  try {
+    await view.render();
+    await view.openReply();
+    await vi.waitFor(() => expect(document.activeElement?.closest(".tiptap")).not.toBeNull());
+    await act(async () => view.button("AI 起草").click());
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    act(() => elsewhere.focus());
+    await act(async () => complete?.({ subject: "", bodyMd: "王老师您好" }));
+    await vi.waitFor(() => expect(view.container.querySelector(".tiptap")?.textContent).toBe("王老师您好"));
+    expect(document.activeElement).toBe(elsewhere);
+  } finally {
+    elsewhere.remove();
+    await view.close();
+  }
+});
+
+it("opens the folded reply to say why the letter chosen to answer could not be read", async () => {
+  remote.entries = [received];
+  remote.targetError = new Error("回复的那封信已不在往来里");
+  const view = setup(true);
+  try {
+    await view.render();
+    await vi.waitFor(() => view.button("回复 王伟…"));
+    await act(async () => view.button("回复").click());
+    await vi.waitFor(() => expect(view.container.textContent).toContain("未能发送：回复的那封信已不在往来里"));
+    expect(() => view.button("回复 王伟…")).toThrow();
   } finally {
     await view.close();
   }

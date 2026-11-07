@@ -17,7 +17,7 @@ export function TemplatesSection() {
   return (
     <Section title="模板">
       <p className="text-sm text-muted-foreground">
-        套用模板写信时，占位符换成每位导师的信息。也可以让 AI 逐一撰写，不用模板。
+        套用模板写信时，占位符换成每位导师的信息。也可以让 AI 逐一撰写，不使用模板。
       </p>
       {error && <p className="text-sm text-destructive">模板未能加载：{errorMessage(error)}</p>}
       {templates.data && placeholders.data && (

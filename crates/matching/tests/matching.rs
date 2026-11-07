@@ -236,7 +236,7 @@ async fn invalid_output_retries_once_then_succeeds_or_fails(db: SqlitePool) {
     assert!(matches!(
         m.analysis.state,
         Some(MatchState::Failed { error })
-            if error == "模型未按要求回答，可重试或换个模型"
+            if error == "模型未按要求回答，可重试或更换模型"
     ));
     let calls: i64 = sqlx::query_scalar("SELECT count(*) FROM usage")
         .fetch_one(&db)

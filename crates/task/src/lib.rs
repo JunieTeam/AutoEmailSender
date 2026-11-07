@@ -125,7 +125,7 @@ async fn candidates(
                    'cloud', 'sending', 'maybe_sent', 'failed')
                  AND NOT (task_id IS ?2 AND ?2 IS NOT NULL
                    AND state IN ('failed', 'generation_failed')))
-                 THEN '还有一封没发出的首封或追问'
+                 THEN '还有一封未发出的首封或追问'
                ELSE NULL END AS "reason: String",
              coalesce(c.contact_count, 0) AS "contact_count!: i64",
              c.last_out_at AS last_contact_at, c.opened AS "opened?: bool",

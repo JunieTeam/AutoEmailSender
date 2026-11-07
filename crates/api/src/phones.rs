@@ -338,7 +338,7 @@ async fn save_phone(
     .await?;
     if saved.rows_affected() == 0 {
         return Err(CallError::invalid(
-            "登录的账号变了，请重新添加这部手机".into(),
+            "登录的账号已变更，请重新添加这部手机".into(),
         ));
     }
     Ok(())
@@ -488,11 +488,11 @@ async fn run(ctx: Arc<Context>, mut commands: mpsc::UnboundedReceiver<Command>) 
                     Ended::Changed => continue,
                     Ended::Closed => {
                         tracing::info!("phone relay closed the connection");
-                        "服务器断开了连接".into()
+                        "服务器已断开连接".into()
                     }
                     Ended::Failed(error) => {
                         tracing::warn!("phone relay: {error}");
-                        "和服务器的连接断开了".into()
+                        "与服务器的连接已断开".into()
                     }
                 }
             }

@@ -363,7 +363,7 @@ pub async fn call_agent(
                 {
                     tracing::info!(op, "agent confirmation changed before execution");
                     return Err(CallError::invalid(
-                        "等你确认期间情况变了，请重新发起".into(),
+                        "等待你确认期间情况已变化，请重新发起".into(),
                     ));
                 }
                 match op {
@@ -1632,7 +1632,7 @@ async fn send_test_letter(ctx: &Context, input: SendTestLetter) -> Result<(), Ca
 impl From<mailbox::SaveError> for CallError {
     fn from(e: mailbox::SaveError) -> Self {
         match e {
-            mailbox::SaveError::AddressTaken => CallError::invalid("这个邮箱已经添加过了".into()),
+            mailbox::SaveError::AddressTaken => CallError::invalid("这个邮箱已添加".into()),
             mailbox::SaveError::InCloud(count) => CallError::invalid(format!(
                 "这个邮箱还有 {count} 封邮件已交给云端，要改地址或删除邮箱，请先把它们撤回到本地"
             )),
@@ -1759,7 +1759,7 @@ async fn agree_model(ctx: &Context, input: ModelAgreement) -> Result<(), CallErr
     let applied = model::agree(&ctx.db, input.id, provider, base_url).await?;
     require_applied(
         applied,
-        "这个模型配置刚被修改或删除了。请看过新的说明后再确认。",
+        "这个模型配置刚被修改或删除。请查看新的说明后再确认。",
     )
 }
 
@@ -2245,10 +2245,8 @@ impl From<writing::Error> for CallError {
             writing::Error::NotALetter { finish_reason } => {
                 tracing::warn!(?finish_reason, "the model's answer is not a letter");
                 let message = match finish_reason {
-                    Some(model::Finish::Length) => {
-                        "模型的回答太长，被截断了。再试一次，或者换个模型。"
-                    }
-                    _ => "模型未按要求的格式回答，请重试或换个模型",
+                    Some(model::Finish::Length) => "模型的回答过长，已被截断。请重试或更换模型。",
+                    _ => "模型未按要求的格式回答，请重试或更换模型",
                 };
                 CallError {
                     code: ErrorCode::External,

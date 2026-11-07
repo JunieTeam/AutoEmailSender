@@ -13,6 +13,16 @@ const TONES: Record<Tone, string> = {
 };
 
 /** The dot written before a state's name. */
-export function StatusDot({ tone }: { tone: Tone }) {
+function StatusDot({ tone }: { tone: Tone }) {
   return <span aria-hidden className={cn("size-2 shrink-0 rounded-full", TONES[tone])} />;
+}
+
+/** A state's name after its dot, kept on one line beside however long a name is next to it. */
+export function StatusLabel({ tone, label, className }: { tone: Tone; label: string; className?: string }) {
+  return (
+    <span className={cn("flex shrink-0 items-center gap-1.5 whitespace-nowrap", className)}>
+      <StatusDot tone={tone} />
+      {label}
+    </span>
+  );
 }

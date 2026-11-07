@@ -550,7 +550,7 @@ pub async fn cloud_message(
     let letter = email::cloud::letter(&mut *db.acquire().await?, cloud_id).await?;
     let Some(account) = mailbox::account(db, letter.mailbox_id).await? else {
         return Ok(Err(
-            "发件邮箱的授权码不在这台电脑上了，请在邮箱设置里重新填写".into(),
+            "这台电脑上已无发件邮箱的授权码，请在邮箱设置里重新填写".into(),
         ));
     };
     let files = match files(materials, &letter.attachments).await {

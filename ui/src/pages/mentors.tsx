@@ -20,6 +20,7 @@ import { AiIcon } from "@/components/ai-writing";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Input } from "@/components/ui/input";
+import { Loading } from "@/components/loading";
 import { Notice } from "@/components/notice";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { SearchBox } from "@/components/search-box";
@@ -284,7 +285,9 @@ export function MentorsPage() {
         >
           {query.isError ? (
             <Notice title="导师列表未能加载" detail={errorMessage(query.error)} />
-          ) : query.data?.total === 0 ? (
+          ) : !query.data ? (
+            <Loading />
+          ) : query.data.total === 0 ? (
             search.status || search.q || filtered(search) ? (
               <Notice icon={SearchX} title="无符合条件的导师" detail="可更换关键词或筛选条件再试" />
             ) : (

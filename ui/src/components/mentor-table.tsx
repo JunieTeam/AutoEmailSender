@@ -78,7 +78,7 @@ export function MentorTable({
           key={m.id}
           role="row"
           data-selected={selected.has(m.id) || undefined}
-          className={`${COLUMNS} relative h-[62px] animate-enter rounded-md px-3 outline-ring hover:bg-muted has-focus-visible:outline-2 data-selected:bg-selected ${CARD}`}
+          className={`${COLUMNS} relative h-[62px] animate-fade-in rounded-md px-3 outline-ring hover:bg-muted has-focus-visible:outline-2 data-selected:bg-selected ${CARD}`}
         >
           {/* Above the stretched link, with a hit area wider than the box. */}
           <div role="cell" className="relative z-10 flex cards:self-start cards:pt-2.5 cards:[grid-area:check]">

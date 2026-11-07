@@ -16,7 +16,7 @@ use ts_rs::TS;
 pub use model::background::CONCURRENCY;
 /// Enough for a brief reason and three short lists; an estimate, not an output limit.
 pub const OUTPUT_TOKENS: i64 = 800;
-const INVALID: &str = "模型未按要求回答，可重试或换个模型";
+const INVALID: &str = "模型未按要求回答，可重试或更换模型";
 pub const NO_MODEL: &str = "尚未添加模型。在“设置 › AI › 模型”里添加后再试。";
 pub const NOT_AGREED: &str = "使用 AI 前，请先确认发给模型服务商的内容";
 pub const NO_BASIS: &str =
@@ -283,7 +283,7 @@ async fn analyze(
         }
         if answer.finish_reason == Some(model::Finish::Length) {
             return Ok(Outcome::Failed(
-                "模型的回答太长，被截断了。再试一次，或者换个模型。".into(),
+                "模型的回答过长，已被截断。请重试或更换模型。".into(),
             ));
         }
         match parse(&answer.text) {

@@ -36,7 +36,7 @@ type Read = { session: Session; message: Message };
 const encoder = new TextEncoder();
 
 /** What a call that cannot reach the computer fails with. */
-export const DISCONNECTED: CallError = { code: "external", message: "和电脑的连接断开了，正在重连…" };
+export const DISCONNECTED: CallError = { code: "external", message: "与电脑的连接已断开，正在重新连接…" };
 
 export class Connection {
   private readonly socket: WebSocket;

@@ -269,7 +269,7 @@ async fn generate(
             }
         }
         Err(writing::Error::NotALetter { .. }) => {
-            Outcome::Failed("模型未能写出完整的草稿，请重试或换个模型".into())
+            Outcome::Failed("模型未能写出完整的草稿，请重试或更换模型".into())
         }
         Err(writing::Error::Db(e)) => return Err(e),
         Err(writing::Error::NoMentor) => Outcome::Requeue,

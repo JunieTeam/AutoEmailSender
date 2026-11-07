@@ -4,7 +4,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { type Editor, EditorContent, Extension, getSchema, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Bold, Braces, Italic, Link, List, ListOrdered } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FIELD, Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -127,7 +127,8 @@ export function LetterEditor({
   quotes = [],
   disabled,
   compact = false,
-  focus = 0,
+  focus = false,
+  onFocused,
   onChange,
 }: {
   id: string;
@@ -141,7 +142,12 @@ export function LetterEditor({
   /** What AI 核对 found no support for, marked where it appears. */
   quotes?: string[];
   compact?: boolean;
-  focus?: number;
+  /**
+   * Asks for the cursor at the end, once: `onFocused` reports it taken, so that rebuilding the
+   * editor, say for an AI draft, does not take the focus back from wherever the user went.
+   */
+  focus?: boolean;
+  onFocused?: () => void;
   /** While the letter is being saved, so nothing typed meanwhile goes unsaved. */
   disabled: boolean;
   onChange: (markdown: string) => void;
@@ -159,7 +165,10 @@ export function LetterEditor({
     content: toHtml(markdown),
     parseOptions: letterParsing,
     // A focus asked for along with the editor waits until the editor is ready.
-    autofocus: focus > 0 ? "end" : false,
+    autofocus: focus ? "end" : false,
+    onCreate: () => {
+      if (focus) onFocused?.();
+    },
     editorProps: {
       attributes: {
         id,
@@ -176,11 +185,14 @@ export function LetterEditor({
     }
   }, [editor, quotes]);
   const [tools, setTools] = useState(false);
-  const focused = useRef(focus);
+  const asked = useRef(focus);
+  const focusTaken = useEffectEvent(() => onFocused?.());
   useEffect(() => {
-    if (focus === focused.current) return;
-    focused.current = focus;
-    editor.commands.focus("end");
+    if (focus && !asked.current) {
+      editor.commands.focus("end");
+      focusTaken();
+    }
+    asked.current = focus;
   }, [editor, focus]);
   return (
     <div className="flex flex-col gap-1.5">

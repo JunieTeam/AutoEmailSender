@@ -298,7 +298,7 @@ mod tests {
         let content = crawl_content(dir.path(), &detail, created_at, started).unwrap();
         assert!(content.contains("crawl{id=5}"));
         assert!(content.contains("crawl started"));
-        assert!(!content.contains("没有找到"));
+        assert!(!content.contains("未找到这次整理的日志"));
         detail.urls.clear();
         assert_eq!(
             crawl_filename(&detail, "2026-10-26").unwrap(),

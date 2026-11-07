@@ -4,7 +4,7 @@ import type { Affiliation, Contact, ContactStatus, DraftKind, ReplyOutcome } fro
 import { forgetWriting } from "@/components/ai-writing";
 import { refreshTasks } from "@/components/task-cache";
 import { day } from "@/format";
-import { StatusDot, type Tone } from "@/components/ui/status-dot";
+import { StatusLabel, type Tone } from "@/components/ui/status-dot";
 
 const AVATARS = ["bg-avatar-1", "bg-avatar-2", "bg-avatar-3", "bg-avatar-4", "bg-avatar-5"];
 
@@ -50,9 +50,8 @@ export function ContactLabel({
 }) {
   const [label, tone] = STATUS_STYLE[contact.status];
   return (
-    <div className={`flex items-center gap-1.5 ${className}`}>
-      <StatusDot tone={tone} />
-      {label}
+    <div className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap ${className}`}>
+      <StatusLabel tone={tone} label={label} />
       {contact.status === "contacted" && contact.opened && <span className="text-muted-foreground">已打开</span>}
       {contact.status === "replied" && contact.unread && (
         <span className="size-2 shrink-0 rounded-full bg-unread" aria-label="有新回信" />

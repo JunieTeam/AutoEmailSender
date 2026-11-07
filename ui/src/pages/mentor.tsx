@@ -177,7 +177,7 @@ function Header({
           {(main && placeOf(main)) || <Missing>未填写学校</Missing>}
         </p>
       </div>
-      <ContactLabel contact={m.contact} className="shrink-0 text-sm phone:hidden" />
+      <ContactLabel contact={m.contact} className="text-sm phone:hidden" />
       <Button variant="ghost" className="hidden px-3 phone:inline-flex" onClick={onProfile}>
         <UserRound strokeWidth={1.6} />
         资料

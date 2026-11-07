@@ -145,7 +145,7 @@ impl MailError {
                 "连不上 {host} 的 {port} 端口。请检查服务器地址和端口是否填错、网络是否连通。"
             ),
             MailError::ProxyDown { proxy, .. } => {
-                format!("连不上系统代理 {proxy}。确认代理软件在运行，或者关掉系统代理。")
+                format!("无法连接系统代理 {proxy}。请确认代理软件正在运行，或关闭系统代理。")
             }
             MailError::ProxyFailed {
                 proxy,
@@ -153,18 +153,18 @@ impl MailError {
                 port,
                 reason,
             } => format!(
-                "系统代理 {proxy} 没能连上 {host} 的 {port} 端口（{reason}）。\
-                检查服务器地址和端口，或者换个代理节点。"
+                "系统代理 {proxy} 未能连接 {host} 的 {port} 端口（{reason}）。\
+                请检查服务器地址和端口，或更换代理节点。"
             ),
             MailError::TimedOut { host, port } => format!(
-                "{host} 的 {port} 端口迟迟没有响应。检查服务器地址和端口；国内连 Gmail \
-                这类国外邮箱要开代理。"
+                "{host} 的 {port} 端口长时间无响应。请检查服务器地址和端口；在国内连接 Gmail \
+                等国外邮箱需要开启代理。"
             ),
             MailError::Tls { host, source } if net::untrusted(source) => {
-                format!("{host} 的证书不受信任，连接可能被拦截了。换个网络再试。")
+                format!("{host} 的证书不受信任，连接可能被拦截。请更换网络后重试。")
             }
             MailError::Tls { host, source } => format!(
-                "和 {host} 建立加密连接失败（{source}）。检查加密方式和端口是否对应：SSL/TLS \
+                "与 {host} 建立加密连接失败（{source}）。请检查加密方式和端口是否对应：SSL/TLS \
                 一般用 465、993 端口，STARTTLS 一般用 587、143 端口。"
             ),
             // Checking the code or trying again at once would only keep the limit on.
@@ -172,14 +172,14 @@ impl MailError {
                 if matches!(classify(self), Failure::Pause(PauseKind::Throttled(_))) =>
             {
                 format!(
-                    "服务商限制了登录或发信的频率（服务器回复：{reply}）。过一段时间再试，\
-                    授权码不用改；短时间里反复尝试会让限制更久。"
+                    "服务商限制了登录或发信的频率（服务器回复：{reply}）。请稍后再试，\
+                    无需修改授权码；短时间内反复尝试会延长限制。"
                 )
             }
             MailError::Login { reply, .. } => format!(
-                "登录被拒绝（服务器回复：{reply}）。检查授权码或密码有没有填错，\
-                邮箱设置里有没有开启 IMAP/SMTP 服务；\
-                学校和公司的邮箱还可能被管理员关闭了客户端登录，需要问管理员。"
+                "登录被拒绝（服务器回复：{reply}）。请检查授权码或密码是否正确，\
+                邮箱设置中是否已开启 IMAP/SMTP 服务；\
+                学校和公司的邮箱可能被管理员关闭了客户端登录，需联系管理员。"
             ),
             MailError::Refused { reply, .. } => format!("服务器拒绝了请求（{reply}）"),
             MailError::Broken(e) => {

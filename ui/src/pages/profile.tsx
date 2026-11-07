@@ -87,7 +87,7 @@ export function ProfileFields({ basic = false }: { basic?: boolean }) {
           <Textarea
             id="profile-rewrite"
             rows={3}
-            placeholder="比如：语气正式但不生硬，300 字以内，不用感叹号"
+            placeholder="比如：语气正式但不生硬，300 字以内，不使用感叹号"
             value={shown("rewritePreference")}
             onChange={(e) => edit({ rewritePreference: e.target.value })}
           />

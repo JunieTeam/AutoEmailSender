@@ -157,11 +157,13 @@ export function ConversationsPage() {
             <TodoList query={todoQuery} selected={search.mentor} />
           ) : query.isError ? (
             <Notice title="往来列表未能加载" detail={errorMessage(query.error)} />
-          ) : query.data?.total === 0 ? (
+          ) : !query.data ? (
+            <Loading />
+          ) : query.data.total === 0 ? (
             <Notice
               icon={Inbox}
               title={unread ? "尚无新回信" : "尚无往来"}
-              detail={unread ? undefined : "给导师发信或收到回信后，往来会列在这里"}
+              detail={unread ? "导师的新回信会列在这里" : "给导师发信或收到回信后，往来会列在这里"}
             />
           ) : (
             <div className="flex flex-col gap-[3px]">
@@ -171,7 +173,7 @@ export function ConversationsPage() {
                   to="/conversations"
                   search={(s) => ({ ...s, mentor: c.mentorId })}
                   aria-current={search.mentor === c.mentorId ? "true" : undefined}
-                  className={`flex animate-enter items-center gap-3 rounded-md px-3 py-3 ${search.mentor === c.mentorId ? "bg-selected" : "hover:bg-muted"}`}
+                  className={`flex animate-fade-in items-center gap-3 rounded-md px-3 py-3 ${search.mentor === c.mentorId ? "bg-selected" : "hover:bg-muted"}`}
                 >
                   <Avatar id={c.mentorId} name={c.name} />
                   <div className="min-w-0 grow">
@@ -218,7 +220,8 @@ export function ConversationsPage() {
 function TodoList({ query, selected }: { query: UseQueryResult<TodoPage>; selected?: number }) {
   const now = useNow();
   if (query.isError) return <Notice title="待办未能加载" detail={errorMessage(query.error)} />;
-  if (query.data?.total === 0) {
+  if (!query.data) return <Loading />;
+  if (query.data.total === 0) {
     return <Notice icon={ListTodo} title="尚无待办" detail="导师回信里要你做的事和你自己添加的待办会列在这里" />;
   }
   return (
@@ -228,7 +231,7 @@ function TodoList({ query, selected }: { query: UseQueryResult<TodoPage>; select
         return (
           <li
             key={t.id}
-            className={`flex animate-enter items-start gap-3 rounded-md px-3 py-3 ${selected === t.mentorId ? "bg-selected" : "hover:bg-muted"}`}
+            className={`flex animate-fade-in items-start gap-3 rounded-md px-3 py-3 ${selected === t.mentorId ? "bg-selected" : "hover:bg-muted"}`}
           >
             <TodoCheck todo={t} />
             <div className="min-w-0 grow">
@@ -279,7 +282,7 @@ function ConversationDetail({ id }: { id: number }) {
           <h2 className="truncate text-lg font-semibold">{m.name}</h2>
           <p className="truncate text-sm text-muted-foreground">{main && placeOf(main)}</p>
         </div>
-        <ContactLabel contact={m.contact} className="shrink-0 text-sm phone:hidden" />
+        <ContactLabel contact={m.contact} className="text-sm phone:hidden" />
         <Link
           to="/mentors/$mentorId"
           params={{ mentorId: id }}

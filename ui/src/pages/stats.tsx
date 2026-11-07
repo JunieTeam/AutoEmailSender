@@ -84,13 +84,26 @@ export function StatsPage() {
           title="联系进度"
           note={range === "all" ? "全部时间" : `最近 ${RANGES.find(([r]) => r === range)?.[1]}`}
         >
-          <Loaded query={contact}>{(c) => <Contact progress={c} range={range} page={page} onPage={setPage} />}</Loaded>
+          {/* docs/ui.md#动效: another range comes in like another tab; turning a page of schools does not. */}
+          <Loaded query={contact}>
+            {(c) => (
+              <div key={range} className="animate-enter">
+                <Contact progress={c} range={range} page={page} onPage={setPage} />
+              </div>
+            )}
+          </Loaded>
         </Section>
         <Section title="导师" note="现有的全部导师，不含回收站">
           <Loaded query={mentors}>{(m) => <Mentors overview={m} />}</Loaded>
         </Section>
         <Section title="Token 用量" note="按模型配置里填的单价估算费用">
-          <Loaded query={usage}>{(t) => <Tokens usage={t} />}</Loaded>
+          <Loaded query={usage}>
+            {(t) => (
+              <div key={range} className="animate-enter">
+                <Tokens usage={t} />
+              </div>
+            )}
+          </Loaded>
         </Section>
       </div>
     </div>

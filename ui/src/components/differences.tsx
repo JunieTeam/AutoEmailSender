@@ -3,6 +3,7 @@ import type { Affiliation, Field } from "@/api/types";
 import { Changes } from "@/components/changes";
 import { placeOf } from "@/components/mentor";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, ExpandChevron } from "@/components/ui/collapsible";
 import { changes } from "@/diff";
 import { sameDifference } from "@/import-decisions";
 
@@ -136,11 +137,12 @@ function DifferenceGroup<T extends Compared<string>>({
           </Button>
         </div>
         <Button size="sm" variant="ghost" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
-          {expanded ? "收起" : "逐个看"}
+          <ExpandChevron />
+          逐个看
         </Button>
       </div>
-      {expanded && (
-        <div className="mt-3 flex flex-col gap-3">
+      <Collapsible open={expanded}>
+        <CollapsibleContent className="flex flex-col gap-3 pt-3">
           {items.slice(0, limit).map((d, i) => (
             <div key={i} className="min-w-0 text-sm">
               <p className="mb-1.5 font-medium">
@@ -179,8 +181,8 @@ function DifferenceGroup<T extends Compared<string>>({
               再显示 {Math.min(30, items.length - limit)} 项（尚余 {items.length - limit} 项）
             </Button>
           )}
-        </div>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
     </section>
   );
 }

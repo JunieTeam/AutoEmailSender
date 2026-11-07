@@ -18,7 +18,7 @@ import { Pager, pageParam } from "@/components/mentor-table";
 import { Notice } from "@/components/notice";
 import { usePlaceholders } from "@/components/template-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { StatusDot, type Tone } from "@/components/ui/status-dot";
+import { StatusLabel, type Tone } from "@/components/ui/status-dot";
 import { Segments } from "@/components/ui/segments";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
@@ -111,12 +111,7 @@ const TASK_STATE: Record<TaskState, [string, Tone]> = {
 
 function TaskStatus({ state, className }: { state: TaskState; className?: string }) {
   const [label, tone] = TASK_STATE[state];
-  return (
-    <span className={cn("flex items-center gap-1.5 text-sm text-muted-foreground", className)}>
-      <StatusDot tone={tone} />
-      {label}
-    </span>
-  );
+  return <StatusLabel tone={tone} label={label} className={cn("text-sm text-muted-foreground", className)} />;
 }
 export function TasksPage() {
   const search = useSearch({ from: "/tasks" });
@@ -153,7 +148,9 @@ export function TasksPage() {
             <div className="min-h-0 flex-1 overflow-y-auto px-4 phone:px-2">
               {query.error ? (
                 <Notice title="任务列表未能加载" detail={errorMessage(query.error)} />
-              ) : query.data?.total === 0 ? (
+              ) : !query.data ? (
+                <Loading />
+              ) : query.data.total === 0 ? (
                 <Notice
                   icon={ListChecks}
                   title="尚未创建任务"
@@ -170,7 +167,7 @@ export function TasksPage() {
                     key={t.id}
                     to="/tasks/$id"
                     params={{ id: t.id }}
-                    className="mb-[3px] grid animate-enter grid-cols-[minmax(140px,1fr)_minmax(160px,1.5fr)_70px] items-center gap-5 rounded-md px-4 py-4 hover:bg-muted phone:grid-cols-[minmax(0,1fr)_64px] phone:gap-2"
+                    className="mb-[3px] grid animate-fade-in grid-cols-[minmax(140px,1fr)_minmax(160px,1.5fr)_70px] items-center gap-5 rounded-md px-4 py-4 hover:bg-muted phone:grid-cols-[minmax(0,1fr)_64px] phone:gap-2"
                   >
                     <div className="min-w-0">
                       <h2 className="truncate font-medium">{t.name}</h2>
@@ -207,19 +204,24 @@ const FILTERS: [DraftFilter, string][] = [
   ["generation_failed", "生成失败"],
   ["approved", "已批准"],
 ];
-const DRAFT_STATE: Record<DraftState, string> = {
-  generating: "生成中",
-  generation_failed: "生成失败",
-  review: "待审核",
-  approved: "待发送",
-  cloud: "云端待发",
-  sending: "发送中",
-  maybe_sent: "可能已发出",
-  sent: "已发出",
-  bounced: "退信",
-  failed: "发送失败",
-  canceled: "已取消",
+const DRAFT_STATE: Record<DraftState, [string, Tone]> = {
+  generating: ["生成中", "info"],
+  generation_failed: ["生成失败", "destructive"],
+  review: ["待审核", "warning"],
+  approved: ["待发送", "info"],
+  cloud: ["云端待发", "info"],
+  sending: ["发送中", "info"],
+  maybe_sent: ["可能已发出", "warning"],
+  sent: ["已发出", "success"],
+  bounced: ["退信", "warning"],
+  failed: ["发送失败", "destructive"],
+  canceled: ["已取消", "faint"],
 };
+
+function DraftStatus({ state, className }: { state: DraftState; className?: string }) {
+  const [label, tone] = DRAFT_STATE[state];
+  return <StatusLabel tone={tone} label={label} className={cn("text-xs text-muted-foreground", className)} />;
+}
 export function TaskReviewPage() {
   const { id } = useParams({ from: "/tasks/$id" });
   const search = useSearch({ from: "/tasks/$id" });
@@ -439,7 +441,7 @@ export function TaskReviewPage() {
                   trigger={<Button variant="ghost">停止任务</Button>}
                   message={`停止后，未发出的邮件全部取消，任务无法继续。正在发送的邮件会完成发送。${
                     t.progress.cloud > 0
-                      ? `已交给云端的 ${t.progress.cloud} 封会去云端撤回；连不上服务器时，到点仍可能发出`
+                      ? `已交给云端的 ${t.progress.cloud} 封会去云端撤回；连不上服务器时，到点仍可能发出。`
                       : ""
                   }`}
                   action="停止任务"
@@ -521,7 +523,9 @@ export function TaskReviewPage() {
           <div className="min-h-0 flex-1 space-y-[3px] overflow-y-auto px-2">
             {list.error ? (
               <Notice title="草稿列表未能加载" detail={errorMessage(list.error)} />
-            ) : list.data?.total === 0 ? (
+            ) : !list.data ? (
+              <Loading />
+            ) : list.data.total === 0 ? (
               <Notice icon={SearchX} title="无符合条件的邮件" detail="可更换筛选条件查看" />
             ) : (
               list.data?.drafts.map((d) => (
@@ -534,9 +538,9 @@ export function TaskReviewPage() {
                   <Avatar id={d.mentorId} name={d.name} />
                   <span className="min-w-0 grow">
                     <span className="block truncate font-medium">{d.name}</span>
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      {DRAFT_STATE[d.state]}
-                      {d.problems > 0 && <span className="ml-2 text-warning">{d.problems} 个问题</span>}
+                    <span className="mt-1 flex items-center gap-2 text-xs">
+                      <DraftStatus state={d.state} />
+                      {d.problems > 0 && <span className="truncate text-warning">{d.problems} 个问题</span>}
                     </span>
                   </span>
                 </button>
@@ -645,7 +649,7 @@ function DraftDetail({
             <p className="font-medium">{mentor.name}</p>
             <p className="truncate text-sm text-muted-foreground">{mentor.emails[0] ?? "未填写邮箱"}</p>
           </div>
-          <span className="shrink-0 text-xs text-muted-foreground">{DRAFT_STATE[d.state]}</span>
+          <DraftStatus state={d.state} />
         </div>
         {d.state === "generating" ? (
           <Notice

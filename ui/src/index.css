@@ -135,17 +135,19 @@
 }
 
 @theme {
-  /* A page, tab or new list item fading in. */
+  /* A page, tab or section coming in. */
   --animate-enter: enter 180ms var(--ease-out);
+  /* A new item in a list, which only fades in: the list around it stays put. */
+  --animate-fade-in: fade-in 180ms var(--ease-out);
   /* A loading state that shows only if loading takes longer than a moment. */
-  --animate-appear: appear 180ms 300ms var(--ease-out) both;
+  --animate-appear: fade-in 180ms 300ms var(--ease-out) both;
   @keyframes enter {
     from {
       opacity: 0;
       translate: 0 4px;
     }
   }
-  @keyframes appear {
+  @keyframes fade-in {
     from {
       opacity: 0;
     }
@@ -182,12 +184,17 @@
   ::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in srgb, var(--foreground) 35%, transparent);
   }
-  /* docs/ui.md#动效: nothing moves, but colours and fades still change smoothly. */
+  /*
+   * docs/ui.md#动效: nothing moves, scales or spins; colours and the fades of menus and dialogs still
+   * change smoothly. Animations end at once rather than being removed, so a loading state still waits
+   * its 300ms.
+   */
   @media (prefers-reduced-motion: reduce) {
     *,
     ::before,
     ::after {
-      animation: none !important;
+      animation-duration: 0s !important;
+      animation-iteration-count: 1 !important;
       transition-property: color, background-color, border-color, opacity !important;
     }
   }

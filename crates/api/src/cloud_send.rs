@@ -244,7 +244,7 @@ async fn upload_mailbox(
     Ok(saved.login_error)
 }
 
-const NO_SECRET: &str = "发件邮箱的授权码不在这台电脑上了，请在邮箱设置里重新填写";
+const NO_SECRET: &str = "这台电脑上已无发件邮箱的授权码，请在邮箱设置里重新填写";
 const CHANGED: &str = "这些邮件或邮箱刚刚有了变化，请重新打开“交给云端发送”再交";
 
 #[derive(Deserialize, TS)]

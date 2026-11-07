@@ -2,6 +2,7 @@ import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/reac
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Inbox, SearchX } from "lucide-react";
+import { Loading } from "@/components/loading";
 import { Notice } from "@/components/notice";
 import { useState } from "react";
 import { exportCrawlLog } from "@/api/app";
@@ -191,6 +192,7 @@ function Crawls() {
       {s.detail && <OpenedCrawl key={s.detail} id={s.detail} />}
       <h2 className="mb-3 text-lg font-medium">整理记录</h2>
       <ErrorText error={records.error} />
+      {records.isPending && <Loading />}
       {records.data?.total === 0 && <p className="text-muted-foreground">尚无整理记录，从上方填写网址开始</p>}
       <div className="space-y-3">
         {records.data?.crawls
@@ -223,7 +225,7 @@ function OpenedCrawl({ id }: { id: number }) {
 function CrawlRecord({ crawl: c, expanded }: { crawl: CrawlSummary; expanded: boolean }) {
   const navigate = useNavigate({ from: "/find" });
   return (
-    <section className="rounded-lg bg-muted p-4">
+    <section className="animate-fade-in rounded-lg bg-muted p-4">
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <button
           className="min-h-10 min-w-0 flex-1 text-left phone:basis-full"
@@ -513,12 +515,12 @@ function Candidates() {
             选择本页
           </label>
         )}
-        {items.length === 0 &&
-          !list.isPending &&
-          (s.processed ? (
-            <Notice icon={Inbox} title="尚无已处理的候选" />
-          ) : s.filter !== "all" || s.crawl !== undefined ? (
+        {list.isPending && <Loading />}
+        {list.data?.total === 0 &&
+          (s.filter !== "all" || s.crawl !== undefined ? (
             <Notice icon={SearchX} title="无符合条件的候选" detail="可更换筛选条件查看" />
+          ) : s.processed ? (
+            <Notice icon={Inbox} title="尚无已处理的候选" detail="接受或拒绝后的候选会列在这里" />
           ) : (
             <Notice
               icon={Inbox}
@@ -531,7 +533,7 @@ function Candidates() {
           {items.map((c) => (
             <section
               key={c.id}
-              className="flex animate-enter items-start gap-3 rounded-lg bg-muted p-4 phone:flex-wrap"
+              className="flex animate-fade-in items-start gap-3 rounded-lg bg-muted p-4 phone:flex-wrap"
             >
               {!s.processed && (
                 <label className="flex min-h-10 min-w-10 cursor-pointer items-center justify-center">
@@ -573,14 +575,14 @@ function Candidates() {
                 )}
                 {c.enrichChanges.length > 0 && (
                   <p className="mt-2 text-sm text-brand-text">
-                    补到了{[...new Set(c.enrichChanges.map((v) => ENRICH_FIELDS[v.field]))].join("、")}
+                    已补充{[...new Set(c.enrichChanges.map((v) => ENRICH_FIELDS[v.field]))].join("、")}
                   </p>
                 )}
                 {c.enrichError && <p className="mt-2 text-sm text-warning">{c.enrichError}</p>}
                 {c.sourceUrl && <SourceLink url={c.sourceUrl} />}
                 {c.issue && <p className="mt-2 text-sm text-warning">{c.issue}</p>}
-                {expanded === c.id && (
-                  <div className="animate-enter">
+                <Collapsible open={expanded === c.id}>
+                  <CollapsibleContent>
                     <CandidateDetails
                       candidate={c}
                       decisions={choices[c.id] ?? EMPTY}
@@ -591,8 +593,8 @@ function Candidates() {
                         }))
                       }
                     />
-                  </div>
-                )}
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
               {!s.processed && (
                 <div className="flex gap-1 phone:w-full phone:justify-end">

@@ -18,7 +18,7 @@
     nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -Command "& ([ScriptBlock]::Create([IO.File]::ReadAllText($$env:AUTOEMAIL_CLI_SCRIPT)))"'
     Pop $0
     ${If} $0 != 0
-      MessageBox MB_ICONEXCLAMATION "没能把命令行工具从 PATH 里移除。请在开始菜单搜索“编辑账户的环境变量”，从 Path 里删掉 $INSTDIR。" /SD IDOK
+      MessageBox MB_ICONEXCLAMATION "未能将命令行工具从 PATH 中移除。请在开始菜单搜索“编辑账户的环境变量”，从 Path 中删除 $INSTDIR。" /SD IDOK
     ${EndIf}
   ${EndIf}
 !macroend

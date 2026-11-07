@@ -121,7 +121,7 @@ pub async fn retry_reply_todos(ctx: &Context, input: ReplyMessage) -> Result<(),
     require_applied(
         email::outcome::retry_action(&ctx.db, input.message_id, email::outcome::Action::Todos)
             .await?,
-        "这封回信没有提取失败的待办可重试",
+        "这封回信无提取失败的待办可重试",
     )?;
     ctx.reply_processor.wake();
     Ok(())

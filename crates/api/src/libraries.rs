@@ -90,7 +90,7 @@ pub(crate) async fn library_add_agent(
             && current != description
         {
             return Err(CallError::invalid(
-                "等你确认期间情况变了，请重新发起".into(),
+                "等待你确认期间情况已变化，请重新发起".into(),
             ));
         }
         (fetched, guard)

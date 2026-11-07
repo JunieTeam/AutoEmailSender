@@ -6,6 +6,7 @@ import { call, errorMessage } from "@/api/call";
 import { BatchBar, Confirm } from "@/components/batch-bar";
 import { refreshMentors } from "@/components/mentor";
 import { MentorTable, Pager, pageParam, useLastPage } from "@/components/mentor-table";
+import { Loading } from "@/components/loading";
 import { Notice } from "@/components/notice";
 import { Button } from "@/components/ui/button";
 
@@ -63,7 +64,9 @@ export function TrashPage() {
         >
           {query.isError ? (
             <Notice title="回收站未能加载" detail={errorMessage(query.error)} />
-          ) : query.data?.total === 0 ? (
+          ) : !query.data ? (
+            <Loading />
+          ) : query.data.total === 0 ? (
             <Notice icon={Trash2} title="回收站是空的" detail="移入回收站的导师会出现在这里，可以恢复或永久删除" />
           ) : (
             <MentorTable

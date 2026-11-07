@@ -191,6 +191,6 @@ pub(crate) async fn same_login(
     if login.is_saved(conn).await? {
         Ok(())
     } else {
-        Err(account::Error::Invalid("登录的账号刚刚变了，请再试一次"))
+        Err(account::Error::Invalid("登录的账号已变更，请重试"))
     }
 }

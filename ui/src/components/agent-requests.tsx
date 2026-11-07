@@ -97,8 +97,8 @@ function RequestDialog({ request, queued }: { request: AgentRequest; queued: num
           )}
           {style.error && <p className="text-sm text-destructive">信件样式未能读取：{errorMessage(style.error)}</p>}
           <p className="text-sm text-muted-foreground">
-            这是你接入的 Agent 要做的事，允许后马上执行。5 分钟内不回应，就当作拒绝。
-            {queued > 0 && `之后还有 ${queued} 条请求`}
+            这是你接入的 Agent 要做的事，允许后立即执行。5 分钟内未回应视为拒绝。
+            {queued > 0 && `之后还有 ${queued} 条请求。`}
           </p>
           {answer.error && <p className="text-sm text-destructive">{errorMessage(answer.error)}</p>}
         </DialogBody>

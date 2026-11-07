@@ -456,7 +456,7 @@ async fn describe(
         "resetAccountPassword" => {
             let input: crate::accounts::AccountVerification = parse(input)?;
             object(
-                "重置账号密码：所有电脑都要重新登录，旧的云端备份用新密码解不开",
+                "重置账号密码：所有电脑都要重新登录，旧的云端备份无法用新密码解开",
                 input.email,
             )
         }

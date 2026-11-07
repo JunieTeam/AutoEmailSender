@@ -187,6 +187,11 @@ function Composer({
     },
   });
   const uploading = useUploading(mentorId);
+  const uploadFailed =
+    useMutationState({
+      filters: { mutationKey: ["uploadLetterMaterial", mentorId, followUp ? "follow_up" : "reply"] },
+      select: (m) => m.state.status,
+    }).at(-1) === "error";
   const chosen = useQuery({
     queryKey: ["getReplyTarget", mentorId, selected?.id],
     queryFn: selected ? () => call("getReplyTarget", { mentorId, id: selected.id }) : skipToken,
@@ -216,9 +221,10 @@ function Composer({
   const canSelect = !approving && !discard.isPending && !uploading;
   // docs/ui.md#交互: a line until clicked; kept open while there is anything in it.
   const [expanded, setExpanded] = useState(false);
-  const [focusing, setFocusing] = useState(0);
+  const [focusing, setFocusing] = useState(false);
   if (canSelect && selecting && selected && chosen.data?.messageId) {
     setExpanded(true);
+    setFocusing(true);
     setSelection({ version: selected.version, previousReplyTo: letter.replyTo });
     setChoice(chosen.data);
     setEditing({ letter: { ...letter, replyTo: chosen.data.messageId }, target: chosen.data });
@@ -294,13 +300,25 @@ function Composer({
         ? "这封信缺少邮件编号，无法在原线程里回复，请到邮箱里回复"
         : null;
   const approveError = approvals.at(-1)?.error;
-  const failed = !!(discard.error ?? writing.latest?.error ?? last?.error ?? approveError);
+  // Anything shown in the box, an error included, keeps it open: folded, it would go unseen.
+  const failed =
+    uploadFailed ||
+    !!(
+      discard.error ??
+      writing.latest?.error ??
+      last?.error ??
+      checks.error ??
+      chosen.error ??
+      style.error ??
+      approveError
+    );
   const open =
     expanded ||
     followUp ||
     !!draft ||
     letter.bodyMd.trim() !== "" ||
     letter.attachments.length > 0 ||
+    uploading ||
     busy ||
     review !== undefined ||
     approving ||
@@ -314,7 +332,7 @@ function Composer({
           className="m-3 flex h-10 w-[calc(100%-1.5rem)] items-center rounded-lg bg-muted px-3 text-left text-sm text-muted-foreground transition-colors hover:bg-press"
           onClick={() => {
             setExpanded(true);
-            setFocusing(focusing + 1);
+            setFocusing(true);
           }}
         >
           {label} {mentor.name}…
@@ -388,7 +406,8 @@ function Composer({
             unfilled
             compact
             quotes={quotes(problems)}
-            focus={selection.version + focusing}
+            focus={focusing}
+            onFocused={() => setFocusing(false)}
             disabled={locked}
             onChange={(bodyMd) => edit({ ...letter, bodyMd })}
           />

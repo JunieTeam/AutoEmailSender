@@ -9,7 +9,8 @@ import { CloudSendButton, WithdrawFromCloud } from "@/components/cloud-send";
 import { Pager } from "@/components/mentor-table";
 import { ScheduleActions, refreshSchedule, scheduledAt } from "@/components/schedule";
 import { dropDrafts } from "@/components/mentor";
-import { day, time } from "@/format";
+import { day, sentence, time } from "@/format";
+import { Loading } from "@/components/loading";
 
 const COLUMNS: [PlanColumn, string][] = [
   ["pending", "待处理"],
@@ -79,6 +80,7 @@ function PlanList({ column, label, hidden }: { column: PlanColumn; label: string
             <PlanRow key={e.id} email={e} column={column} />
           ),
         )}
+        {query.isPending && <Loading />}
         {query.data?.total === 0 && (
           <p className="p-3 text-sm text-muted-foreground">
             {column === "pending"
@@ -126,7 +128,7 @@ function PlanRow({ email: e, column }: { email: PlanEmail; column: PlanColumn })
       </Link>
     );
   return (
-    <article className="min-w-0 space-y-2 rounded-md bg-background p-3">
+    <article className="min-w-0 animate-fade-in space-y-2 rounded-md bg-background p-3">
       {column === "upcoming" && e.plannedAt !== null && (
         <p className="text-sm font-medium tabular-nums">
           {day(e.plannedAt) === "今天" ? time(e.plannedAt) : scheduledAt(e.plannedAt)}
@@ -142,16 +144,9 @@ function PlanRow({ email: e, column }: { email: PlanEmail; column: PlanColumn })
       {e.waiting !== null && <p className="text-xs text-muted-foreground">{WAITING[e.waiting]}</p>}
       {column === "pending" && (
         <p className="text-xs text-warning">
-          {e.state === "approved"
-            ? e.latestAt !== null
-              ? `${scheduledAt(e.latestAt)} 前未能发出`
-              : "所选窗口已无空位，请修改发送时间或改期"
-            : e.state === "generation_failed"
-              ? `生成失败：${e.error}`
-              : e.state === "maybe_sent"
-                ? `可能已发出：${e.error}`
-                : `发送失败：${e.error}`}
-          {e.cancelReason !== null && ` 已取消：${e.cancelReason}。确认未发出后，不再发送。`}
+          {e.cancelReason === null
+            ? pendingReason(e)
+            : `${sentence(pendingReason(e))}已取消：${sentence(e.cancelReason)}确认未发出后，不再发送。`}
         </p>
       )}
       {column !== "history" && (
@@ -208,7 +203,7 @@ function PlanRow({ email: e, column }: { email: PlanEmail; column: PlanColumn })
 /** An email with the official server: it can only be withdrawn. */
 function CloudRow({ email: e, cloud }: { email: PlanEmail; cloud: PlanCloud }) {
   return (
-    <article className="min-w-0 space-y-2 rounded-md bg-background p-3">
+    <article className="min-w-0 animate-fade-in space-y-2 rounded-md bg-background p-3">
       <p className="text-sm font-medium tabular-nums">
         {day(cloud.at) === "今天" ? time(cloud.at) : scheduledAt(cloud.at)}
       </p>
@@ -233,4 +228,13 @@ function CloudRow({ email: e, cloud }: { email: PlanEmail; cloud: PlanCloud }) {
       )}
     </article>
   );
+}
+
+/** Why an email waits for the user in 待处理. */
+function pendingReason(e: PlanEmail): string {
+  if (e.state === "approved")
+    return e.latestAt !== null ? `${scheduledAt(e.latestAt)} 前未能发出` : "所选窗口已无空位，请修改发送时间或改期";
+  if (e.state === "generation_failed") return `生成失败：${e.error}`;
+  if (e.state === "maybe_sent") return `可能已发出：${e.error}`;
+  return `发送失败：${e.error}`;
 }

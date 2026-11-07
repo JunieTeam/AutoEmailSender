@@ -299,7 +299,7 @@ function Sent({
   // Which address it went to is worth saying when the mentor has several.
   const [text, tone] = status(e, emails.length > 1);
   return (
-    <article className="flex animate-enter flex-col items-end gap-1.5">
+    <article className="flex animate-fade-in flex-col items-end gap-1.5">
       <div className="max-w-[min(42rem,88%)] rounded-[18px] rounded-br-[6px] bg-mine px-4 py-3">
         <h3 className="mb-2 font-semibold">{e.subject}</h3>
         <LetterBody markdown={e.bodyMd} />
@@ -442,7 +442,7 @@ function TodoGroup({ todos, readOnly }: { todos: Todo[]; readOnly: boolean }) {
       className="w-full max-w-[min(42rem,88%)] self-start divide-y divide-border rounded-lg border border-border"
     >
       {todos.map((t) => (
-        <li key={t.id} className="animate-enter">
+        <li key={t.id} className="animate-fade-in">
           <TodoItem todo={t} readOnly={readOnly} now={now} />
         </li>
       ))}
@@ -488,7 +488,7 @@ function Seen({
   const known = mentor.emails.some((e) => e.toLowerCase() === m.fromAddress);
   const from = mine || known ? "" : `，来自 ${m.fromAddress}`;
   return (
-    <article className={`flex animate-enter flex-col gap-1.5 ${mine ? "items-end" : "items-start"}`}>
+    <article className={`flex animate-fade-in flex-col gap-1.5 ${mine ? "items-end" : "items-start"}`}>
       <div
         className={`max-w-[min(42rem,88%)] rounded-[18px] px-4 py-3 ${mine ? "rounded-br-[6px] bg-mine" : "rounded-bl-[6px] bg-muted"}`}
       >

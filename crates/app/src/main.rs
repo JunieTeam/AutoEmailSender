@@ -556,7 +556,7 @@ async fn notify_replies(
     }
     let (title, body) = if replies.len() == 1 && replies[0].mentors.len() == 1 {
         (
-            format!("{}回信了", replies[0].mentors[0]),
+            format!("{}已回信", replies[0].mentors[0]),
             replies[0]
                 .subject
                 .clone()

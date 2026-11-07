@@ -66,7 +66,7 @@ impl ModelError {
                 "恢复后需要重新填写 API Key。请到“设置 › AI › 模型”填写后再试。".into()
             }
             ModelError::Unreachable { address, source } if net::untrusted(source) => {
-                format!("{address} 的证书不受信任，连接可能被拦截了。换个网络再试。")
+                format!("{address} 的证书不受信任，连接可能被拦截。请更换网络后重试。")
             }
             ModelError::Unreachable { address, .. } => format!(
                 "连不上 {address}。检查网络是否连通；开了系统代理的，确认代理软件在运行；\
@@ -81,11 +81,11 @@ impl ModelError {
                 ),
                 402 => format!("账户余额不足（服务商回复：{reply}）。到服务商网站充值后再试。"),
                 404 => format!(
-                    "服务商找不到这个模型或接口（服务商回复：{reply}）。检查模型名有没有填错；\
+                    "服务商找不到这个模型或接口（服务商回复：{reply}）。请检查模型名是否正确；\
                     自定义的接口地址一般以 /v1 结尾。"
                 ),
                 429 => format!(
-                    "请求太频繁或额度已用完（服务商回复：{reply}）。稍后再试，或者到服务商网站查看额度。"
+                    "请求太频繁或额度已用完（服务商回复：{reply}）。请稍后再试，或到服务商网站查看额度。"
                 ),
                 500.. => format!("服务商出错了（{status}：{reply}）。稍后再试。"),
                 _ => format!(
@@ -96,7 +96,7 @@ impl ModelError {
                 format!("服务商中途出错了（服务商回复：{reply}）。稍后再试。")
             }
             ModelError::NoAnswer { finish_reason } => format!(
-                "模型未给出回答（结束原因：{}）。请换个模型再试。",
+                "模型未给出回答（结束原因：{}）。请更换模型后重试。",
                 match finish_reason {
                     None => "未说明",
                     Some(crate::Finish::Stop) => "正常结束",

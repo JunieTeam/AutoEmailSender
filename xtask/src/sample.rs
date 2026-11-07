@@ -194,7 +194,7 @@ pub async fn fill(db: &SqlitePool, scale: Scale, now: i64) -> Result {
          rotation_order, paused_until, pause_reason, created_at)
          VALUES ('linxiao-backup@example.com', '林晓', 'custom', 'smtp.example.com', 465, 'tls',
          'imap.example.com', 993, 'tls', 'password', 'sample', 50, 60, 2, ?,
-         '被邮箱服务商限流了。可以降低发信频率。', ?)",
+         '已被邮箱服务商限流。可降低发信频率。', ?)",
     )
     .bind(now + 3_600_000)
     .bind(now)
@@ -999,7 +999,7 @@ pub async fn reply_outcomes(db: &SqlitePool) -> Result {
         )
         .bind(id)
         .bind(state)
-        .bind((state == "failed").then_some("模型没有按要求标出回信结果，可以重试或换个模型。"))
+        .bind((state == "failed").then_some("模型未按要求标出回信结果，可重试或更换模型"))
         .execute(db)
         .await?;
     }

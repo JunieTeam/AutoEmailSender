@@ -442,7 +442,7 @@ async fn a_plus_order_is_confirmed_at_the_price_the_server_sells_it_for(db: Sqli
         if later == 1880 {
             assert_eq!(result.unwrap()["order"], 7);
         } else {
-            assert!(result.unwrap_err().message.contains("情况变了"));
+            assert!(result.unwrap_err().message.contains("情况已变化"));
         }
     }
     assert!(server.requests.try_recv().is_err());
@@ -475,7 +475,7 @@ async fn enabling_cloud_backup_is_bound_to_the_account_it_was_confirmed_for(db: 
         },
     )
     .await;
-    assert!(result.unwrap_err().message.contains("情况变了"));
+    assert!(result.unwrap_err().message.contains("情况已变化"));
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -2079,7 +2079,7 @@ async fn approval_rechecks_changed_candidate_addresses_and_allows_effects_no_lon
         } else {
             assert_eq!(
                 result.unwrap_err().message,
-                "等你确认期间情况变了，请重新发起"
+                "等待你确认期间情况已变化，请重新发起"
             );
             assert_eq!(
                 mentor::get(&ctx.db, mentor).await.unwrap().unwrap().emails[0],
@@ -2167,7 +2167,7 @@ async fn refuses_changed_candidate_recipient(
     let (result, ()) = tokio::join!(calling, change_and_allow);
     assert_eq!(
         result.unwrap_err().message,
-        "等你确认期间情况变了，请重新发起"
+        "等待你确认期间情况已变化，请重新发起"
     );
     for (id, before) in mentors {
         assert_eq!(

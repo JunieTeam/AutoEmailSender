@@ -133,14 +133,14 @@ impl Error {
                 "云端备份未能完成，请重试；仍然失败时导出日志发给开发者".into()
             }
             Self::NeedsPassword => "请先输入账号密码，算出这台电脑的备份钥匙".into(),
-            Self::AccountChanged => "登录的账号刚刚变了，请重试".into(),
+            Self::AccountChanged => "登录的账号已变更，请重试".into(),
             Self::Disabled => "云端备份未开启".into(),
             Self::PlusRequired => "Plus 已到期，云端备份已停止".into(),
             Self::OtherDevice => "云端备份来自另一台电脑，这台电脑不再自动备份".into(),
             Self::TooLarge(message) => message.clone(),
             Self::NotFound => "云端尚无备份".into(),
             Self::OldPassword => {
-                "云端备份是用旧密码加密的，解不开了。在还有数据的电脑上用新密码登录，确认替换后重新备份。"
+                "云端备份使用旧密码加密，已无法解开。请在仍有数据的电脑上用新密码登录，确认替换后重新备份。"
                     .into()
             }
             Self::Corrupted => {
@@ -669,7 +669,7 @@ fn seal_all(
     // The manifest and the database are objects too.
     if names.len() + 2 > OBJECTS {
         return Err(Error::TooLarge(format!(
-            "材料超过 {} 份，云端备份放不下。删掉一些不用的材料再备份。",
+            "材料超过 {} 份，云端备份无法容纳。请删除部分不再使用的材料后再备份。",
             OBJECTS - 2
         )));
     }

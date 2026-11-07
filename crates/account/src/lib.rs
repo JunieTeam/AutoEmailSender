@@ -813,7 +813,7 @@ impl Error {
                     "用常用邮箱（QQ、163、Gmail 等）或学校邮箱注册的账号才能参加".into()
                 }
                 ErrorCode::BackupNotFound => {
-                    "云端的备份刚被另一台电脑替换或删除了，请刷新后重试".into()
+                    "云端的备份刚被另一台电脑替换或删除，请刷新后重试".into()
                 }
                 ErrorCode::BackupIncomplete | ErrorCode::BackupChanged => {
                     "另一台电脑正在同时备份，本次未能上传完成，稍后会自动重试".into()

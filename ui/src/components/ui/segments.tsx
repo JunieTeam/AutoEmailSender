@@ -35,7 +35,10 @@ export function Segments<T>({
     >
       <Tabs.List
         aria-label={label}
-        className={cn("relative z-0 inline-flex gap-0.5 rounded-full bg-muted p-[3px]", className)}
+        className={cn(
+          "relative z-0 inline-flex max-w-full gap-0.5 overflow-x-auto rounded-full bg-muted p-[3px] [scrollbar-width:none]",
+          className,
+        )}
       >
         {options.map(([, text], i) => (
           <Tabs.Tab
@@ -43,7 +46,7 @@ export function Segments<T>({
             key={i}
             value={i}
             disabled={disabled}
-            className="flex h-[30px] items-center justify-center gap-1.5 rounded-full px-3.5 text-sm whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground data-active:font-medium data-active:text-foreground phone:h-10"
+            className="flex h-[30px] shrink-0 items-center justify-center gap-1.5 rounded-full px-3.5 text-sm whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground data-active:font-medium data-active:text-foreground phone:h-10"
           >
             {text}
           </Tabs.Tab>

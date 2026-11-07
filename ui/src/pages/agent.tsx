@@ -3,6 +3,7 @@ import { useState } from "react";
 import { call, errorMessage } from "@/api/call";
 import type { AgentCli, McpClient } from "@/api/types";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, ExpandChevron } from "@/components/ui/collapsible";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { PhonesRow } from "./phones";
 import { Row, Section, SwitchButton } from "./settings";
@@ -49,8 +50,8 @@ function AgentRows() {
         </label>
         <div className="mt-2 space-y-2 text-sm text-muted-foreground">
           <p>
-            开启后，你自己的 Agent（Claude、Cursor 这类聊天和编程助手，或者你写的脚本）可以通过 MCP
-            或命令行使用这个应用。界面上能做的它都能做，包括替你填邮箱授权码和 API Key，但看不到已经保存的。
+            开启后，你自己的 Agent（Claude、Cursor 这类聊天和编程助手，或你写的脚本）可以通过 MCP
+            或命令行使用这个应用。界面上能做的它都能做，包括替你填写邮箱授权码和 API Key，但看不到已保存的。
           </p>
           <p>发信给导师、永久删除、同意把数据发给模型服务商之前，应用会弹出“Agent 请求”，你点“允许”后才会执行</p>
           <p>Agent 读到的导师资料、邮件和材料文字，会交给它所用的模型服务商。应用开着时 Agent 才能连上。</p>
@@ -94,23 +95,26 @@ function McpRow() {
         <li className="px-4 py-2.5">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
-              <p>别的工具</p>
+              <p>其他工具</p>
               <p className="text-sm text-muted-foreground">{copy.isSuccess ? "已复制，" : "复制后"}加进它的 MCP 配置</p>
             </div>
             <div className="flex shrink-0 gap-1">
               <Button variant="ghost" disabled={!text.data} onClick={() => setShown(!shown)} aria-expanded={shown}>
-                {shown ? "收起" : "查看"}
+                <ExpandChevron />
+                查看配置
               </Button>
               <Button variant="quiet" disabled={!text.data} onClick={() => text.data && copy.mutate(text.data)}>
                 复制配置
               </Button>
             </div>
           </div>
-          {shown && text.data && (
-            <pre className="mt-2 rounded-lg bg-muted px-4 py-3 text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere">
-              {text.data}
-            </pre>
-          )}
+          <Collapsible open={shown && !!text.data}>
+            <CollapsibleContent className="pt-2">
+              <pre className="rounded-lg bg-muted px-4 py-3 text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere">
+                {text.data}
+              </pre>
+            </CollapsibleContent>
+          </Collapsible>
         </li>
       </ul>
       {text.error && <p className="text-sm text-destructive">未能生成配置：{errorMessage(text.error)}</p>}

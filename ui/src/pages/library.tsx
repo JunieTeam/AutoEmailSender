@@ -11,6 +11,7 @@ import { Pager, useLastPage } from "@/components/mentor-table";
 import { Notice } from "@/components/notice";
 import { SearchBox } from "@/components/search-box";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, ExpandChevron } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { day } from "@/format";
@@ -172,12 +173,13 @@ function Library() {
                 选择本页
               </label>
             )}
+            {list.isPending && <Loading />}
             {list.data?.total === 0 && (
               <div className="py-6">
                 {s.q ? (
                   <Notice icon={SearchX} title={`未找到“${s.q}”`} detail="可更换关键词再试" />
                 ) : (
-                  <Notice icon={UsersRound} title="这里尚无导师" />
+                  <Notice icon={UsersRound} title="这里尚无导师" detail="可选择其他学校或学院查看" />
                 )}
               </div>
             )}
@@ -192,7 +194,11 @@ function Library() {
                   onTick={(on) => tick([m], on)}
                   onExpand={() => setExpanded(expanded === m.id ? null : m.id)}
                 />
-                {expanded === m.id && <Preview id={m.id} />}
+                <Collapsible open={expanded === m.id}>
+                  <CollapsibleContent>
+                    <Preview id={m.id} />
+                  </CollapsibleContent>
+                </Collapsible>
               </Fragment>
             ))}
             {list.data && (
@@ -373,7 +379,7 @@ function Row({
   return (
     <div
       data-selected={selected || undefined}
-      className="flex items-start gap-1 rounded-md px-1 hover:bg-muted data-selected:bg-selected"
+      className="flex animate-fade-in items-start gap-1 rounded-md px-1 hover:bg-muted data-selected:bg-selected"
     >
       <label className="flex min-h-10 min-w-10 cursor-pointer items-center justify-center pt-1">
         <Checkbox
@@ -386,6 +392,7 @@ function Row({
       <button className="min-w-0 flex-1 py-2.5 pr-2 text-left" aria-expanded={expanded} onClick={onExpand}>
         <span className="flex flex-wrap items-baseline gap-x-2">
           <strong className="font-medium">{m.name}</strong>
+          <ExpandChevron className="self-center" />
           {local?.kind === "added" && <span className="text-xs text-muted-foreground">已添加</span>}
           {local?.kind === "trashed" && <span className="text-xs text-muted-foreground">在回收站</span>}
           {local?.kind === "maybeExisting" && (
