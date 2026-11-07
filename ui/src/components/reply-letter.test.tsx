@@ -769,3 +769,33 @@ it("folds once sent, even when the approval ends after leaving the page and comi
     await view.close();
   }
 });
+
+it("folds back once a letter approved while away is seen to be sent", async () => {
+  remote.draft = {
+    factCheck: null,
+    id: 5,
+    replyTo: remote.target.messageId ?? "",
+    bodyMd: "王老师您好",
+    attachments: [],
+    target: remote.target,
+  };
+  let release: (() => void) | undefined;
+  remote.approving = new Promise((resolve) => {
+    release = resolve;
+  });
+  const view = setup();
+  try {
+    await view.render();
+    await vi.waitFor(() => expect(view.button("发送").disabled).toBe(false));
+    await act(async () => view.button("发送").click());
+    await view.render(false);
+    await act(async () => release?.());
+    await vi.waitFor(() => expect(view.client.isMutating()).toBe(0));
+    // Shown again from what was read before the letter went out, then read anew.
+    await view.render();
+    await vi.waitFor(() => view.button("回复 王伟…"));
+    expect(remote.approved?.bodyMd).toBe("王老师您好");
+  } finally {
+    await view.close();
+  }
+});

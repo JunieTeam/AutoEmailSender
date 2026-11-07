@@ -220,8 +220,8 @@ function Composer({
   }, [answer, fills]);
   const locked = approving || discard.isPending || uploading || busy || review !== undefined;
   const canSelect = !approving && !discard.isPending && !uploading;
-  // docs/ui.md#交互: a line until clicked or until something comes into it, then open until sent or
-  // folded back by the user, which it can be only while there is nothing in it.
+  // docs/ui.md#交互: a line, open while something is in it. Once the user has opened it or been in
+  // it, it stays open until sent or folded back, which it can be only while there is nothing in it.
   const [expanded, setExpanded] = useState(false);
   const [focusing, setFocusing] = useState(false);
   // Folds once the letter is sent, by this box or one left while the approval was under way; an
@@ -331,17 +331,11 @@ function Composer({
     review !== undefined ||
     approving ||
     failed;
-  // Opened by whatever comes into it, and left open once that is gone rather than fold under the
-  // user's cursor.
-  const [wasHeld, setWasHeld] = useState(false);
-  if (held !== wasHeld) {
-    setWasHeld(held);
-    if (held) setExpanded(true);
-  }
+  const open = expanded || held;
   const sendButton = useRef<HTMLButtonElement>(null);
   return (
     <section aria-label={`${label}导师`} className="mt-auto shrink-0 border-t border-border bg-background">
-      {!expanded && !followUp && (
+      {!open && (
         <button
           type="button"
           className="m-3 flex h-10 w-[calc(100%-1.5rem)] items-center rounded-lg bg-muted px-3 text-left text-sm text-muted-foreground transition-colors hover:bg-press"
@@ -353,9 +347,11 @@ function Composer({
           {label} {mentor.name}…
         </button>
       )}
-      <Collapsible open={expanded}>
+      <Collapsible open={open}>
         <CollapsibleContent
           className="flex max-h-[65dvh] flex-col gap-2 overflow-y-auto px-5 py-3 phone:px-3 [&>*]:shrink-0"
+          // Once in it, the user does not have it fold under the cursor when it is emptied.
+          onFocus={() => setExpanded(true)}
           onKeyDown={(e) => {
             if (
               e.key === "Enter" &&
