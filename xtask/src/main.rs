@@ -4,6 +4,7 @@ mod bench;
 mod fake;
 mod phone;
 mod sample;
+mod update;
 mod web;
 
 use std::path::{Path, PathBuf};
@@ -17,7 +18,8 @@ const USAGE: &str = "用法：cargo xtask <命令>\n\
     fake             启动本机的假邮箱和假模型，给开发版从头试用\n  \
     bench            按 docs/data-model.md 的规模生成数据，测首页查询和写邮件状态的耗时\n  \
     phone <目录>     构建手机页面到这个目录，给开发用的服务端（PHONE_DIR）\n  \
-    publish-phone <主机>:<目录>  构建手机页面并经 ssh 发布到服务器";
+    publish-phone <主机>:<目录>  构建手机页面并经 ssh 发布到服务器\n  \
+    publish-update <标签> <目录>  把目录里这个版本的安装包和更新包传到备用更新地址";
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -31,6 +33,7 @@ async fn main() -> ExitCode {
         ["bench"] => bench::run(&root().join("target/bench.db")).await,
         ["phone", dir] => phone::build(Path::new(dir)).await,
         ["publish-phone", target] => phone::publish(target).await,
+        ["publish-update", tag, dir] => update::publish(tag, Path::new(dir)).await,
         _ => Err(USAGE.into()),
     };
     match result {

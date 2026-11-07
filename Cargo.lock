@@ -8630,6 +8630,7 @@ version = "3.0.0-alpha.0"
 dependencies = [
  "api",
  "axum",
+ "base64 0.22.1",
  "chrono",
  "cloud-api",
  "crawl",
@@ -8640,6 +8641,7 @@ dependencies = [
  "library",
  "mail-parser",
  "mentor",
+ "net",
  "send",
  "serde",
  "serde_json",
@@ -8647,6 +8649,7 @@ dependencies = [
  "sqlx",
  "stats",
  "task",
+ "tempfile",
  "tokio",
  "tower",
  "uuid",

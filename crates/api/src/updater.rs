@@ -1,7 +1,15 @@
-//! Desktop update state returned by the application commands.
+//! Where desktop updates come from, and the update state returned by the application commands.
 
 use serde::Serialize;
 use ts_rs::TS;
+
+/// The manifest of the latest GitHub Release, checked first.
+pub const GITHUB_MANIFEST: &str =
+    "https://github.com/JunieXD/AutoEmailSender/releases/latest/download/latest.json";
+
+/// The update mirror, for when GitHub cannot be reached or is too slow: it serves `latest.json`,
+/// and each version's files under `<version>/`.
+pub const MIRROR: &str = "https://dl.auto-email-sender.cn/";
 
 #[derive(Clone, Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

@@ -100,3 +100,9 @@ opt-level = 3
 
 [profile.dev.package.rten-vecmath]
 opt-level = 3
+
+# Update packages about a fifth smaller, at twice the build time; see docs/development.md#自动更新.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

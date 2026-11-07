@@ -30,6 +30,9 @@ fakemail.workspace = true
 mail-parser = "1.0.0"
 library.workspace = true
 cloud-api.workspace = true
+base64 = "0.22"
+net.workspace = true
 
 [dev-dependencies]
+tempfile = "3"
 tower = { version = "0.5.3", features = ["util"] }

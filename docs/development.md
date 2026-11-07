@@ -245,8 +245,9 @@
 - 更新检查和下载留在 Rust 应用进程：应用可能在后台运行数天而不开窗口，不能依赖界面计时；不开放更新插件的界面权限。debug 构建不访问更新服务。自动检查失败只记日志，不发失败事件。
 - 通过 `configure_client` 把检查和下载的 HTTP builder 交给 `net::Net::configure_http`，复用系统代理（含 SOCKS 和本机地址直连）与系统信任的 TLS 配置；每次新连接重新读取代理，不另做检测。插件固定在 2.14 小版本范围，因为这个回调的 reqwest 类型可能随插件的小版本变化。检查每个地址超时 15 秒（GitHub 不通时最多 30 秒读到备用地址），下载超时 30 分钟。
 - 检查、下载和安装互斥；已有下载好的包时检查保留该包。下载由插件校验签名后才进入 `ready`，包只留在内存，退出后需重新下载。安装入口再次由插件校验。macOS 替换 `.app` 后调用 Tauri `restart()`；Windows 使用 NSIS passive 模式，由安装器重开应用。Windows 插件直接退出进程，`on_before_exit` 与正常退出共用 `before_exit`，关闭读取网页的窗口；发送中的邮件沿用启动恢复逻辑标为可能已发出。
-- GitHub 和备用地址的两个清单地址按顺序写在 `crates/app/src/updater.rs`，插件按顺序试，前一个连不上、返回错误状态或清单读不出时试下一个。换下载地址时用只含备用地址的更新器重新检查一次，版本相同才换，应用不用知道备用地址上的文件怎么命名。下载时在 `on_chunk` 里累计字节，满 10 秒按已下载量和总大小估算总耗时；换地址时丢掉 GitHub 的下载，不续传。日志记下用了哪个地址、为什么换。
+- GitHub 的清单地址和备用地址写在 `api::updater`，应用和 `cargo xtask publish-update` 共用。检查时先 GitHub 后备用地址，插件按顺序试，前一个连不上、返回错误状态或清单读不出时试下一个。换下载地址时用只含备用地址的更新器重新检查一次，版本相同才换，应用不用知道备用地址上的文件怎么命名。下载时在 `on_chunk` 里累计字节，满 20 秒按已下载量和总大小估算总耗时；换地址时丢掉 GitHub 的下载，不续传。日志记下用了哪个地址、为什么换。
 - 正式更新公钥在 `tauri.conf.json`，打包生成更新包与 `.sig`；macOS 的 `signingIdentity: "-"` 为整包加 ad-hoc 签名，不做公证。
+- 工作区的 release 配置开 LTO、`codegen-units = 1` 和 `strip`：更新包小约五分之一（实测 macOS 从 28 MB 到 22.5 MB），代价是从头构建从约 4 分钟变成 9 分钟。panic 日志只记位置，不靠符号表，去掉符号表不影响排查。
 
 ## 发布
 
@@ -258,7 +259,7 @@
 4. 工作流分别构建 Apple Silicon macOS 与 Windows x64，使用 `tauri-apps/tauri-action@v1`，只创建普通版本的**草稿** Release，不自动公开。两个平台依次上传到同一草稿并合并 `latest.json`，避免更新清单互相覆盖。更新说明同时成为 Release 正文和清单的 `notes`。
 5. 检查草稿中的 DMG、`.app.tar.gz` 与 `.sig`、NSIS `-setup.exe` 与 `.sig`，以及唯一的更新清单 `latest.json`。核对清单版本、说明、发布日期，以及 `darwin-aarch64`、`windows-x86_64` 的下载链接和签名；签名应与上传的 `.sig` 一致。没有 `latest.yml` 或 `appcast.xml`。
 6. 下载草稿产物做全新安装与升级验收，macOS 执行 `codesign --verify --deep --strict --verbose=2 "Auto Email Sender.app"`。两个平台的检查都通过后，维护者手动发布草稿（不勾选预发布）。公开后从更新地址读取 `latest.json` 并再测一次真实升级。
-7. 复制到备用地址：用 `gh release download <标签> -D <目录>` 下载两个平台的更新包、`.sig` 和 DMG，把更新说明存成 `<目录>/notes.md`，运行 `cargo xtask publish-update <标签> <目录>`。命令按这些文件生成指向备用地址的 `latest.json`，先传更新包和 DMG、再传清单，最后从备用地址读回清单，核对版本和签名；中断后重跑会重新上传。上传用 `rclone`（Homebrew 和 winget 都能装，支持腾讯云 COS），它用的密钥只能读写这个存储桶，保存在本机 `rclone` 的配置里，不进仓库。
+7. 复制到备用地址：用 `gh release download <标签> -D <目录>` 下载两个平台的更新包、`.sig` 和 DMG，把更新说明存成 `<目录>/notes.md`，运行 `cargo xtask publish-update <标签> <目录>`。命令先核对每个更新包签名里的版本就是标签上的版本，再按这些文件生成指向备用地址的 `latest.json`。先传更新包和 DMG，从备用地址读回来和本地的逐字节比较，都一样才传清单，最后读回清单核对；中断了重跑就行。同一版本的文件传上去后不再换：CDN 会缓存 30 天，读回不一致时命令停下，不传清单。上传用 `rclone`（Homebrew 和 winget 都能装，支持腾讯云 COS），远端名和存储桶写在 `xtask/src/update.rs`；它用的密钥只能读写这个存储桶，保存在本机 `rclone` 的配置里，不进仓库。
 
 工作流只响应 `workflow_dispatch`，push、PR 和推标签均不触发。构建失败可能留下不完整草稿，补跑通过并核对两平台产物后再发布；同一标签若已经公开，Action 会拒绝修改为草稿。
 
