@@ -2,10 +2,10 @@ name: 检查
 
 on:
   pull_request:
-    paths-ignore: ["docs/**", "*.md"]
+    paths-ignore: ["docs/**", "site/**", "*.md"]
   push:
     branches: [master]
-    paths-ignore: ["docs/**", "*.md"]
+    paths-ignore: ["docs/**", "site/**", "*.md"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
