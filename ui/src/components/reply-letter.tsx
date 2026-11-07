@@ -224,6 +224,14 @@ function Composer({
   // folded back by the user, which it can be only while there is nothing in it.
   const [expanded, setExpanded] = useState(false);
   const [focusing, setFocusing] = useState(false);
+  // Folds once the letter is sent, by this box or one left while the approval was under way; an
+  // approval from before the box was shown, such as of a letter since withdrawn, does not count.
+  const approval = approvals.at(-1);
+  const [seenApproval, setSeenApproval] = useState(approval);
+  if (approval !== seenApproval) {
+    setSeenApproval(approval);
+    if (approval?.status === "success") setExpanded(false);
+  }
   if (canSelect && selecting && selected && chosen.data?.messageId) {
     setExpanded(true);
     setFocusing(true);
@@ -275,9 +283,6 @@ function Composer({
       });
     },
     onSuccess: async () => {
-      // Folded at once, with the letter still in it. Held until the approval settles, it is not
-      // opened again: only something coming into it opens it.
-      setExpanded(false);
       await queryClient.invalidateQueries({ queryKey: [draftQuery, mentorId] });
       writing.forget();
       factCheck.forget();

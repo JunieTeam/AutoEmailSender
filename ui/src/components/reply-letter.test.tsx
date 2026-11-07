@@ -39,6 +39,7 @@ const remote = vi.hoisted(
     write?: (input: ReplyDraftEdit) => Promise<Letter>;
     check?: (draft: ReplyDraft) => Promise<FactCheck>;
     listing?: Promise<void>;
+    approving?: Promise<void>;
     targetError?: Error;
   } => ({
     target: {
@@ -139,6 +140,7 @@ vi.mock("@/api/call", () => ({
       return null;
     }
     if (op === "approveReply") {
+      await remote.approving;
       if (!remote.draft || input.draftId !== remote.draft.id || input.replyTo !== remote.draft.replyTo)
         throw new Error("批准的不是当前草稿");
       remote.approved = { draftId: remote.draft.id, replyTo: input.replyTo, bodyMd: input.bodyMd };
@@ -257,6 +259,7 @@ function setup(correspondence = false) {
       remote.write = undefined;
       remote.check = undefined;
       remote.listing = undefined;
+      remote.approving = undefined;
       remote.draft = null;
       remote.firstDraft = null;
       remote.entries = [];
@@ -733,6 +736,35 @@ it("keeps a new letter begun open, with the cursor in it, when it is emptied", a
     await act(async () => view.client.invalidateQueries());
     expect(document.getElementById("first-letter-7")).toBe(body);
     expect(document.activeElement).toBe(body);
+  } finally {
+    await view.close();
+  }
+});
+
+it("folds once sent, even when the approval ends after leaving the page and coming back", async () => {
+  remote.draft = {
+    factCheck: null,
+    id: 5,
+    replyTo: remote.target.messageId ?? "",
+    bodyMd: "王老师您好",
+    attachments: [],
+    target: remote.target,
+  };
+  let release: (() => void) | undefined;
+  remote.approving = new Promise((resolve) => {
+    release = resolve;
+  });
+  const view = setup();
+  try {
+    await view.render();
+    await vi.waitFor(() => expect(view.button("发送").disabled).toBe(false));
+    await act(async () => view.button("发送").click());
+    await view.render(false);
+    await view.render();
+    await vi.waitFor(() => expect(view.container.querySelector(".tiptap")?.textContent).toBe("王老师您好"));
+    await act(async () => release?.());
+    await vi.waitFor(() => view.button("回复 王伟…"));
+    expect(remote.approved?.bodyMd).toBe("王老师您好");
   } finally {
     await view.close();
   }
