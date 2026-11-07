@@ -77,6 +77,18 @@ export function sameLetter(a: SavedLetter | null, b: SavedLetter | null) {
   );
 }
 
+function uploadKey(mentorId: number, kind: DraftKind, task?: TaskEmail) {
+  return task ? ["uploadLetterMaterial", mentorId, "task", task.id] : ["uploadLetterMaterial", mentorId, kind];
+}
+
+/** The latest upload into a letter. Kept past the composer, so a failure is still shown on return. */
+export function useLastUpload(mentorId: number, kind: DraftKind, task?: TaskEmail) {
+  return useMutationState<MutationState<{ material: Material; applied: boolean }, Error, File>>({
+    filters: { mutationKey: uploadKey(mentorId, kind, task) },
+    select: (m) => m.state,
+  }).at(-1);
+}
+
 /** Uploads belong to the mentor, so a remounted editor stays locked until attachment is saved. */
 export function useUploading(mentorId: number) {
   return (
@@ -208,9 +220,7 @@ export function AttachMenu({
 }) {
   const queryClient = useQueryClient();
   const picker = useRef<HTMLInputElement>(null);
-  const mutationKey = task
-    ? ["uploadLetterMaterial", mentorId, "task", task.id]
-    : ["uploadLetterMaterial", mentorId, kind];
+  const mutationKey = uploadKey(mentorId, kind, task);
   const add = useMutation({
     mutationKey,
     mutationFn: async (file: File) => {
@@ -237,10 +247,7 @@ export function AttachMenu({
       return { material, applied };
     },
   });
-  const last = useMutationState<MutationState<{ material: Material; applied: boolean }, Error, File>>({
-    filters: { mutationKey },
-    select: (m) => m.state,
-  }).at(-1);
+  const last = useLastUpload(mentorId, kind, task);
   // An empty letter has no saved draft. Only the active picker attaches to that local input.
   const complete = useEffectEvent(() => {
     if (last?.status !== "success" || !last.data) return;

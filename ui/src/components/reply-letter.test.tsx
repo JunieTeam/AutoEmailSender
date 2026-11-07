@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { TiptapEditorHTMLElement } from "@tiptap/react";
 import { act, type ReactNode, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
@@ -7,6 +8,7 @@ import type {
   Email,
   Entry,
   FactCheck,
+  FirstDraft,
   Letter,
   MentorDetail,
   Message,
@@ -25,6 +27,7 @@ const remote = vi.hoisted(
   (): {
     target: ReplyTarget;
     draft: ReplyDraft | null;
+    firstDraft: FirstDraft | null;
     entries: Entry[];
     plan: PlanEmail | null;
     withdrawn: boolean;
@@ -47,6 +50,7 @@ const remote = vi.hoisted(
       sentAt: 1,
     },
     draft: null,
+    firstDraft: null,
     entries: [],
     plan: null,
     withdrawn: false,
@@ -66,7 +70,7 @@ vi.mock("@/api/call", () => ({
   errorMessage: (error: Error) => error.message,
   call: async (
     op: string,
-    input: ReplyDraftEdit & { id?: number; ids?: number[]; column?: string; draftId?: number },
+    input: ReplyDraftEdit & { id?: number; ids?: number[]; column?: string; draftId?: number; subject?: string },
   ) => {
     if (op === "getReplyDraft") return remote.draft;
     if (op === "getReplyTarget") {
@@ -76,9 +80,14 @@ vi.mock("@/api/call", () => ({
     if (op === "writeReply" && remote.write) return remote.write(input);
     if (op === "saveReplyDraft") {
       remote.saves.push(input);
-      remote.draft = { ...input, id: 5, target: remote.target, factCheck: remote.draft?.factCheck ?? null };
+      // As in the core, a reply emptied is no draft.
+      remote.draft =
+        input.bodyMd.trim() === "" && input.attachments.length === 0
+          ? null
+          : { ...input, id: 5, target: remote.target, factCheck: remote.draft?.factCheck ?? null };
       return remote.draft;
     }
+    if (op === "addMaterial") throw new Error("文件里没有可读取的文字");
     if (op === "getAiFactCheck") return remote.check !== undefined;
     const draft = remote.draft;
     if (op === "factCheckEmail" && remote.check && draft && draft.id === input.id) {
@@ -102,7 +111,14 @@ vi.mock("@/api/call", () => ({
       );
       return null;
     }
-    if (op === "getFirstDraft" || op === "getFollowUpDraft" || op === "getFollowUpEntry") return null;
+    if (op === "getFirstDraft") return remote.firstDraft;
+    if (op === "saveFirstDraft") {
+      const { subject = "", bodyMd, attachments } = input;
+      remote.firstDraft =
+        subject.trim() === "" && bodyMd.trim() === "" ? null : { id: 3, factCheck: null, subject, bodyMd, attachments };
+      return remote.firstDraft;
+    }
+    if (op === "getFollowUpDraft" || op === "getFollowUpEntry") return null;
     // Dropping a reply's hidden AI withdraws it too.
     if (op === "cancelWriting") return null;
     if (op === "sendingPlan") {
@@ -134,6 +150,8 @@ vi.mock("@/api/call", () => ({
       op === "listPlaceholders" ||
       op === "checkReplyDraft" ||
       op === "checkFollowUpDraft" ||
+      op === "checkFirstDraft" ||
+      op === "listMailboxes" ||
       op === "listModelProviders"
     )
       return [];
@@ -240,6 +258,7 @@ function setup(correspondence = false) {
       remote.check = undefined;
       remote.listing = undefined;
       remote.draft = null;
+      remote.firstDraft = null;
       remote.entries = [];
       remote.plan = null;
       remote.withdrawn = false;
@@ -635,6 +654,85 @@ it("folds back at the user's word only while nothing is in the reply", async () 
     await view.render();
     await vi.waitFor(() => expect(view.container.querySelector(".tiptap")?.textContent).toBe("王老师您好"));
     expect(() => view.button("收起")).toThrow();
+  } finally {
+    await view.close();
+  }
+});
+
+it("keeps the cursor in the reply as it is saved, and stays open when it is emptied", async () => {
+  remote.draft = {
+    factCheck: null,
+    id: 5,
+    replyTo: remote.target.messageId ?? "",
+    bodyMd: "王老师您好",
+    attachments: [],
+    target: remote.target,
+  };
+  const view = setup();
+  try {
+    await view.render();
+    await vi.waitFor(() => expect(view.container.querySelector(".tiptap")?.textContent).toBe("王老师您好"));
+    const body = view.container.querySelector<TiptapEditorHTMLElement>(".tiptap");
+    act(() => {
+      body?.editor?.commands.focus("end");
+    });
+    await act(async () => body?.editor?.commands.insertContent("，下周可以面谈"));
+    await vi.waitFor(() => expect(remote.draft?.bodyMd).toBe("王老师您好，下周可以面谈"));
+    await act(async () => body?.editor?.commands.clearContent(true));
+    await vi.waitFor(() => view.button("收起"));
+    expect(remote.draft).toBeNull();
+    expect(() => view.button("回复 王伟…")).toThrow();
+    expect(document.activeElement?.closest(".tiptap")).toBe(body);
+  } finally {
+    await view.close();
+  }
+});
+
+it("still shows why an attachment could not be added on coming back, and cannot be folded over it", async () => {
+  const view = setup();
+  try {
+    await view.render();
+    await view.openReply();
+    await vi.waitFor(() => expect(view.button("添加附件").disabled).toBe(false));
+    await act(async () => view.button("添加附件").click());
+    const picker = document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!picker) throw new Error("missing file picker");
+    Object.defineProperty(picker, "files", { value: [new File(["%PDF"], "简历.pdf")] });
+    await act(async () => picker.dispatchEvent(new Event("change", { bubbles: true })));
+    await vi.waitFor(() => expect(view.container.textContent).toContain("未能添加附件：文件里没有可读取的文字"));
+    await view.render(false);
+    await view.render();
+    await vi.waitFor(() => expect(view.container.textContent).toContain("未能添加附件：文件里没有可读取的文字"));
+    expect(() => view.button("收起")).toThrow();
+  } finally {
+    await view.close();
+  }
+});
+
+it("keeps a new letter begun open, with the cursor in it, when it is emptied", async () => {
+  remote.entries = [received];
+  remote.firstDraft = { id: 3, factCheck: null, subject: "再次联系", bodyMd: "王老师您好", attachments: [] };
+  const view = setup(true);
+  try {
+    await view.render();
+    await vi.waitFor(() => expect(document.getElementById("first-letter-7")?.textContent).toBe("王老师您好"));
+    const subject = view.container.querySelector<HTMLInputElement>('input[aria-label="主题"]');
+    if (!subject) throw new Error("missing subject");
+    const body = view.container.querySelector<TiptapEditorHTMLElement>("#first-letter-7");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(subject, "");
+      subject.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => {
+      body?.editor?.commands.focus();
+    });
+    await vi.waitFor(() => expect(document.activeElement).toBe(body));
+    await act(async () => body?.editor?.commands.clearContent(true));
+    await vi.waitFor(() => expect(remote.firstDraft).toBeNull());
+    // Settled and read again, as on any refresh.
+    await act(async () => view.client.invalidateQueries());
+    expect(document.getElementById("first-letter-7")).toBe(body);
+    expect(document.activeElement).toBe(body);
   } finally {
     await view.close();
   }

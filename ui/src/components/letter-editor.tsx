@@ -4,7 +4,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { type Editor, EditorContent, Extension, getSchema, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Bold, Braces, Italic, Link, List, ListOrdered } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FIELD, Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -188,10 +188,15 @@ export function LetterEditor({
     }
   }, [editor, quotes]);
   const [tools, setTools] = useState(false);
-  // A focus asked for once the editor is already on the page.
+  // A focus asked for once the editor is already on the page. Already in it, the cursor stays
+  // where the user put it, and no focus event will come to end the request.
   const asked = useRef(focus);
+  const focused = useEffectEvent(() => onFocused?.());
   useEffect(() => {
-    if (focus && !asked.current) editor.commands.focus("end");
+    if (focus && !asked.current) {
+      if (editor.isFocused) focused();
+      else editor.commands.focus("end");
+    }
     asked.current = focus;
   }, [editor, focus]);
   return (

@@ -30,6 +30,7 @@ import {
   LetterSend,
   quotes,
   useDraftSave,
+  useLastUpload,
   useUploading,
 } from "@/components/letter-composer";
 import { LazyLetterEditor } from "@/components/lazy-letter-editor";
@@ -73,7 +74,6 @@ export function ReplyLetter({
       <Composer
         key={mentor.id}
         mentor={mentor}
-        draft={draft.data}
         latest={latest.data}
         selected={selected}
         materials={materials.data}
@@ -100,7 +100,6 @@ export function FollowUpLetter({ mentor }: { mentor: MentorDetail }) {
       <Composer
         key={draft.data.id}
         mentor={mentor}
-        draft={draft.data}
         latest={draft.data.target}
         selected={null}
         materials={materials.data}
@@ -115,7 +114,6 @@ type ThreadTarget = Omit<ReplyTarget, "id">;
 
 function Composer({
   mentor,
-  draft,
   latest,
   selected,
   materials,
@@ -123,7 +121,6 @@ function Composer({
   followUpId = null,
 }: {
   mentor: MentorDetail;
-  draft: ReplyDraft | FollowUpDraft | null;
   latest: ThreadTarget | null;
   selected: { id: number; version: number } | null;
   materials: Material[];
@@ -135,6 +132,14 @@ function Composer({
   const draftQuery = followUp ? "getFollowUpDraft" : "getReplyDraft";
   const label = followUp ? "追问" : "回复";
   const queryClient = useQueryClient();
+  // Loaded before the composer is shown. Read here rather than handed down: rendered for a save
+  // that has just settled, the composer must see the draft it stored, which the owner may not yet.
+  const draft =
+    useQuery({
+      queryKey: [draftQuery, mentorId],
+      queryFn: (): Promise<ReplyDraft | FollowUpDraft | null> =>
+        followUp ? call("getFollowUpDraft", { id: mentorId }) : call("getReplyDraft", { id: mentorId }),
+    }).data ?? null;
   const { save, last, scope, flush } = useDraftSave<
     { letter: ReplyDraftEdit; target: ThreadTarget | null },
     ReplyDraft | FollowUpDraft | null
@@ -187,6 +192,7 @@ function Composer({
     },
   });
   const uploading = useUploading(mentorId);
+  const upload = useLastUpload(mentorId, followUp ? "follow_up" : "reply");
   const chosen = useQuery({
     queryKey: ["getReplyTarget", mentorId, selected?.id],
     queryFn: selected ? () => call("getReplyTarget", { mentorId, id: selected.id }) : skipToken,
@@ -214,8 +220,8 @@ function Composer({
   }, [answer, fills]);
   const locked = approving || discard.isPending || uploading || busy || review !== undefined;
   const canSelect = !approving && !discard.isPending && !uploading;
-  // docs/ui.md#交互: a line until clicked, then open until sent or folded back by the user, which it
-  // can be only while there is nothing in it.
+  // docs/ui.md#交互: a line until clicked or until something comes into it, then open until sent or
+  // folded back by the user, which it can be only while there is nothing in it.
   const [expanded, setExpanded] = useState(false);
   const [focusing, setFocusing] = useState(false);
   if (canSelect && selecting && selected && chosen.data?.messageId) {
@@ -269,6 +275,8 @@ function Composer({
       });
     },
     onSuccess: async () => {
+      // Folded at once, with the letter still in it. Held until the approval settles, it is not
+      // opened again: only something coming into it opens it.
       setExpanded(false);
       await queryClient.invalidateQueries({ queryKey: [draftQuery, mentorId] });
       writing.forget();
@@ -302,6 +310,7 @@ function Composer({
     discard.error ??
     writing.latest?.error ??
     last?.error ??
+    upload?.error ??
     checks.error ??
     chosen.error ??
     style.error ??
@@ -317,11 +326,17 @@ function Composer({
     review !== undefined ||
     approving ||
     failed;
-  const open = expanded || held;
+  // Opened by whatever comes into it, and left open once that is gone rather than fold under the
+  // user's cursor.
+  const [wasHeld, setWasHeld] = useState(false);
+  if (held !== wasHeld) {
+    setWasHeld(held);
+    if (held) setExpanded(true);
+  }
   const sendButton = useRef<HTMLButtonElement>(null);
   return (
     <section aria-label={`${label}导师`} className="mt-auto shrink-0 border-t border-border bg-background">
-      {!open && (
+      {!expanded && !followUp && (
         <button
           type="button"
           className="m-3 flex h-10 w-[calc(100%-1.5rem)] items-center rounded-lg bg-muted px-3 text-left text-sm text-muted-foreground transition-colors hover:bg-press"
@@ -333,7 +348,7 @@ function Composer({
           {label} {mentor.name}…
         </button>
       )}
-      <Collapsible open={open}>
+      <Collapsible open={expanded}>
         <CollapsibleContent
           className="flex max-h-[65dvh] flex-col gap-2 overflow-y-auto px-5 py-3 phone:px-3 [&>*]:shrink-0"
           onKeyDown={(e) => {

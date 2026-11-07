@@ -114,6 +114,8 @@ export function Correspondence({ mentor }: { mentor: MentorDetail }) {
     select: (m) => m.state.status,
   }).at(-1);
   const begun = draft.data || (lastSave !== undefined && lastSave !== "success");
+  // Emptied, a letter begun keeps its box as one opened with "写新的一封" does, until an email goes out.
+  if (begun && !newLetter) setOpenedFirst({ mentorId: mentor.id, count: emailCount });
   if (entries.error) {
     return <p className="px-5 py-4 text-sm text-destructive">往来未能加载：{errorMessage(entries.error)}</p>;
   }
