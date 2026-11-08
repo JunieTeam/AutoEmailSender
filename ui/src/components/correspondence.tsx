@@ -2,10 +2,10 @@ import { useMutation, useMutationState, useQuery, useQueryClient } from "@tansta
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Check, RotateCcw, Send, Undo2 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
 import type { Email, Entry, Failure, MentorDetail, Message, FollowUpEntry, ReplyOutcome, Todo } from "@/api/types";
 import { Attachments } from "@/components/attachments";
-import { FailureDetails } from "@/components/failure";
+import { FailureDetails, FailureNote } from "@/components/failure";
 import { Confirm } from "@/components/batch-bar";
 import { WithdrawFromCloud } from "@/components/cloud-send";
 import { FollowUpLetter, ReplyLetter } from "@/components/reply-letter";
@@ -118,7 +118,13 @@ export function Correspondence({ mentor }: { mentor: MentorDetail }) {
   // Emptied, a letter begun keeps its box as one opened with "写新的一封" does, until an email goes out.
   if (begun && !newLetter) setOpenedFirst({ mentorId: mentor.id, count: emailCount });
   if (entries.error) {
-    return <p className="px-5 py-4 text-sm text-destructive">往来未能加载：{errorMessage(entries.error)}</p>;
+    return (
+      <FailureNote
+        className="px-5 py-4 text-sm text-destructive"
+        lead="往来未能加载："
+        failure={failureOf(entries.error)}
+      />
+    );
   }
   if (!entries.data) return <Loading />;
   if (entries.data.length === 0) {
@@ -172,7 +178,13 @@ export function Correspondence({ mentor }: { mentor: MentorDetail }) {
         (begun || newLetter ? (
           <FirstLetter mentor={mentor} />
         ) : (
-          draft.error && <p className="px-5 py-4 text-sm text-destructive">草稿未能加载：{errorMessage(draft.error)}</p>
+          draft.error && (
+            <FailureNote
+              className="px-5 py-4 text-sm text-destructive"
+              lead="草稿未能加载："
+              failure={failureOf(draft.error)}
+            />
+          )
         ))}
       {!mentor.trashed && !begun && !newLetter && followUpDraft.data && <FollowUpLetter mentor={mentor} />}
       {!mentor.trashed &&
@@ -196,13 +208,17 @@ export function Correspondence({ mentor }: { mentor: MentorDetail }) {
             >
               写新的一封
             </Button>
-            {follow.error && <p className="text-sm text-destructive">未能追问：{errorMessage(follow.error)}</p>}
+            {follow.error && (
+              <FailureNote className="text-sm text-destructive" lead="未能追问：" failure={failureOf(follow.error)} />
+            )}
           </div>
         )}
       {(followUpDraft.error ?? followUpEntry.error) && (
-        <p className="px-5 py-3 text-sm text-destructive">
-          追问未能加载：{errorMessage(followUpDraft.error ?? followUpEntry.error)}
-        </p>
+        <FailureNote
+          className="px-5 py-3 text-sm text-destructive"
+          lead="追问未能加载："
+          failure={failureOf(followUpDraft.error ?? followUpEntry.error)}
+        />
       )}
       {!mentor.trashed && (replying || entries.data.some((e) => "message" in e && e.message.kind === "reply")) && (
         <ReplyLetter key={`${mentor.id} ${replyVersion}`} mentor={mentor} selected={selected} />
@@ -370,17 +386,19 @@ function Sent({
         </div>
       )}
       {act.error && (
-        <p className="text-sm text-destructive">
-          未能
-          {act.variables === "withdrawEmail"
-            ? "改回草稿"
-            : act.variables === "confirmUnsentEmail"
-              ? "确认未发出"
-              : e.state === "failed"
-                ? "重试"
-                : "重新发送"}
-          ：{errorMessage(act.error)}
-        </p>
+        <FailureNote
+          className="text-sm text-destructive"
+          lead={`未能${
+            act.variables === "withdrawEmail"
+              ? "改回草稿"
+              : act.variables === "confirmUnsentEmail"
+                ? "确认未发出"
+                : e.state === "failed"
+                  ? "重试"
+                  : "重新发送"
+          }：`}
+          failure={failureOf(act.error)}
+        />
       )}
     </article>
   );
@@ -516,7 +534,7 @@ function Seen({
           </Collapsible>
         )}
       </div>
-      <p className={`flex max-w-[min(42rem,88%)] items-center gap-1.5 text-sm ${mine ? "text-right" : ""}`}>
+      <div className={`flex max-w-[min(42rem,88%)] items-center gap-1.5 text-sm ${mine ? "text-right" : ""}`}>
         {fresh && <span className="size-2 shrink-0 rounded-full bg-unread" aria-label="新回信" />}
         <span className="text-muted-foreground">
           {day(m.sentAt)} {time(m.sentAt)}
@@ -540,7 +558,7 @@ function Seen({
             加为导师的邮箱
           </Button>
         )}
-      </p>
+      </div>
       {m.kind === "reply" && m.marking?.state === "failed" && !mentor.trashed && (
         <AiFailed messageId={m.id} reason={m.marking.reason} retry="retryReplyOutcome" label="AI 未能标出" />
       )}
@@ -553,7 +571,9 @@ function Seen({
       {m.kind === "reply" && !m.canReply && !mentor.trashed && (
         <p className="text-sm text-muted-foreground">这封信缺少邮件编号，无法在原线程里回复，请到邮箱里回复</p>
       )}
-      {add.error && <p className="text-sm text-destructive">未能加为导师的邮箱：{errorMessage(add.error)}</p>}
+      {add.error && (
+        <FailureNote className="text-sm text-destructive" lead="未能加为导师的邮箱：" failure={failureOf(add.error)} />
+      )}
       {m.kind === "sent" && m.bounce && (
         <div className="text-sm text-warning">
           <p>退信：{m.bounce.message}</p>
@@ -615,7 +635,7 @@ function ReplyOutcomeMenu({
           ))}
         </PopoverContent>
       </Popover>
-      {set.error && <span className="text-destructive">未能保存：{errorMessage(set.error)}</span>}
+      {set.error && <FailureNote className="text-destructive" lead="未能保存：" failure={failureOf(set.error)} />}
     </>
   );
 }
@@ -644,9 +664,9 @@ function AiFailed({
         <Button variant="quiet" size="sm" disabled={again.isPending} onClick={() => again.mutate()}>
           重试
         </Button>
-        {again.error && <span className="text-destructive">{errorMessage(again.error)}</span>}
       </p>
       <FailureDetails failure={reason} />
+      {again.error && <FailureNote className="text-destructive" failure={failureOf(again.error)} />}
     </div>
   );
 }

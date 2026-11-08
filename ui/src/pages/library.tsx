@@ -2,7 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ChevronLeft, SearchX, UsersRound } from "lucide-react";
 import { Fragment, type ReactNode, useMemo, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { LibraryAddPreview, LibraryAdded, LibraryMentor, LibraryOrg } from "@/api/types";
 import { AccountDialog, type AccountMode, AgreeTermsButton, useAccount } from "@/components/account";
 import { addedMessage, LibraryAddDialog, needsChoices, refreshLibrary } from "@/components/library";
@@ -25,7 +26,7 @@ export function LibraryTab() {
   const account = useAccount();
   const [dialog, setDialog] = useState<AccountMode | null>(null);
   const state = account.data;
-  if (account.error) return <Notice title="账号未能读取" detail={errorMessage(account.error)} />;
+  if (account.error) return <Notice title="账号未能读取" failure={failureOf(account.error)} />;
   if (!state) return <Loading />;
   if (state.kind === "loggedIn" && state.termsOutdated) {
     return (
@@ -230,9 +231,7 @@ function Library() {
         <Quota remaining={remaining} counted={counted} />
         <span className="grow" />
         {(quota.error ?? add.error) && (
-          <span role="alert" className="text-destructive">
-            {errorMessage(quota.error ?? add.error)}
-          </span>
+          <FailureNote role="alert" className="text-destructive" failure={failureOf(quota.error ?? add.error)} />
         )}
         <Button
           disabled={selected.size === 0 || add.isPending || (remaining !== undefined && counted > remaining)}
@@ -482,11 +481,10 @@ function Preview({ id }: { id: string }) {
 
 function Retry({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   return (
-    <p role="alert" className="flex flex-wrap items-center gap-x-2 py-2 text-sm text-destructive">
-      {errorMessage(error)}
-      <Button variant="ghost" size="sm" onClick={onRetry}>
+    <FailureNote role="alert" className="py-2 text-sm text-destructive" failure={failureOf(error)}>
+      <Button variant="ghost" size="sm" className="ml-2" onClick={onRetry}>
         重试
       </Button>
-    </p>
+    </FailureNote>
   );
 }

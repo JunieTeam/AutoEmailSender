@@ -15,7 +15,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use api::CallError;
+use api::startup::StartupFailure;
 use chrono::DateTime;
+use failure::Failure;
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::NotificationExt;
@@ -28,25 +31,31 @@ async fn call(
     op: String,
     input: serde_json::Value,
 ) -> Result<serde_json::Value, api::CallError> {
-    api::call(&ctx, &op, input).await
+    api::call(&ctx, &op, input)
+        .await
+        .inspect_err(|e| e.record(&op, api::Caller::Window))
 }
 
-/// What the UI shows in place of the app when the core could not start.
-struct StartupFailure(String);
-
-/// The reason the core could not start, or None when it is running.
+/// Why the core could not start, or None when it is running.
 #[tauri::command]
-fn startup_failure(app: AppHandle) -> Option<String> {
-    app.try_state::<StartupFailure>().map(|f| f.0.clone())
+fn startup_failure(app: AppHandle) -> Option<StartupFailure> {
+    app.try_state::<StartupFailure>().map(|f| f.inner().clone())
 }
 
 /// Saves the logs where the user picks; false when they cancel.
 #[tauri::command]
-async fn export_logs(app: AppHandle) -> Result<bool, String> {
+async fn export_logs(app: AppHandle) -> Result<bool, CallError> {
+    // Missing only when starting up failed before the logs began, which the diagnostic says.
     let dir = data_dir(&app)
-        .map_err(|e| format!("日志未能导出：{e}"))?
-        .join("logs");
-    logs::export(&app, &dir).map_err(|e| format!("日志未能导出：{e}"))
+        .ok()
+        .map(|dir| dir.join("logs"))
+        .filter(|dir| dir.is_dir());
+    let startup = app.try_state::<StartupFailure>();
+    let diagnostic = startup.as_ref().map(|f| f.diagnostic.as_str());
+    logged(
+        "export_logs",
+        logs::export(&app, dir.as_deref(), diagnostic),
+    )
 }
 
 #[tauri::command]
@@ -54,21 +63,19 @@ async fn export_crawl_log(
     app: AppHandle,
     ctx: tauri::State<'_, Arc<api::Context>>,
     id: i64,
-) -> Result<bool, String> {
-    let detail = crawl::queue::detail(&ctx.db, id, 1)
-        .await
-        .map_err(|e| format!("整理日志未能导出：{e}"))?
-        .ok_or("这次整理已被删除")?;
-    let at = DateTime::from_timestamp_millis(detail.summary.created_at)
-        .ok_or("整理开始时间不正确，无法导出日志")?;
-    let dir = data_dir(&app)
-        .map_err(|e| format!("整理日志未能导出：{e}"))?
-        .join("logs");
-    tauri::async_runtime::spawn_blocking(move || {
-        logs::export_crawl(&app, &dir, &detail, at).map_err(|e| format!("整理日志未能导出：{e}"))
-    })
-    .await
-    .map_err(|e| format!("整理日志未能导出：{e}"))?
+) -> Result<bool, CallError> {
+    let exported = async {
+        let detail = crawl::queue::detail(&ctx.db, id, 1)
+            .await?
+            .ok_or_else(|| CallError::not_found("这次整理已被删除"))?;
+        let at = DateTime::from_timestamp_millis(detail.summary.created_at)
+            .ok_or_else(|| CallError::internal(format!("crawl {id} started out of range")))?;
+        let dir = data(&app)?.join("logs");
+        tauri::async_runtime::spawn_blocking(move || logs::export_crawl(&app, &dir, &detail, at))
+            .await
+            .map_err(CallError::internal)?
+    };
+    logged("export_crawl_log", exported.await)
 }
 
 /// Saves the exported table through the native file picker, away from the async executor.
@@ -78,50 +85,66 @@ async fn export_mentors(
     ctx: tauri::State<'_, Arc<api::Context>>,
     input: api::ExportMentors,
     file_name: String,
-) -> Result<bool, String> {
+) -> Result<bool, CallError> {
     let extension = match input.format {
         api::TableFormat::Xlsx => "xlsx",
         api::TableFormat::Csv => "csv",
     };
-    let data = api::export_mentors(&ctx, input)
+    let exported = async {
+        let data = api::export_mentors(&ctx, input).await?;
+        tauri::async_runtime::spawn_blocking(move || {
+            let Some(target) = app
+                .dialog()
+                .file()
+                .add_filter("导师表格", &[extension])
+                .set_file_name(format!("{file_name}.{extension}"))
+                .blocking_save_file()
+            else {
+                return Ok(false);
+            };
+            save::picked(target, "表格未能保存", |file| file.write_all(&data))?;
+            Ok(true)
+        })
         .await
-        .map_err(|e| e.message)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let Some(target) = app
-            .dialog()
-            .file()
-            .add_filter("导师表格", &[extension])
-            .set_file_name(format!("{file_name}.{extension}"))
-            .blocking_save_file()
-        else {
-            return Ok(false);
-        };
-        let path = target
-            .into_path()
-            .map_err(|e| format!("无法保存到这个位置：{e}，请选择其他位置"))?;
-        save::replace(&path, |file| file.write_all(&data))
-            .map_err(|e| format!("表格未能保存：{e}，请检查保存位置是否可写后重试"))?;
-        Ok(true)
-    })
-    .await
-    .map_err(|e| format!("表格未能导出：{e}，请重试"))?
+        .map_err(CallError::internal)?
+    };
+    logged("export_mentors", exported.await)
 }
 
 /// Where the app keeps its data, for the about page.
 #[tauri::command]
-fn data_location(app: AppHandle) -> Result<String, String> {
-    data_dir(&app)
-        .map(|dir| dir.display().to_string())
-        .map_err(|e| e.to_string())
+fn data_location(app: AppHandle) -> Result<String, CallError> {
+    logged(
+        "data_location",
+        data(&app).map(|dir| dir.display().to_string()),
+    )
 }
 
 /// Opens the data directory in Finder or Explorer. The UI may not open paths itself.
 #[tauri::command]
-fn open_data_location(app: AppHandle) -> Result<(), String> {
-    let dir = data_dir(&app).map_err(|e| e.to_string())?;
-    app.opener()
-        .open_path(dir.display().to_string(), None::<&str>)
-        .map_err(|e| format!("未能打开数据位置：{e}"))
+fn open_data_location(app: AppHandle) -> Result<(), CallError> {
+    let opened = data(&app).and_then(|dir| {
+        app.opener()
+            .open_path(dir.display().to_string(), None::<&str>)
+            .map_err(|e| {
+                let failure = Failure::unrecognized(
+                    "未能打开数据位置，请按上面显示的路径手动打开",
+                    &e.to_string(),
+                );
+                CallError::external(failure, e)
+            })
+    });
+    logged("open_data_location", opened)
+}
+
+/// Logs a command's error once, as it leaves the command (docs/development.md#错误和日志).
+fn logged<T>(command: &str, result: Result<T, CallError>) -> Result<T, CallError> {
+    result.inspect_err(|e| e.record(command, api::Caller::Window))
+}
+
+/// Reading or writing a file failed for a reason of the system's, after `what` failed.
+fn file_failed(what: &str, e: std::io::Error) -> CallError {
+    CallError::external(failure::file(what, &e), e)
 }
 
 fn main() -> tauri::Result<()> {
@@ -152,7 +175,10 @@ fn main() -> tauri::Result<()> {
                 }
                 Err(e) => {
                     tracing::error!("startup failed: {e}");
-                    app.manage(StartupFailure(e.message()));
+                    app.manage(StartupFailure {
+                        reason: e.failure(),
+                        diagnostic: failure::scrub(&e.to_string()),
+                    });
                     true
                 }
             };
@@ -598,19 +624,22 @@ impl std::fmt::Display for StartupError {
             StartupError::DataDir(e) => write!(f, "data directory: {e}"),
             StartupError::Logs(e) => write!(f, "logs: {e}"),
             StartupError::Core(e) => write!(f, "{e}"),
-            StartupError::Agent(e) => write!(f, "agent: {:?}", e.code),
+            StartupError::Agent(e) => write!(f, "agent: {e}"),
         }
     }
 }
 
 impl StartupError {
     /// What the user reads: what happened, and what was kept safe.
-    fn message(&self) -> String {
+    fn failure(&self) -> Failure {
         match self {
-            StartupError::DataDir(e) => format!("数据目录无法使用：{e}"),
-            StartupError::Logs(e) => format!("日志无法写入：{e}"),
-            StartupError::Core(e) => e.message(),
-            StartupError::Agent(e) => format!("Agent 连接无法启动：{}", e.message),
+            StartupError::DataDir(e) => Failure::unrecognized("数据目录无法使用", &e.to_string()),
+            StartupError::Logs(e) => Failure::unrecognized("日志无法写入", &e.to_string()),
+            StartupError::Core(e) => e.failure(),
+            StartupError::Agent(e) => Failure {
+                message: format!("Agent 连接无法启动：{}", e.message),
+                details: e.details.clone(),
+            },
         }
     }
 }
@@ -627,6 +656,11 @@ fn show(app: &AppHandle) {
     {
         tracing::warn!("bring window forward: {e}");
     }
+}
+
+/// The data directory, for a command: one runs only once the directory was found at startup.
+fn data(app: &AppHandle) -> Result<PathBuf, CallError> {
+    data_dir(app).map_err(|e| CallError::internal(format!("data directory: {e}")))
 }
 
 /// Development builds keep their data in the repository, away from an installed app's data.

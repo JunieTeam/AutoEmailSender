@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { ModelConfig, ModelProvider } from "@/api/types";
 import { Confirm } from "@/components/batch-bar";
 import { ModelDialog, useModelProviders } from "@/components/model-dialog";
@@ -19,7 +20,7 @@ export function ModelsSection() {
       <p className="text-sm text-muted-foreground">
         分析匹配度、写邮件草稿用的 AI 模型，可以添加多个。API Key 只存在这台电脑上，只发给对应的服务商。
       </p>
-      {error && <p className="text-sm text-destructive">模型未能加载：{errorMessage(error)}</p>}
+      {error && <FailureNote className="text-sm text-destructive" lead="模型未能加载：" failure={failureOf(error)} />}
       {configs.data && providers.data && (
         <>
           {configs.data.length > 0 && (
@@ -86,13 +87,13 @@ function ModelRow({ config: c, providers }: { config: ModelConfig; providers: Mo
           />
         </div>
       </div>
-      <p className="text-sm empty:hidden" aria-live="polite">
+      <div className="text-sm empty:hidden" aria-live="polite">
         {test.isPending && <span className="text-muted-foreground">正在测试…</span>}
         {test.isSuccess && <span className="text-muted-foreground">模型回复正常</span>}
-        {test.isError && <span className="text-destructive">{errorMessage(test.error)}</span>}
-        {remove.isError && <span className="text-destructive">{errorMessage(remove.error)}</span>}
-        {makeDefault.isError && <span className="text-destructive">{errorMessage(makeDefault.error)}</span>}
-      </p>
+        {test.isError && <FailureNote className="text-destructive" failure={failureOf(test.error)} />}
+        {remove.isError && <FailureNote className="text-destructive" failure={failureOf(remove.error)} />}
+        {makeDefault.isError && <FailureNote className="text-destructive" failure={failureOf(makeDefault.error)} />}
+      </div>
       {editing && (
         <ModelDialog
           config={c}

@@ -1,7 +1,8 @@
 import { useMutation, useMutationState, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { CalendarDays, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Todo } from "@/api/types";
 import { Confirm } from "@/components/batch-bar";
 import { localDate } from "@/components/schedule";
@@ -78,7 +79,9 @@ export function TodoCheckError({ id }: { id: number }) {
     filters: { mutationKey: ["setTodoDone", id] },
     select: (m) => m.state.error,
   }).at(-1);
-  return error == null ? null : <p className="mt-1 text-sm text-destructive">未能保存：{errorMessage(error)}</p>;
+  return error == null ? null : (
+    <FailureNote className="mt-1 text-sm text-destructive" lead="未能保存：" failure={failureOf(error)} />
+  );
 }
 
 /** One todo in a mentor's correspondence: tick it, or click its text to change or delete it. */
@@ -241,7 +244,9 @@ export function TodoEditor({
           保存
         </Button>
       </div>
-      {error != null && <p className="text-sm text-destructive">未能保存：{errorMessage(error)}</p>}
+      {error != null && (
+        <FailureNote className="text-sm text-destructive" lead="未能保存：" failure={failureOf(error)} />
+      )}
     </form>
   );
 }

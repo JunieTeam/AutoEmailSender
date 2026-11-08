@@ -45,12 +45,11 @@ async fn crawl_ready(ctx: &Context, id: Option<i64>) -> Result<model::Chosen, Ca
         CallError::invalid("尚未添加模型，请在“设置 › AI › 模型”中添加后再开始".into())
     })?;
     if !m.agreed {
-        return Err(CallError {
-            code: ErrorCode::NeedsAgreement,
-            message: "网页的标题、文字、链接文字及公开的导师资料将发给这个模型的服务商，\
-                用于寻找名单和整理资料。"
-                .into(),
-        });
+        return Err(CallError::new(
+            ErrorCode::NeedsAgreement,
+            "网页的标题、文字、链接文字及公开的导师资料将发给这个模型的服务商，\
+                用于寻找名单和整理资料。",
+        ));
     }
     Ok(m)
 }

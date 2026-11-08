@@ -2,45 +2,50 @@
 //! `tauri-plugin-notification` shows them, but on the desktop its permission calls always answer
 //! granted, so macOS is asked here.
 
+use api::CallError;
 use api::notifications::NotificationPermission;
 
 /// Whether the system shows the app's notifications.
 #[tauri::command]
-pub async fn notification_permission() -> Result<NotificationPermission, String> {
-    system::permission().await
+pub async fn notification_permission() -> Result<NotificationPermission, CallError> {
+    crate::logged("notification_permission", system::permission().await)
 }
 
 /// Asks the system to show the app's notifications; answers once the user has chosen.
 #[tauri::command]
-pub async fn request_notification_permission() -> Result<NotificationPermission, String> {
-    system::request().await
+pub async fn request_notification_permission() -> Result<NotificationPermission, CallError> {
+    crate::logged("request_notification_permission", system::request().await)
 }
 
 /// Opens the app's page in the system's notification settings.
 #[cfg(target_os = "macos")]
 #[tauri::command]
-pub fn open_notification_settings(app: tauri::AppHandle) -> Result<(), String> {
+pub fn open_notification_settings(app: tauri::AppHandle) -> Result<(), CallError> {
     use tauri_plugin_opener::OpenerExt;
     let url = format!(
         "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id={}",
         app.config().identifier
     );
-    app.opener().open_url(url, None::<&str>).map_err(|e| {
-        tracing::warn!("open notification settings: {e}");
-        "未能打开系统设置，请在系统设置的“通知”里找到 Auto Email Sender".into()
-    })
+    let opened = app.opener().open_url(url, None::<&str>).map_err(|e| {
+        CallError::external(
+            failure::Failure::new("未能打开系统设置，请在系统设置的“通知”里找到 Auto Email Sender"),
+            e,
+        )
+    });
+    crate::logged("open_notification_settings", opened)
 }
 
 #[cfg(not(target_os = "macos"))]
 mod system {
+    use api::CallError;
     use api::notifications::NotificationPermission;
 
     // Windows shows notifications without asking first.
-    pub async fn permission() -> Result<NotificationPermission, String> {
+    pub async fn permission() -> Result<NotificationPermission, CallError> {
         Ok(NotificationPermission::Unsupported)
     }
 
-    pub async fn request() -> Result<NotificationPermission, String> {
+    pub async fn request() -> Result<NotificationPermission, CallError> {
         Ok(NotificationPermission::Unsupported)
     }
 }
@@ -50,8 +55,10 @@ mod system {
     use std::ptr::NonNull;
     use std::sync::Mutex;
 
+    use api::CallError;
     use api::notifications::NotificationPermission;
     use block2::RcBlock;
+    use failure::Failure;
     use objc2::rc::Retained;
     use objc2::runtime::Bool;
     use objc2_foundation::{NSBundle, NSError};
@@ -61,7 +68,13 @@ mod system {
     };
     use tokio::sync::oneshot;
 
-    const UNREADABLE: &str = "未能读取系统的通知设置，请稍后重试";
+    /// The system let go of its handler without calling it.
+    fn unanswered() -> CallError {
+        CallError::external(
+            Failure::new("未能读取系统的通知设置，请稍后重试"),
+            "the notification center did not answer",
+        )
+    }
 
     /// The notification center needs the app's bundle. A bare executable, as `pnpm dev` runs, has
     /// none, and asking for the center then raises an exception that ends the process.
@@ -73,7 +86,7 @@ mod system {
             .then(UNUserNotificationCenter::currentNotificationCenter)
     }
 
-    pub async fn permission() -> Result<NotificationPermission, String> {
+    pub async fn permission() -> Result<NotificationPermission, CallError> {
         let (sender, receiver) = oneshot::channel();
         // The center and the handler stay on this thread; only the answer is awaited.
         {
@@ -96,7 +109,7 @@ mod system {
             });
             center.getNotificationSettingsWithCompletionHandler(&done);
         }
-        let status = receiver.await.map_err(|_| UNREADABLE.to_string())?;
+        let status = receiver.await.map_err(|_| unanswered())?;
         Ok(match status {
             UNAuthorizationStatus::NotDetermined => NotificationPermission::NotAsked,
             UNAuthorizationStatus::Denied => NotificationPermission::Denied,
@@ -105,7 +118,7 @@ mod system {
         })
     }
 
-    pub async fn request() -> Result<NotificationPermission, String> {
+    pub async fn request() -> Result<NotificationPermission, CallError> {
         let (sender, receiver) = oneshot::channel();
         {
             let Some(center) = center() else {
@@ -114,21 +127,20 @@ mod system {
             let sender = Mutex::new(Some(sender));
             let done = RcBlock::new(move |_granted: Bool, error: *mut NSError| {
                 #[expect(unsafe_code, reason = "the system's error, valid during the call")]
-                let error = unsafe { error.as_ref() };
-                if let Some(error) = error {
-                    tracing::warn!(
-                        "notification permission request: {} ({} {})",
+                let error = unsafe { error.as_ref() }.map(|error| {
+                    format!(
+                        "{} ({} {})",
                         error.localizedDescription(),
                         error.domain(),
                         error.code()
-                    );
-                }
+                    )
+                });
                 let sender = sender
                     .lock()
                     .unwrap_or_else(|_| unreachable!("taking the sender cannot panic"))
                     .take();
                 if let Some(sender) = sender {
-                    let _ = sender.send(error.is_none());
+                    let _ = sender.send(error);
                 }
             });
             // Asks the user only the first time; afterwards answers with the choice made.
@@ -137,11 +149,13 @@ mod system {
                 &done,
             );
         }
-        let asked = receiver.await.map_err(|_| UNREADABLE.to_string())?;
-        if !asked {
-            return Err(
-                "未能向系统请求通知权限，请在系统设置的“通知”里允许 Auto Email Sender".into(),
-            );
+        if let Some(error) = receiver.await.map_err(|_| unanswered())? {
+            return Err(CallError::external(
+                Failure::new(
+                    "未能向系统请求通知权限，请在系统设置的“通知”里允许 Auto Email Sender",
+                ),
+                error,
+            ));
         }
         // The answer is only yes or no; the settings tell which of the states the page shows.
         permission().await

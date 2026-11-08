@@ -2,7 +2,8 @@ import { useMutation } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { errorMessage } from "@/api/call";
+import { failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Affiliation, MentorDetail, MentorFields, MentorForm } from "@/api/types";
 import { Field, formClose } from "@/components/form";
 import { Button } from "@/components/ui/button";
@@ -155,9 +156,9 @@ export function MentorDialog<T>({
             </fieldset>
           </DialogBody>
           <DialogFooter>
-            <p className="grow text-sm text-destructive" role="alert">
-              {mutation.isError && errorMessage(mutation.error)}
-            </p>
+            <div className="grow text-sm text-destructive" role="alert">
+              {mutation.isError && <FailureNote failure={failureOf(mutation.error)} />}
+            </div>
             <DialogClose render={<Button variant="ghost" />}>取消</DialogClose>
             <Button type="submit" disabled={mutation.isPending || form.name.trim() === ""}>
               {action}

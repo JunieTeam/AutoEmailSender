@@ -1,17 +1,22 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import type { Failure } from "@/api/types";
+import { FailureNote } from "@/components/failure";
 
 /** Fills an empty or failed area with what happened and what to do next (docs/ui.md#控件 空状态). */
 export function Notice({
   icon: Icon,
   title,
   detail,
+  failure,
   actions,
   children,
 }: {
   icon?: LucideIcon;
   title: string;
   detail?: string;
+  /** Why it failed, in place of a detail. */
+  failure?: Failure;
   actions?: ReactNode;
   children?: ReactNode;
 }) {
@@ -21,6 +26,7 @@ export function Notice({
         {Icon && <Icon aria-hidden className="mx-auto mb-3 size-9 text-faint" strokeWidth={1.3} />}
         <p className="text-lg font-medium text-balance wrap-anywhere">{title}</p>
         {detail && <p className="mt-1 text-sm text-balance text-muted-foreground wrap-anywhere">{detail}</p>}
+        {failure && <FailureNote className="mt-1 text-sm text-balance text-muted-foreground" failure={failure} />}
         {children}
         {actions && <div className="mt-5 flex flex-wrap justify-center gap-2">{actions}</div>}
       </div>

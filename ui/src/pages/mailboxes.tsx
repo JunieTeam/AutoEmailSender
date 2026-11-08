@@ -1,6 +1,6 @@
 import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
 import type { Mailbox, Provider, Rotation } from "@/api/types";
 import { Confirm } from "@/components/batch-bar";
 import { FailureDetails, FailureNote } from "@/components/failure";
@@ -35,7 +35,7 @@ export function MailboxesSection() {
       <p className="text-sm text-muted-foreground">
         给导师发信、收回信用的邮箱，可以添加多个。授权码只存在这台电脑上，只用来登录邮箱。
       </p>
-      {error && <p className="text-sm text-destructive">邮箱未能加载：{errorMessage(error)}</p>}
+      {error && <FailureNote className="text-sm text-destructive" lead="邮箱未能加载：" failure={failureOf(error)} />}
       {mailboxes.data && providers.data && (
         <>
           {mailboxes.data.length > 1 && <RotationRow />}
@@ -94,7 +94,7 @@ function RotationRow() {
           </p>
         </>
       )}
-      {error && <p className="text-sm text-destructive">{errorMessage(error)}</p>}
+      {error && <FailureNote className="text-sm text-destructive" failure={failureOf(error)} />}
     </Row>
   );
 }
@@ -177,13 +177,13 @@ function MailboxRow({ mailbox: m, providers }: { mailbox: Mailbox; providers: Pr
           )}
         </div>
       </div>
-      <p className="text-sm empty:hidden" aria-live="polite">
+      <div className="text-sm empty:hidden" aria-live="polite">
         {test.isPending && <span className="text-muted-foreground">正在发送测试信…</span>}
         {test.isSuccess && <span className="text-muted-foreground">测试信已发到 {m.address}，请到收件箱查看</span>}
-        {test.isError && <span className="text-destructive">{errorMessage(test.error)}</span>}
-        {remove.isError && <span className="text-destructive">{errorMessage(remove.error)}</span>}
-        {resume.isError && <span className="text-destructive">{errorMessage(resume.error)}</span>}
-      </p>
+        {test.isError && <FailureNote className="text-destructive" failure={failureOf(test.error)} />}
+        {remove.isError && <FailureNote className="text-destructive" failure={failureOf(remove.error)} />}
+        {resume.isError && <FailureNote className="text-destructive" failure={failureOf(resume.error)} />}
+      </div>
       {editing && (
         <MailboxDialog
           mailbox={m}

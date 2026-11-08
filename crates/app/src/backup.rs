@@ -1,52 +1,46 @@
 //! Native dialogs and serialization of the local backup workflow.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
+use api::CallError;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 #[derive(Default)]
 pub struct Commands(Mutex<()>);
 
+/// Runs `work` away from the async executor, one backup command at a time, logging its error once
+/// under `command`.
 async fn blocking<T: Send + 'static>(
     app: AppHandle,
-    work: impl FnOnce(&AppHandle) -> Result<T, String> + Send + 'static,
-) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    command: &str,
+    work: impl FnOnce(&AppHandle) -> Result<T, CallError> + Send + 'static,
+) -> Result<T, CallError> {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         let commands = app.state::<Commands>();
-        let _held = commands
-            .0
-            .lock()
-            .map_err(|_| "备份处理已中断，请重启应用后重试".to_owned())?;
+        // Guards no data: each command leaves the files it works on safe to go on with.
+        let _held = commands.0.lock().unwrap_or_else(PoisonError::into_inner);
         work(&app)
     })
     .await
-    .map_err(|e| format!("备份处理未能完成：{e}，请重试"))?
-}
-
-fn failure(e: api::backup::Error) -> String {
-    tracing::error!(error = ?e, "backup failed");
-    e.message()
+    .map_err(CallError::internal);
+    crate::logged(command, result.and_then(|result| result))
 }
 
 #[tauri::command]
 pub async fn export_backup(
     app: AppHandle,
     ctx: tauri::State<'_, std::sync::Arc<api::Context>>,
-) -> Result<bool, String> {
+) -> Result<bool, CallError> {
     let db = ctx.db.clone();
-    blocking(app, move |app| {
-        let dir = crate::data_dir(app).map_err(|e| format!("数据目录无法使用：{e}"))?;
+    blocking(app, "export_backup", move |app| {
+        let dir = crate::data(app)?;
         let now = now();
         let date: String = tauri::async_runtime::block_on(
             sqlx::query_scalar("SELECT date(? / 1000, 'unixepoch', 'localtime')")
                 .bind(now)
                 .fetch_one(&db),
-        )
-        .map_err(|e| {
-            tracing::error!("backup date: {e}");
-            "无法读取备份日期，请重试".to_owned()
-        })?;
+        )?;
         let Some(target) = app
             .dialog()
             .file()
@@ -56,11 +50,8 @@ pub async fn export_backup(
         else {
             return Ok(false);
         };
-        let target = target
-            .into_path()
-            .map_err(|e| format!("无法保存到这个位置：{e}，请选择其他位置"))?;
-        tauri::async_runtime::block_on(api::backup::export(&db, &dir, &target, now))
-            .map_err(failure)?;
+        let target = target.into_path().map_err(CallError::internal)?;
+        tauri::async_runtime::block_on(api::backup::export(&db, &dir, &target, now))?;
         tracing::info!("exported a backup");
         Ok(true)
     })
@@ -68,11 +59,13 @@ pub async fn export_backup(
 }
 
 #[tauri::command]
-pub async fn prepare_restore(app: AppHandle) -> Result<Option<api::backup::RestoreInfo>, String> {
-    blocking(app, |app| {
-        let dir = crate::data_dir(app).map_err(|e| format!("数据目录无法使用：{e}"))?;
+pub async fn prepare_restore(
+    app: AppHandle,
+) -> Result<Option<api::backup::RestoreInfo>, CallError> {
+    blocking(app, "prepare_restore", |app| {
+        let dir = crate::data(app)?;
         // Opening a second picker abandons the previous unconfirmed choice, including on cancel.
-        api::backup::cancel(&dir).map_err(failure)?;
+        api::backup::cancel(&dir)?;
         let Some(source) = app
             .dialog()
             .file()
@@ -81,11 +74,8 @@ pub async fn prepare_restore(app: AppHandle) -> Result<Option<api::backup::Resto
         else {
             return Ok(None);
         };
-        let source = source
-            .into_path()
-            .map_err(|e| format!("无法读取这个文件：{e}，请选择本地备份文件"))?;
-        let info =
-            tauri::async_runtime::block_on(api::backup::prepare(&dir, &source)).map_err(failure)?;
+        let source = source.into_path().map_err(CallError::internal)?;
+        let info = tauri::async_runtime::block_on(api::backup::prepare(&dir, &source))?;
         tracing::info!(
             exported_at = info.exported_at,
             "prepared a restore from a file"
@@ -100,15 +90,11 @@ pub async fn prepare_restore(app: AppHandle) -> Result<Option<api::backup::Resto
 pub async fn prepare_cloud_restore(
     app: AppHandle,
     ctx: tauri::State<'_, std::sync::Arc<api::Context>>,
-) -> Result<api::backup::RestoreInfo, String> {
+) -> Result<api::backup::RestoreInfo, CallError> {
     let ctx = ctx.inner().clone();
-    blocking(app, move |app| {
-        let dir = crate::data_dir(app).map_err(|e| format!("数据目录无法使用：{e}"))?;
-        let info = tauri::async_runtime::block_on(api::backup::cloud::prepare_restore(&ctx, &dir))
-            .map_err(|e| {
-                tracing::error!(error = %e, "cloud restore failed");
-                e.message()
-            })?;
+    blocking(app, "prepare_cloud_restore", move |app| {
+        let dir = crate::data(app)?;
+        let info = tauri::async_runtime::block_on(api::backup::cloud::prepare_restore(&ctx, &dir))?;
         tracing::info!(
             exported_at = info.exported_at,
             "prepared a restore from the cloud"
@@ -119,10 +105,9 @@ pub async fn prepare_cloud_restore(
 }
 
 #[tauri::command]
-pub async fn cancel_restore(app: AppHandle) -> Result<(), String> {
-    blocking(app, |app| {
-        let dir = crate::data_dir(app).map_err(|e| format!("数据目录无法使用：{e}"))?;
-        api::backup::cancel(&dir).map_err(failure)
+pub async fn cancel_restore(app: AppHandle) -> Result<(), CallError> {
+    blocking(app, "cancel_restore", |app| {
+        Ok(api::backup::cancel(&crate::data(app)?)?)
     })
     .await
 }
@@ -132,12 +117,16 @@ pub async fn restore_backup(
     app: AppHandle,
     ctx: tauri::State<'_, std::sync::Arc<api::Context>>,
     exported_at: i64,
-) -> Result<(), String> {
+) -> Result<(), CallError> {
     let db = ctx.db.clone();
-    blocking(app.clone(), move |app| {
-        let dir = crate::data_dir(app).map_err(|e| format!("数据目录无法使用：{e}"))?;
-        tauri::async_runtime::block_on(api::backup::confirm(&db, &dir, exported_at, now()))
-            .map_err(failure)
+    blocking(app.clone(), "restore_backup", move |app| {
+        let dir = crate::data(app)?;
+        Ok(tauri::async_runtime::block_on(api::backup::confirm(
+            &db,
+            &dir,
+            exported_at,
+            now(),
+        ))?)
     })
     .await?;
     tracing::info!(exported_at, "restore confirmed; restarting to install it");

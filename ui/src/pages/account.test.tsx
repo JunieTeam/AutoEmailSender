@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import type { Plus, TrackingStatus } from "@/api/types";
+import type { CallError, Plus, TrackingStatus } from "@/api/types";
 import { AccountSection } from "./account";
 
 const remote = vi.hoisted(() => ({
@@ -14,7 +14,8 @@ const remote = vi.hoisted(() => ({
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }));
-vi.mock("@/api/call", () => ({
+vi.mock("@/api/call", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/call")>()),
   call: async (op: string) => {
     if (op === "getAccount") return { kind: "loggedIn", email: "lisi@163.com", termsOutdated: false, cloudEmails: 0 };
     if (op === "getPlus") return remote.getPlus();
@@ -77,7 +78,9 @@ it("shows the period after a redeem even when a read started before it answers l
 
 it("keeps the account from being deleted while what is given up cannot be read again", async () => {
   remote.getPlus.mockReset().mockResolvedValue({ plusUntil: AFTER });
-  remote.getTracking.mockReset().mockRejectedValue(new Error("手机的连接已断开。"));
+  remote.getTracking
+    .mockReset()
+    .mockRejectedValue({ code: "external", message: "手机的连接已断开。", details: null } satisfies CallError);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // Read once before, with Plus and a pack left.
   client.setQueryData<TrackingStatus>(["getTracking", "lisi@163.com"], {

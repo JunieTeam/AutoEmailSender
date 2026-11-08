@@ -390,7 +390,10 @@ async fn tampered_objects_and_other_keys_cannot_restore(db: SqlitePool) {
         let error = cloud::prepare_restore(&setup.ctx, setup.dir.path())
             .await
             .unwrap_err();
-        assert!(error.message().starts_with("云端备份已损坏"), "{error}");
+        assert!(
+            error.failure().message.starts_with("云端备份已损坏"),
+            "{error}"
+        );
         assert!(!setup.dir.path().join("restore").exists());
     }
     setup

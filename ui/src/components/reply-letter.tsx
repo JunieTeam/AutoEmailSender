@@ -8,7 +8,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf, UiError } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Material, MentorDetail, ReplyDraft, ReplyDraftEdit, ReplyTarget, FollowUpDraft } from "@/api/types";
 import {
   AiButton,
@@ -58,7 +59,14 @@ export function ReplyLetter({
   const materials = useQuery({ queryKey: ["listMaterials"], queryFn: () => call("listMaterials", {}) });
   const placeholders = usePlaceholders();
   const error = draft.error ?? latest.error ?? materials.error ?? placeholders.error;
-  if (error) return <p className="px-5 py-4 text-sm text-destructive">回复草稿未能加载：{errorMessage(error)}</p>;
+  if (error)
+    return (
+      <FailureNote
+        className="px-5 py-4 text-sm text-destructive"
+        lead="回复草稿未能加载："
+        failure={failureOf(error)}
+      />
+    );
   if (draft.isSuccess && latest.isSuccess && !draft.data && !latest.data) {
     return (
       <p className="mt-auto border-t border-border px-5 py-3 text-sm text-muted-foreground phone:px-3">
@@ -92,7 +100,14 @@ export function FollowUpLetter({ mentor }: { mentor: MentorDetail }) {
   const materials = useQuery({ queryKey: ["listMaterials"], queryFn: () => call("listMaterials", {}) });
   const placeholders = usePlaceholders();
   const error = draft.error ?? materials.error ?? placeholders.error;
-  if (error) return <p className="px-5 py-4 text-sm text-destructive">追问草稿未能加载：{errorMessage(error)}</p>;
+  if (error)
+    return (
+      <FailureNote
+        className="px-5 py-4 text-sm text-destructive"
+        lead="追问草稿未能加载："
+        failure={failureOf(error)}
+      />
+    );
   return (
     draft.data &&
     materials.data &&
@@ -270,8 +285,8 @@ function Composer({
     mutationFn: async (current: ReplyDraftEdit) => {
       const saved = queryClient.getQueryData<ReplyDraft | FollowUpDraft | null>([draftQuery, mentorId]);
       if (!saved || saved.replyTo !== current.replyTo || (saved.bodyMd ?? "") !== current.bodyMd)
-        throw new Error(`${label}未能保存，请修改正文后重试`);
-      if (!style.data) throw new Error("信件样式尚未加载，请稍后再试");
+        throw new UiError(`${label}未能保存，请修改正文后重试`);
+      if (!style.data) throw new UiError("信件样式尚未加载，请稍后再试");
       await call(followUp ? "approveFollowUp" : "approveReply", {
         mentorId,
         draftId: saved.id,
@@ -504,18 +519,36 @@ function Composer({
               )}
             </div>
           </div>
-          {discard.error && <p className="text-sm text-destructive">未能放弃追问：{errorMessage(discard.error)}</p>}
+          {discard.error && (
+            <FailureNote
+              className="text-sm text-destructive"
+              lead="未能放弃追问："
+              failure={failureOf(discard.error)}
+            />
+          )}
           {writing.latest?.error && (
-            <p className="text-sm text-destructive">AI 撰写未能完成：{errorMessage(writing.latest.error)}</p>
+            <FailureNote
+              className="text-sm text-destructive"
+              lead="AI 撰写未能完成："
+              failure={failureOf(writing.latest.error)}
+            />
           )}
           {last?.status === "error" && (
-            <p className="text-sm text-destructive">草稿未能保存：{errorMessage(last.error)}</p>
+            <FailureNote className="text-sm text-destructive" lead="草稿未能保存：" failure={failureOf(last.error)} />
           )}
-          {checks.error && <p className="text-sm text-destructive">发送前检查未能完成：{errorMessage(checks.error)}</p>}
+          {checks.error && (
+            <FailureNote
+              className="text-sm text-destructive"
+              lead="发送前检查未能完成："
+              failure={failureOf(checks.error)}
+            />
+          )}
           {(chosen.error ?? style.error ?? approveError) && (
-            <p className="text-sm text-destructive">
-              未能发送：{errorMessage(chosen.error ?? style.error ?? approveError)}
-            </p>
+            <FailureNote
+              className="text-sm text-destructive"
+              lead="未能发送："
+              failure={failureOf(chosen.error ?? style.error ?? approveError)}
+            />
           )}
         </CollapsibleContent>
       </Collapsible>

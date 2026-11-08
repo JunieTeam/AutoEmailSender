@@ -365,7 +365,7 @@ async fn invalid_archives_are_rejected_and_cleaned_up(db: SqlitePool) {
     let target = dir.path().join("bad.zip");
     fs::write(&target, b"not zip").unwrap();
     let error = backup::prepare(dir.path(), &target).await.unwrap_err();
-    assert!(error.message().contains("zip"));
+    assert!(error.failure().message.contains("zip"));
     assert!(std::error::Error::source(&error).is_some());
     let normal = serde_json::to_vec(&manifest()).unwrap();
     let mut foreign = manifest();
@@ -436,7 +436,7 @@ async fn invalid_archives_are_rejected_and_cleaned_up(db: SqlitePool) {
     for (entries, reason) in cases {
         archive(&target, &entries);
         let error = backup::prepare(dir.path(), &target).await.unwrap_err();
-        assert!(error.message().contains(reason), "{error}");
+        assert!(error.failure().message.contains(reason), "{error}");
         assert!(!dir.path().join("restore").exists());
     }
     assert!(!dir.path().join("escape").exists());
@@ -448,7 +448,8 @@ async fn invalid_archives_are_rejected_and_cleaned_up(db: SqlitePool) {
         backup::confirm(&db, dir.path(), NOW, NOW)
             .await
             .unwrap_err()
-            .message()
+            .failure()
+            .message
             .contains("先选择")
     );
 }
@@ -479,7 +480,7 @@ async fn only_the_backup_the_user_was_shown_is_restored(db: SqlitePool) {
     let error = backup::confirm(&db, dir.path(), info.exported_at, NOW + 2)
         .await
         .unwrap_err();
-    assert!(error.message().contains("换成了另一份"), "{error}");
+    assert!(error.failure().message.contains("换成了另一份"), "{error}");
     assert!(!backup::apply_pending(dir.path()).unwrap());
 }
 

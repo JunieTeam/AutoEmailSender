@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Method, Pack, Tier } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -94,9 +95,9 @@ export function PayDialog({ email, purchase, onClose }: { email: string; purchas
               </label>
             </DialogBody>
             <DialogFooter>
-              <p className="grow text-sm text-destructive" role="alert">
-                {order.error && errorMessage(order.error)}
-              </p>
+              <div className="grow text-sm text-destructive" role="alert">
+                {order.error && <FailureNote failure={failureOf(order.error)} />}
+              </div>
               <Button disabled={!agreed || order.isPending} onClick={() => pay("alipay")}>
                 支付宝
               </Button>
@@ -170,9 +171,17 @@ function Paying({
               <Button variant="quiet" size="sm" onClick={reopen}>
                 重新打开付款页
               </Button>
-              {openError && <span className="text-destructive">付款页未能打开：{errorMessage(openError)}</span>}
+              {openError && (
+                <FailureNote className="text-destructive" lead="付款页未能打开：" failure={failureOf(openError)} />
+              )}
             </div>
-            {state.error && <p className="text-muted-foreground">订单状态暂时未能读取：{errorMessage(state.error)}</p>}
+            {state.error && (
+              <FailureNote
+                className="text-muted-foreground"
+                lead="订单状态暂时未能读取："
+                failure={failureOf(state.error)}
+              />
+            )}
           </>
         )}
       </DialogBody>

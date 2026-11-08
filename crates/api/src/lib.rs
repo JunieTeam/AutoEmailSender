@@ -30,6 +30,7 @@ mod statistics;
 mod tasks;
 mod todos;
 pub mod tracking;
+mod ui_errors;
 pub mod updater;
 mod writing_turns;
 use crawling::*;
@@ -38,6 +39,7 @@ use std::collections::BTreeMap;
 use tasks::*;
 use todos::*;
 use tracking::{get_tracking, set_tracking};
+use ui_errors::{UiErrorReport, log_ui_error};
 use writing_turns::{Writing, WritingRequest, cancel_writing};
 
 use base64::prelude::{BASE64_STANDARD, Engine};
@@ -103,11 +105,25 @@ impl Context {
     }
 }
 
-/// What the UI shows when an operation fails.
+/// What the UI shows when an operation fails (docs/development.md#错误和日志).
 #[derive(Debug, Serialize, TS)]
 pub struct CallError {
     pub code: ErrorCode,
     pub message: String,
+    /// The outside words the app did not recognize, shown folded under the message.
+    pub details: Option<String>,
+    /// What finding out why needs, such as the diagnostic and the records involved; only logged.
+    #[serde(skip)]
+    #[ts(skip)]
+    log: Option<String>,
+}
+
+/// Who called an operation, for the log.
+#[derive(Debug, Clone, Copy)]
+pub enum Caller {
+    Window,
+    Phone,
+    Agent,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -132,36 +148,94 @@ pub enum ErrorCode {
 }
 
 impl CallError {
-    fn bad_input(e: impl std::fmt::Display) -> Self {
+    fn new(code: ErrorCode, message: impl Into<String>) -> Self {
         CallError {
-            code: ErrorCode::BadInput,
-            message: format!("参数不正确：{e}"),
-        }
-    }
-
-    fn invalid(message: String) -> Self {
-        CallError {
-            code: ErrorCode::Invalid,
-            message,
-        }
-    }
-
-    fn not_found(message: &str) -> Self {
-        CallError {
-            code: ErrorCode::NotFound,
+            code,
             message: message.into(),
+            details: None,
+            log: None,
         }
     }
 
-    /// Details go to the log; the user gets what to do next.
-    fn internal(e: impl std::fmt::Display) -> Self {
-        tracing::error!("{e}");
+    fn bad_input(e: impl std::fmt::Display) -> Self {
+        Self::new(ErrorCode::BadInput, format!("参数不正确：{e}"))
+    }
+
+    /// What was asked cannot be done as it is; the message says what to change.
+    pub fn invalid(message: String) -> Self {
+        Self::new(ErrorCode::Invalid, message)
+    }
+
+    pub fn not_found(message: &str) -> Self {
+        Self::new(ErrorCode::NotFound, message)
+    }
+
+    /// A defect of the app's own, `e` saying what went wrong; the user is told to try again.
+    pub fn internal(e: impl std::fmt::Display) -> Self {
+        Self::new(ErrorCode::Internal, DEFECT).logging(e)
+    }
+
+    /// Something outside the app, a server or the system, did not do what was asked.
+    pub fn external(failure: Failure, log: impl std::fmt::Display) -> Self {
         CallError {
-            code: ErrorCode::Internal,
-            message: "出错了，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题".into(),
+            details: failure.details,
+            ..Self::new(ErrorCode::External, failure.message).logging(log)
+        }
+    }
+
+    /// With `log` for the log, after what it already has: the records involved, which a
+    /// conversion from a lower error does not know, or the diagnostic.
+    pub fn logging(mut self, log: impl std::fmt::Display) -> Self {
+        self.log = Some(match self.log {
+            Some(earlier) => format!("{log}: {earlier}"),
+            None => log.to_string(),
+        });
+        self
+    }
+
+    /// Logs the error where it leaves the core or the app, once: the message only of an outside
+    /// failure or a defect, as the others may quote what the user filled in.
+    pub fn record(&self, op: &str, caller: Caller) {
+        let code = &self.code;
+        let log = self.log.as_deref();
+        match code {
+            ErrorCode::Internal => {
+                tracing::error!(
+                    op,
+                    ?caller,
+                    ?code,
+                    message = self.message,
+                    log,
+                    "call failed"
+                )
+            }
+            ErrorCode::External => {
+                tracing::warn!(
+                    op,
+                    ?caller,
+                    ?code,
+                    message = self.message,
+                    log,
+                    "call failed"
+                )
+            }
+            _ => tracing::info!(op, ?caller, ?code, log, "call failed"),
         }
     }
 }
+
+/// The code and what the log is told, for errors logged outside `record`.
+impl std::fmt::Display for CallError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.code)?;
+        match &self.log {
+            Some(log) => write!(f, ": {log}"),
+            None => Ok(()),
+        }
+    }
+}
+
+const DEFECT: &str = "出错了，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题";
 
 impl From<sqlx::Error> for CallError {
     fn from(e: sqlx::Error) -> Self {
@@ -195,9 +269,9 @@ pub(crate) fn window_only(op: &str) -> bool {
 }
 
 /// Operations only the app's UI calls, on the computer or a phone: an Agent leaves out the request
-/// that `cancelWriting` withdraws.
+/// that `cancelWriting` withdraws, and has no UI whose defects `logUiError` logs.
 fn ui_only(op: &str) -> bool {
-    window_only(op) || op == "cancelWriting"
+    window_only(op) || matches!(op, "cancelWriting" | "logUiError")
 }
 
 /// A change that found nothing to change, as when the thing is gone, as an error saying so.
@@ -307,6 +381,7 @@ macro_rules! operations {
             collect::<ExportMentors>(&cfg, &mut decls);
             collect::<backup::RestoreInfo>(&cfg, &mut decls);
             collect::<updater::UpdateStatus>(&cfg, &mut decls);
+            collect::<startup::StartupFailure>(&cfg, &mut decls);
             collect::<notifications::NotificationPermission>(&cfg, &mut decls);
             $($(
                 collect::<$input>(&cfg, &mut decls);
@@ -981,6 +1056,10 @@ operations! {
         /// 向给定模型服务发送测试请求，检查模型能否响应，可能产生用量。
         "testModel" [none] => test_model(ModelTest) -> ();
     }
+    "界面" {
+        /// 把界面自身的错误记进日志。
+        "logUiError" [none] => log_ui_error(UiErrorReport) -> ();
+    }
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -1050,10 +1129,9 @@ impl From<matching::Error> for CallError {
         match e {
             matching::Error::NoModel => Self::invalid(matching::NO_MODEL.into()),
             matching::Error::NoBasis => Self::invalid(matching::NO_BASIS.into()),
-            matching::Error::NotAgreed => Self {
-                code: ErrorCode::NeedsAgreement,
-                message: matching::NOT_AGREED.into(),
-            },
+            matching::Error::NotAgreed => {
+                Self::new(ErrorCode::NeedsAgreement, matching::NOT_AGREED)
+            }
             matching::Error::Db(e) => e.into(),
         }
     }
@@ -1622,15 +1700,8 @@ async fn send_test_letter(ctx: &Context, input: SendTestLetter) -> Result<(), Ca
         .send(&outgoing, || false)
         .await
         .map_err(|e| {
-            tracing::warn!(
-                diagnostic = e.diagnostic(),
-                "test letter from mailbox {}: {e}",
-                input.mailbox_id
-            );
-            CallError {
-                code: ErrorCode::External,
-                message: e.failure().message,
-            }
+            CallError::external(e.failure(), diagnosed(&e, e.diagnostic()))
+                .logging(format!("test letter from mailbox {}", input.mailbox_id))
         })?;
     tracing::info!("test letter sent from mailbox {}", input.mailbox_id);
     Ok(())
@@ -1648,14 +1719,17 @@ impl From<mailbox::SaveError> for CallError {
     }
 }
 
-/// The details go to the log; the user reads what happened and what to do.
 impl From<transport::MailError> for CallError {
     fn from(e: transport::MailError) -> Self {
-        tracing::warn!(diagnostic = e.diagnostic(), "{e}");
-        CallError {
-            code: ErrorCode::External,
-            message: e.failure().message,
-        }
+        CallError::external(e.failure(), diagnosed(&e, e.diagnostic()))
+    }
+}
+
+/// An error for the log, with the outside words it quotes.
+fn diagnosed(e: &impl std::fmt::Display, diagnostic: Option<String>) -> String {
+    match diagnostic {
+        Some(words) => format!("{e} ({words})"),
+        None => e.to_string(),
     }
 }
 
@@ -1813,14 +1887,9 @@ async fn entered_or_saved_key(
     }
 }
 
-/// The details go to the log; the user reads what happened and what to do.
 impl From<model::ModelError> for CallError {
     fn from(e: model::ModelError) -> Self {
-        tracing::warn!(diagnostic = e.diagnostic(), "{e}");
-        CallError {
-            code: ErrorCode::External,
-            message: e.failure().message,
-        }
+        CallError::external(e.failure(), diagnosed(&e, e.diagnostic()))
     }
 }
 
@@ -1909,12 +1978,10 @@ impl From<material::Error> for CallError {
         match e {
             material::Error::Type => CallError::invalid("只能添加 PDF、DOCX 或 DOC 文件".into()),
             material::Error::TooLarge => CallError::invalid("文件超过 20 MB，无法添加".into()),
-            material::Error::Unreadable(detail) => {
-                tracing::warn!("reading a material: {detail}");
-                CallError::invalid(
-                    "未能读取文件：文件可能已损坏、设有密码，或格式与扩展名不符".into(),
-                )
-            }
+            material::Error::Unreadable(detail) => CallError::invalid(
+                "未能读取文件：文件可能已损坏、设有密码，或格式与扩展名不符".into(),
+            )
+            .logging(format!("reading a material: {detail}")),
             material::Error::InUse => CallError::invalid(
                 "这份材料是待发邮件的附件，邮件发出或改回草稿去掉附件后才能删除".into(),
             ),
@@ -2010,10 +2077,10 @@ async fn import_word_template(_: &Context, input: UploadedFile) -> Result<WordFi
         return Err(CallError::invalid("请选择 DOCX 或 DOC 文件".into()));
     }
     let unreadable = |detail: String| {
-        tracing::warn!("reading a Word template: {detail}");
         CallError::invalid(
             "未能读取 Word 文件：文件可能已损坏、设有密码或不是 Word 格式，请换一个文件".into(),
         )
+        .logging(format!("reading a Word template: {detail}"))
     };
     // Parsing is slow work, and a library may panic on a damaged file.
     let html = tokio::task::spawn_blocking(move || {
@@ -2245,22 +2312,20 @@ impl From<writing::Error> for CallError {
             writing::Error::NoModel => {
                 CallError::invalid("尚未添加模型。在“设置 › AI › 模型”里添加后再试。".into())
             }
-            writing::Error::NotAgreed => CallError {
-                code: ErrorCode::NeedsAgreement,
-                message: matching::NOT_AGREED.into(),
-            },
+            writing::Error::NotAgreed => {
+                CallError::new(ErrorCode::NeedsAgreement, matching::NOT_AGREED)
+            }
             writing::Error::NoMentor => CallError::not_found(NO_MENTOR),
             writing::Error::Model(e) => e.into(),
             writing::Error::NotALetter { finish_reason } => {
-                tracing::warn!(?finish_reason, "the model's answer is not a letter");
                 let message = match finish_reason {
                     Some(model::Finish::Length) => "模型的回答过长，已被截断。请重试或更换模型。",
                     _ => "模型未按要求的格式回答，请重试或更换模型",
                 };
-                CallError {
-                    code: ErrorCode::External,
-                    message: message.into(),
-                }
+                CallError::external(
+                    Failure::new(message),
+                    format!("the model's answer is not a letter ({finish_reason:?})"),
+                )
             }
             writing::Error::Db(e) => e.into(),
         }
@@ -2981,11 +3046,11 @@ async fn read_import(input: &ImportFile) -> Result<Vec<sheet::Sheet>, CallError>
     tokio::task::spawn_blocking(move || sheet::read(&name, &bytes))
         .await
         .map_err(CallError::internal)?
-        .map_err(|e| {
-            if let sheet::ReadError::Damaged(detail) = &e {
-                tracing::warn!("reading table: {detail}");
+        .map_err(|e| match &e {
+            sheet::ReadError::Damaged(detail) => {
+                CallError::invalid(e.to_string()).logging(format!("reading table: {detail}"))
             }
-            CallError::invalid(e.to_string())
+            _ => CallError::invalid(e.to_string()),
         })
 }
 #[derive(Debug, Deserialize, TS)]

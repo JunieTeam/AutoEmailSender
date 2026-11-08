@@ -586,9 +586,9 @@ async fn session(
             }
             let (waiting, mut progress) = oneshot::channel();
             let call = async {
-                match serde_json::from_slice::<Request>(&frame) {
+                let (op, result) = match serde_json::from_slice::<Request>(&frame) {
                     Ok(request) => {
-                        crate::call_agent(
+                        let result = crate::call_agent(
                             ctx,
                             &request.op,
                             request.input,
@@ -603,10 +603,15 @@ async fn session(
                                 }
                             },
                         )
-                        .await
+                        .await;
+                        (request.op, result)
                     }
-                    Err(error) => Err(CallError::bad_input(error)),
+                    Err(error) => (String::new(), Err(CallError::bad_input(error))),
+                };
+                if let Err(e) = &result {
+                    e.record(&op, crate::Caller::Agent);
                 }
+                result
             };
             tokio::pin!(call);
             // A recorded answer may finish in the same poll as registration. The intermediate

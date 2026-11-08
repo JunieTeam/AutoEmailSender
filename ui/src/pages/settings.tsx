@@ -14,7 +14,8 @@ import {
   requestNotificationPermission,
   setAutostart,
 } from "@/api/app";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import { ModelAction } from "@/components/ai-writing";
 import { refreshReplyOutcomes } from "@/components/mentor";
 import { UpdateDialog, useUpdate } from "@/components/update";
@@ -197,7 +198,7 @@ function ComputerSide() {
           <Button variant="quiet" disabled={open.isPending} onClick={() => open.mutate()}>
             打开
           </Button>
-          {open.isError && <span className="text-sm text-destructive">{errorMessage(open.error)}</span>}
+          {open.isError && <FailureNote className="text-sm text-destructive" failure={failureOf(open.error)} />}
         </div>
       </Row>
       <Row label="日志">
@@ -209,7 +210,7 @@ function ComputerSide() {
             导出日志
           </Button>
           {exported.data && <span className="text-sm text-muted-foreground">已导出</span>}
-          {exported.isError && <span className="text-sm text-destructive">{errorMessage(exported.error)}</span>}
+          {exported.isError && <FailureNote className="text-sm text-destructive" failure={failureOf(exported.error)} />}
         </div>
       </Row>
     </>
@@ -236,7 +237,7 @@ function CheckUpdate() {
       {check.isSuccess && status?.kind === "current" && (
         <span className="text-sm text-muted-foreground">已是最新版本</span>
       )}
-      {check.isError && <span className="text-sm text-destructive">{errorMessage(check.error)}</span>}
+      {check.isError && <FailureNote className="text-sm text-destructive" failure={failureOf(check.error)} />}
       {open && status && status.kind !== "current" && <UpdateDialog status={status} onClose={() => setOpen(false)} />}
     </div>
   );
@@ -284,7 +285,7 @@ function SystemPermission() {
   });
   const open = useMutation({ mutationFn: openNotificationSettings });
   if (permission.error) {
-    return <p className="text-sm text-destructive">{errorMessage(permission.error)}</p>;
+    return <FailureNote className="text-sm text-destructive" failure={failureOf(permission.error)} />;
   }
   if (permission.data !== "not_asked" && permission.data !== "denied") return null;
   return (
@@ -308,7 +309,9 @@ function SystemPermission() {
           </Button>
         )}
       </div>
-      {(request.error ?? open.error) && <p className="text-destructive">{errorMessage(request.error ?? open.error)}</p>}
+      {(request.error ?? open.error) && (
+        <FailureNote className="text-destructive" failure={failureOf(request.error ?? open.error)} />
+      )}
     </div>
   );
 }
@@ -370,8 +373,12 @@ function Toggle({
         />
       </label>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-      {query.error && <p className="mt-2 text-sm text-destructive">设置未能加载：{errorMessage(query.error)}</p>}
-      {save.error && <p className="mt-2 text-sm text-destructive">设置未能保存：{errorMessage(save.error)}</p>}
+      {query.error && (
+        <FailureNote className="mt-2 text-sm text-destructive" lead="设置未能加载：" failure={failureOf(query.error)} />
+      )}
+      {save.error && (
+        <FailureNote className="mt-2 text-sm text-destructive" lead="设置未能保存：" failure={failureOf(save.error)} />
+      )}
     </div>
   );
 }
@@ -459,8 +466,12 @@ function AiSwitch({
         )}
       </div>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-      {query.error && <p className="mt-2 text-sm text-destructive">设置未能加载：{errorMessage(query.error)}</p>}
-      {save.error && <p className="mt-2 text-sm text-destructive">设置未能保存：{errorMessage(save.error)}</p>}
+      {query.error && (
+        <FailureNote className="mt-2 text-sm text-destructive" lead="设置未能加载：" failure={failureOf(query.error)} />
+      )}
+      {save.error && (
+        <FailureNote className="mt-2 text-sm text-destructive" lead="设置未能保存：" failure={failureOf(save.error)} />
+      )}
     </div>
   );
 }
@@ -487,9 +498,13 @@ export function BackgroundSection() {
         </label>
         <p className="mt-2 text-sm text-muted-foreground">开机后在后台运行，不打开窗口，定时发送和收信不受影响</p>
         {query.error && (
-          <p className="mt-2 text-sm text-destructive">开机启动的设置未能读取：{errorMessage(query.error)}</p>
+          <FailureNote
+            className="mt-2 text-sm text-destructive"
+            lead="开机启动的设置未能读取："
+            failure={failureOf(query.error)}
+          />
         )}
-        {save.error && <p className="mt-2 text-sm text-destructive">{errorMessage(save.error)}</p>}
+        {save.error && <FailureNote className="mt-2 text-sm text-destructive" failure={failureOf(save.error)} />}
       </div>
       <p className="text-sm text-muted-foreground">
         关闭窗口后，应用也留在后台继续工作，可以从托盘或菜单栏里的图标打开或退出

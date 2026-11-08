@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
 import type { MentorDetail } from "@/api/types";
 import { AiIcon, ModelAction } from "@/components/ai-writing";
 import { Confirm } from "@/components/batch-bar";
@@ -76,9 +76,7 @@ export function MatchingDialog({ ids, onClose }: { ids: number[]; onClose: () =>
           )}
           {estimate.isPending && <p className="text-muted-foreground">正在计算预计用量…</p>}
           {(estimate.error ?? start.error) && (
-            <p role="alert" className="text-destructive">
-              {errorMessage(estimate.error ?? start.error)}
-            </p>
+            <FailureNote className="text-destructive" role="alert" failure={failureOf(estimate.error ?? start.error)} />
           )}
         </DialogBody>
         <DialogFooter className="justify-end">
@@ -114,11 +112,7 @@ export function MatchButton({ mentor: m }: { mentor: MentorDetail }) {
         {m.analysis.state?.state === "failed" ? "重试" : m.analysis.result ? "重新分析" : "分析匹配度"}
       </ModelAction>
       {insufficient && <p className="text-muted-foreground">请先补充研究方向或代表论文</p>}
-      {run.error && (
-        <p role="alert" className="text-destructive">
-          {errorMessage(run.error)}
-        </p>
-      )}
+      {run.error && <FailureNote className="text-destructive" role="alert" failure={failureOf(run.error)} />}
     </div>
   );
 }
@@ -188,9 +182,7 @@ export function MatchingProgress() {
         </>
       )}
       {(query.error ?? action.error) && (
-        <p role="alert" className="text-destructive">
-          {errorMessage(query.error ?? action.error)}
-        </p>
+        <FailureNote className="text-destructive" role="alert" failure={failureOf(query.error ?? action.error)} />
       )}
     </div>
   );

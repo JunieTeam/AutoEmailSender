@@ -26,8 +26,8 @@ vi.mock("@tanstack/react-router", async (original) => ({
   ...(await original<typeof import("@tanstack/react-router")>()),
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }));
-vi.mock("@/api/call", () => ({
-  errorMessage: (error: Error) => error.message,
+vi.mock("@/api/call", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/call")>()),
   call: async (op: string, input: CloudSendPreviewInput | CloudHandOff) => {
     if (op === "cloudSendPreview" && !("consents" in input)) {
       remote.previews.push(input);

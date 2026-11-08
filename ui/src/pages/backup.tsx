@@ -2,7 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { cancelRestore, exportBackup, prepareCloudRestore, prepareRestore, restoreBackup } from "@/api/app";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { CloudBackupCopy, RestoreInfo } from "@/api/types";
 import { AccountDialog, TermsNotice, useAccount, useTermsOutdated } from "@/components/account";
 import { Field, formClose } from "@/components/form";
@@ -39,13 +40,17 @@ function LocalBackup() {
           {exported.isPending ? "正在导出…" : "导出备份"}
         </Button>
         {exported.data && <p className="text-sm text-muted-foreground">已导出</p>}
-        {exported.error && <p className="text-sm text-destructive">未能导出：{errorMessage(exported.error)}</p>}
+        {exported.error && (
+          <FailureNote className="text-sm text-destructive" lead="未能导出：" failure={failureOf(exported.error)} />
+        )}
       </div>
       <div className="flex flex-col items-start gap-1.5">
         <Button variant="quiet" disabled={prepare.isPending} onClick={() => prepare.mutate()}>
           {prepare.isPending ? "正在检查备份…" : "从备份恢复"}
         </Button>
-        {prepare.error && <p className="text-sm text-destructive">无法恢复：{errorMessage(prepare.error)}</p>}
+        {prepare.error && (
+          <FailureNote className="text-sm text-destructive" lead="无法恢复：" failure={failureOf(prepare.error)} />
+        )}
       </div>
       {prepare.data && <RestoreDialog info={prepare.data} onClose={() => prepare.reset()} />}
     </Row>
@@ -58,7 +63,9 @@ function CloudBackupRow() {
   const state = account.data;
   return (
     <Row label="云端备份">
-      {account.error && <p className="text-sm text-destructive">账号未能读取：{errorMessage(account.error)}</p>}
+      {account.error && (
+        <FailureNote className="text-sm text-destructive" lead="账号未能读取：" failure={failureOf(account.error)} />
+      )}
       {state?.kind === "loggedIn" && <CloudBackup key={state.email} email={state.email} />}
       {state && state.kind !== "loggedIn" && (
         <>
@@ -109,7 +116,7 @@ function CloudBackup({ email }: { email: string }) {
 
   const unreadable = (error: Error) => (
     <div className="flex items-center gap-3">
-      <p className="text-sm text-destructive">云端备份未能读取：{errorMessage(error)}</p>
+      <FailureNote className="text-sm text-destructive" lead="云端备份未能读取：" failure={failureOf(error)} />
       <Button variant="quiet" size="sm" onClick={() => void refresh()}>
         重试
       </Button>
@@ -135,7 +142,9 @@ function CloudBackup({ email }: { email: string }) {
       <>
         {status.enabled && autoBackup}
         {unreadable(server.error)}
-        {disable.error && <p className="text-sm text-destructive">未能关闭：{errorMessage(disable.error)}</p>}
+        {disable.error && (
+          <FailureNote className="text-sm text-destructive" lead="未能关闭：" failure={failureOf(disable.error)} />
+        )}
       </>
     );
   }
@@ -149,8 +158,8 @@ function CloudBackup({ email }: { email: string }) {
   const paused = other != null && backingUp && !replacing;
   const running = backUp.isPending || status.running;
   const failure = status.failure
-    ? `${scheduledAt(status.failure.since)} 起备份未成功：${status.failure.message}`
-    : backUp.error && errorMessage(backUp.error);
+    ? { lead: `${scheduledAt(status.failure.since)} 起备份未成功：`, failure: status.failure }
+    : backUp.error && { failure: failureOf(backUp.error) };
   return (
     <>
       {outdated ? (
@@ -193,7 +202,7 @@ function CloudBackup({ email }: { email: string }) {
       ) : (
         backingUp && <p className="text-sm">尚无备份</p>
       )}
-      {failure && !paused && <p className="text-sm text-destructive">{failure}</p>}
+      {failure && !paused && <FailureNote className="text-sm text-destructive" {...failure} />}
       {((backingUp && !paused) || backup) && (
         <div className="mt-1.5 flex flex-wrap gap-2">
           {backingUp && !paused && (
@@ -213,8 +222,12 @@ function CloudBackup({ email }: { email: string }) {
           )}
         </div>
       )}
-      {disable.error && <p className="text-sm text-destructive">未能关闭：{errorMessage(disable.error)}</p>}
-      {restore.error && <p className="text-sm text-destructive">无法恢复：{errorMessage(restore.error)}</p>}
+      {disable.error && (
+        <FailureNote className="text-sm text-destructive" lead="未能关闭：" failure={failureOf(disable.error)} />
+      )}
+      {restore.error && (
+        <FailureNote className="text-sm text-destructive" lead="无法恢复：" failure={failureOf(restore.error)} />
+      )}
       {restore.data && <RestoreDialog info={restore.data} onClose={() => restore.reset()} />}
       {(dialog === "enable" || dialog === "replace") && (
         <EnableDialog
@@ -340,9 +353,9 @@ function EnableDialog({
             </fieldset>
           </DialogBody>
           <DialogFooter>
-            <p className="grow text-sm text-destructive" role="alert">
-              {enable.error && errorMessage(enable.error)}
-            </p>
+            <div className="grow text-sm text-destructive" role="alert">
+              {enable.error && <FailureNote failure={failureOf(enable.error)} />}
+            </div>
             <DialogClose render={<Button variant="ghost" />}>取消</DialogClose>
             <Button type="submit" disabled={enable.isPending || (locked && password === "")}>
               {enable.isPending ? `正在${replacing ? "替换" : "开启"}…` : action}
@@ -364,9 +377,9 @@ function DeleteDialog({ onClose, onDeleted }: { onClose: () => void; onDeleted: 
           <p className="text-sm">删除后云端不再有备份，自动备份也会关闭。这台电脑上的数据不动。</p>
         </DialogBody>
         <DialogFooter>
-          <p className="grow text-sm text-destructive" role="alert">
-            {remove.error && errorMessage(remove.error)}
-          </p>
+          <div className="grow text-sm text-destructive" role="alert">
+            {remove.error && <FailureNote failure={failureOf(remove.error)} />}
+          </div>
           <DialogClose render={<Button variant="ghost" />}>取消</DialogClose>
           <Button disabled={remove.isPending} onClick={() => remove.mutate()}>
             {remove.isPending ? "正在删除…" : "删除"}
@@ -403,9 +416,9 @@ function RestoreDialog({ info, onClose }: { info: RestoreInfo; onClose: () => vo
           </div>
         </DialogBody>
         <DialogFooter>
-          <p className="grow text-sm text-destructive" role="alert">
-            {(cancel.error ?? restore.error) && errorMessage(cancel.error ?? restore.error)}
-          </p>
+          <div className="grow text-sm text-destructive" role="alert">
+            {(cancel.error ?? restore.error) && <FailureNote failure={failureOf(cancel.error ?? restore.error)} />}
+          </div>
           <Button variant="ghost" disabled={busy} onClick={() => cancel.mutate()}>
             取消
           </Button>

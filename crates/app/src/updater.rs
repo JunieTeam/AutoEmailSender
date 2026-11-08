@@ -6,7 +6,9 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, Url};
 use tauri_plugin_updater::{Error, Update, UpdaterExt};
 
+use api::CallError;
 use api::updater::{GITHUB_MANIFEST, MIRROR, UpdateInfo, UpdateStatus};
+use failure::Failure;
 
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 /// For each manifest in turn: GitHub's, then the mirror's.
@@ -30,7 +32,7 @@ enum Phase<U> {
     Current,
     Available {
         update: U,
-        error: Option<String>,
+        error: Option<Failure>,
     },
     Downloading {
         update: U,
@@ -44,9 +46,11 @@ enum Phase<U> {
 }
 
 impl<U: Clone> Phase<U> {
-    fn begin_download(&mut self) -> Result<U, String> {
+    fn begin_download(&mut self) -> Result<U, CallError> {
         let Self::Available { update, .. } = self else {
-            return Err("当前无可下载的更新，或更新正在下载".into());
+            return Err(CallError::invalid(
+                "当前无可下载的更新，或更新正在下载".into(),
+            ));
         };
         let update = update.clone();
         *self = Self::Downloading {
@@ -84,7 +88,7 @@ impl<U: Clone> Phase<U> {
 
     /// `update` is the release the download began with; a finished download brings the release
     /// its bytes were checked against, which may be the mirror's.
-    fn finish_download(&mut self, update: U, result: Result<(U, Vec<u8>), String>) {
+    fn finish_download(&mut self, update: U, result: Result<(U, Vec<u8>), Failure>) {
         *self = match result {
             Ok((update, bytes)) => Self::Ready {
                 update,
@@ -97,10 +101,12 @@ impl<U: Clone> Phase<U> {
         };
     }
 
-    fn installation(&self) -> Result<(U, Arc<[u8]>), String> {
+    fn installation(&self) -> Result<(U, Arc<[u8]>), CallError> {
         match self {
             Self::Ready { update, bytes } => Ok((update.clone(), bytes.clone())),
-            _ => Err("更新尚未下载完成，请先下载再重启".into()),
+            _ => Err(CallError::invalid(
+                "更新尚未下载完成，请先下载再重启".into(),
+            )),
         }
     }
 }
@@ -172,17 +178,21 @@ pub fn update_status(app: AppHandle) -> UpdateStatus {
 }
 
 #[tauri::command]
-pub async fn check_update(app: AppHandle) -> Result<UpdateStatus, String> {
-    check(&app).await
+pub async fn check_update(app: AppHandle) -> Result<UpdateStatus, CallError> {
+    crate::logged("check_update", check(&app).await)
 }
 
-async fn check(app: &AppHandle) -> Result<UpdateStatus, String> {
+fn busy() -> CallError {
+    CallError::invalid("正在检查、下载或安装更新，请稍后再试".into())
+}
+
+async fn check(app: &AppHandle) -> Result<UpdateStatus, CallError> {
     let state = app.state::<Updater>();
     if cfg!(debug_assertions) {
         return Ok(state.status());
     }
     let Ok(_operation) = state.operation.try_lock() else {
-        return Err("正在检查、下载或安装更新，请稍后再试".into());
+        return Err(busy());
     };
     // Keep a downloaded package and its release together until the user installs it.
     if matches!(*state.phase(), Phase::Ready { .. }) {
@@ -192,8 +202,8 @@ async fn check(app: &AppHandle) -> Result<UpdateStatus, String> {
         Ok(result) => result,
         // Not left to the plugin's list of endpoints: it gives up on the rest when one answers
         // with something other than a manifest, such as a network's sign-in page.
-        Err(_) => {
-            tracing::info!("update check falls back to the mirror");
+        Err(e) => {
+            tracing::info!("update check falls back to the mirror: {e}");
             check_at(app, mirror_manifest()).await?
         }
     };
@@ -216,12 +226,9 @@ async fn check(app: &AppHandle) -> Result<UpdateStatus, String> {
 }
 
 /// Checks the manifest at `address` alone, through the app's network settings.
-async fn check_at(app: &AppHandle, address: Url) -> Result<Option<Update>, String> {
-    let net = app
-        .try_state::<Arc<api::Context>>()
-        .ok_or("应用尚未就绪，无法检查更新，请先处理启动错误")?
-        .net
-        .clone();
+async fn check_at(app: &AppHandle, address: Url) -> Result<Option<Update>, CallError> {
+    // Checks start only once the core is running.
+    let net = app.state::<Arc<api::Context>>().net.clone();
     let exit_app = app.clone();
     app.updater_builder()
         .endpoints(vec![address])
@@ -250,50 +257,49 @@ fn mirror_manifest() -> Url {
     url(&format!("{MIRROR}latest.json"))
 }
 
-// Plugin errors can include remote JSON strings; only log the category and safe HTTP details.
-fn check_error(error: Error) -> String {
-    let reason = match error {
-        Error::Reqwest(error) => {
-            tracing::warn!(
-                timeout = error.is_timeout(),
-                status = ?error.status(),
-                "update request failed"
-            );
-            if error.is_timeout() {
-                "连接超时，请检查网络和系统代理后重试"
-            } else {
-                "无法连接更新服务或读取更新清单，请检查网络和系统代理后重试"
-            }
+fn check_error(error: Error) -> CallError {
+    let failure = match &error {
+        Error::Reqwest(e) if e.is_timeout() => {
+            Failure::new("检查更新失败：连接超时，请检查网络和系统代理后重试")
+        }
+        Error::Reqwest(_) => {
+            Failure::new("检查更新失败：无法连接更新服务或读取更新清单，请检查网络和系统代理后重试")
         }
         // An error status, such as GitHub's with no release published, or the mirror's once its
         // traffic for the month is used up.
-        Error::ReleaseNotFound => {
-            tracing::warn!("update manifest not found");
-            "更新服务暂时不可用，请稍后再试"
-        }
-        _ => "更新配置或更新清单不正确，请检查网络和系统代理后重试",
+        Error::ReleaseNotFound => Failure::new("检查更新失败：更新服务暂时不可用，请稍后再试"),
+        // Such as a network's sign-in page in place of the manifest.
+        e => Failure::unrecognized(
+            "检查更新失败：更新配置或更新清单不正确，请检查网络和系统代理后重试",
+            &e.to_string(),
+        ),
     };
-    format!("检查更新失败：{reason}")
+    let log = failure::diagnostic(&error.to_string());
+    CallError::external(failure, log)
 }
 
 #[tauri::command]
-pub async fn download_update(app: AppHandle) -> Result<(), String> {
+pub async fn download_update(app: AppHandle) -> Result<(), CallError> {
+    crate::logged("download_update", download(&app).await)
+}
+
+async fn download(app: &AppHandle) -> Result<(), CallError> {
     let state = app.state::<Updater>();
-    let _operation = state
-        .operation
-        .try_lock()
-        .map_err(|_| "正在检查、下载或安装更新，请稍后再试".to_owned())?;
+    let _operation = state.operation.try_lock().map_err(|_| busy())?;
     let mut update = state.phase().begin_download()?;
     update.timeout = Some(DOWNLOAD_TIMEOUT);
-    changed(&app);
-    let result = fetch(&app, &update).await.map_err(|error| {
-        let (category, reason) = download_failure(&error);
-        tracing::warn!(category, "update download failed");
-        reason.to_owned()
+    changed(app);
+    let result = fetch(app, &update).await;
+    let response = result.as_ref().map(|_| ()).map_err(|error| {
+        CallError::external(
+            download_failure(error),
+            failure::diagnostic(&error.to_string()),
+        )
     });
-    let response = result.as_ref().map(|_| ()).map_err(Clone::clone);
-    state.phase().finish_download(update, result);
-    changed(&app);
+    state
+        .phase()
+        .finish_download(update, result.map_err(|error| download_failure(&error)));
+    changed(app);
     response
 }
 
@@ -337,8 +343,7 @@ async fn fetch(app: &AppHandle, update: &Update) -> Result<(Update, Vec<u8>), Er
         (None, None) => return Ok((update.clone(), (&mut github).await?)),
         (failed, Some(mirror)) => {
             if let Some(error) = failed {
-                let (category, _) = download_failure(&error);
-                tracing::warn!(category, "update download from GitHub failed");
+                tracing::warn!("update download from GitHub failed: {error}");
             }
             mirror
         }
@@ -360,8 +365,8 @@ async fn mirror_release(app: &AppHandle, version: &str) -> Option<Update> {
             tracing::info!("update mirror has no copy of this release");
             None
         }
-        Err(_) => {
-            tracing::info!("update mirror unavailable");
+        Err(e) => {
+            tracing::info!("update mirror unavailable: {e}");
             None
         }
     }
@@ -383,46 +388,48 @@ fn progress(app: &AppHandle) -> impl FnMut(usize, Option<u64>) + '_ {
     }
 }
 
-/// What went wrong, for the log, and what to tell the user.
-fn download_failure(error: &Error) -> (&'static str, &'static str) {
-    match error {
+/// What to tell the user of a failed download.
+fn download_failure(error: &Error) -> Failure {
+    Failure::new(match error {
         Error::Minisign(_)
         | Error::Base64(_)
         | Error::SignatureUtf8(_)
         | Error::SignedVersionMismatch { .. }
-        | Error::MissingSignedVersion => (
-            "signature",
-            "更新包签名校验失败，未安装，请重新下载；仍失败时请从官网下载",
-        ),
-        Error::Reqwest(error) if error.is_timeout() => {
-            ("timeout", "更新下载超时，请检查网络和系统代理后重试")
+        | Error::MissingSignedVersion => {
+            "更新包签名校验失败，未安装，请重新下载；仍失败时请从官网下载"
         }
-        Error::Reqwest(_) | Error::Network(_) => {
-            ("network", "更新下载失败，请检查网络和系统代理后重试")
+        Error::Reqwest(error) if error.is_timeout() => "更新下载超时，请检查网络和系统代理后重试",
+        Error::Reqwest(_) | Error::Network(_) => "更新下载失败，请检查网络和系统代理后重试",
+        _ => {
+            return Failure::unrecognized(
+                "更新包无法读取或校验，未安装，请重新下载",
+                &error.to_string(),
+            );
         }
-        _ => ("package", "更新包无法读取或校验，未安装，请重新下载"),
-    }
+    })
 }
 
 #[tauri::command]
-pub async fn restart_update(app: AppHandle) -> Result<(), String> {
-    let install_app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let state = install_app.state::<Updater>();
-        let _operation = state
-            .operation
-            .try_lock()
-            .map_err(|_| "正在检查、下载或安装更新，请稍后再试".to_owned())?;
+pub async fn restart_update(app: AppHandle) -> Result<(), CallError> {
+    let installed = tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<Updater>();
+        let _operation = state.operation.try_lock().map_err(|_| busy())?;
         let (update, bytes) = state.phase().installation()?;
         update.install(&*bytes).map_err(|error| {
-            tracing::error!("update installation failed: {error}");
-            show_tray(&install_app, true);
-            "更新未能安装，请检查应用所在目录的权限后重试".to_owned()
+            show_tray(&app, true);
+            CallError::external(
+                Failure::unrecognized(
+                    "更新未能安装，请检查应用所在目录的权限后重试",
+                    &error.to_string(),
+                ),
+                error,
+            )
         })?;
-        install_app.restart();
+        app.restart();
     })
     .await
-    .map_err(|error| format!("更新处理未能完成：{error}，请重试"))?
+    .map_err(CallError::internal);
+    crate::logged("restart_update", installed.and_then(|installed| installed))
 }
 
 fn show_tray(app: &AppHandle, visible: bool) {
@@ -438,7 +445,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn download_failure_can_retry_and_only_verified_bytes_are_installable() -> Result<(), String> {
+    fn download_failure_can_retry_and_only_verified_bytes_are_installable() -> Result<(), CallError>
+    {
         let mut phase = Phase::Current;
         assert!(phase.installation().is_err());
         phase = Phase::Available {
@@ -448,7 +456,7 @@ mod tests {
         let update = phase.begin_download()?;
         assert!(phase.begin_download().is_err());
         assert!(phase.installation().is_err());
-        phase.finish_download(update, Err("bad signature".into()));
+        phase.finish_download(update, Err(Failure::new("bad signature")));
         assert!(matches!(&phase, Phase::Available { error: Some(_), .. }));
         let update = phase.begin_download()?;
         phase.finish_download(update, Ok(("3.0.1 from the mirror", vec![1, 2, 3])));

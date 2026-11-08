@@ -7,11 +7,14 @@ use std::fs::{self, File};
 use std::io;
 use std::path::Path;
 
+use failure::Failure;
 use serde::{Deserialize, Serialize};
 use sqlx::migrate::MigrateError;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{Connection, SqliteConnection, SqlitePool};
 use ts_rs::TS;
+
+use crate::CallError;
 
 const APPLICATION: &str = "io.github.juniexd.autoemailsender";
 const PENDING: &str = "restore.pending";
@@ -78,20 +81,30 @@ impl From<tokio::task::JoinError> for Error {
     }
 }
 impl Error {
-    pub fn message(&self) -> String {
+    pub fn failure(&self) -> Failure {
         match self {
-            Self::Invalid(message) => message.clone(),
-            Self::Archive { detail, .. } => archive::invalid(detail).message(),
-            Self::Io { .. } => {
-                "备份文件无法读写。请检查文件是否存在、磁盘空间和目录权限后重试。".into()
-            }
-            Self::Database(_) => "备份数据库无法读取或处理，文件可能已损坏。请换一份备份重试；\
-                仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题。"
-                .into(),
-            Self::Migration(_) => "这份备份的数据库与本应用不匹配，无法恢复".into(),
-            Self::Worker(_) => {
-                "备份处理未能完成，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题"
-                    .into()
+            Self::Invalid(message) => Failure::new(message.clone()),
+            Self::Archive { detail, .. } => archive::invalid(detail).failure(),
+            Self::Io { source, .. } => failure::file("备份处理未能完成", source),
+            Self::Database(_) => Failure::new(
+                "备份数据库无法读取或处理，文件可能已损坏。请换一份备份重试；\
+                仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题。",
+            ),
+            Self::Migration(_) => Failure::new("这份备份的数据库与本应用不匹配，无法恢复"),
+            Self::Worker(_) => Failure::new(
+                "备份处理未能完成，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题",
+            ),
+        }
+    }
+}
+
+impl From<Error> for CallError {
+    fn from(e: Error) -> Self {
+        match e {
+            Error::Worker(_) => CallError::internal(e),
+            Error::Io { .. } | Error::Database(_) => CallError::external(e.failure(), e),
+            Error::Invalid(_) | Error::Archive { .. } | Error::Migration(_) => {
+                CallError::invalid(e.failure().message).logging(e)
             }
         }
     }

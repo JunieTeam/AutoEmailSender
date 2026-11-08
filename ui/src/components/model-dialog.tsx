@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRef, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { ModelConfig, ModelProvider, ModelSource, ModelTest, NewModelConfig } from "@/api/types";
 import { formClose, Field, TestResult } from "@/components/form";
 import { Button } from "@/components/ui/button";
@@ -191,7 +192,7 @@ export function ModelDialog({
                     <option key={m} value={m} />
                   ))}
                 </datalist>
-                <p className="mt-1.5 text-sm empty:hidden" aria-live="polite">
+                <div className="mt-1.5 text-sm empty:hidden" aria-live="polite">
                   {models.isPending && <span className="text-muted-foreground">正在获取模型列表…</span>}
                   {models.isSuccess && (
                     <span className="text-muted-foreground">
@@ -200,8 +201,8 @@ export function ModelDialog({
                         : "服务商未列出模型，请手动填写"}
                     </span>
                   )}
-                  {models.isError && <span className="text-destructive">{errorMessage(models.error)}</span>}
-                </p>
+                  {models.isError && <FailureNote className="text-destructive" failure={failureOf(models.error)} />}
+                </div>
               </Field>
               <div className="grid grid-cols-2 gap-3 phone:grid-cols-1">
                 {(
@@ -240,9 +241,9 @@ export function ModelDialog({
             </div>
           )}
           <DialogFooter>
-            <p className="grow text-sm text-destructive" role="alert">
-              {save.isError && errorMessage(save.error)}
-            </p>
+            <div className="grow text-sm text-destructive" role="alert">
+              {save.isError && <FailureNote failure={failureOf(save.error)} />}
+            </div>
             <Button
               type="button"
               variant="quiet"

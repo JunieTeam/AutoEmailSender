@@ -3,7 +3,8 @@ import { useNavigate, Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { cn } from "cn";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Material, NewTask, TemplateSummary, Writer, Kind } from "@/api/types";
 import { ModelAction } from "@/components/ai-writing";
 import { Field, formClose } from "@/components/form";
@@ -38,7 +39,7 @@ export function CreateTaskDialog({
         <DialogContent>
           <DialogHeader>{kind === "follow_up" ? "新建追问任务" : "新建任务"}</DialogHeader>
           <DialogBody>
-            <p className="py-4 text-destructive">{errorMessage(error)}</p>
+            <FailureNote className="py-4 text-destructive" failure={failureOf(error)} />
           </DialogBody>
         </DialogContent>
       </Dialog>
@@ -374,9 +375,7 @@ function TaskSteps({
           )}
           {plan.isFetching && <p className="text-muted-foreground">正在计算预计用量…</p>}
           {(plan.error ?? create.error) && (
-            <p role="alert" className="text-destructive">
-              {errorMessage(plan.error ?? create.error)}
-            </p>
+            <FailureNote className="text-destructive" role="alert" failure={failureOf(plan.error ?? create.error)} />
           )}
         </DialogBody>
         <DialogFooter className="justify-end">

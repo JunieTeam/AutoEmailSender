@@ -101,7 +101,10 @@ pub async fn fact_check_email(
     let stored = match &result {
         Ok(checked) => checked.clone(),
         Err(error) => Some(FactCheck::Failed {
-            reason: Failure::new(error.message.clone()),
+            reason: Failure {
+                message: error.message.clone(),
+                details: error.details.clone(),
+            },
         }),
     };
     // None: not asked again because the draft is no longer under review.
@@ -122,10 +125,9 @@ impl From<writing::fact_check::Error> for CallError {
             writing::fact_check::Error::NotAgreed => writing::Error::NotAgreed.into(),
             writing::fact_check::Error::Model(error) => error.into(),
             writing::fact_check::Error::Db(error) => error.into(),
-            error @ writing::fact_check::Error::InvalidAnswer => CallError {
-                code: ErrorCode::External,
-                message: error.failure().message,
-            },
+            error @ writing::fact_check::Error::InvalidAnswer => {
+                CallError::external(error.failure(), "the fact check answer is not valid")
+            }
         }
     }
 }

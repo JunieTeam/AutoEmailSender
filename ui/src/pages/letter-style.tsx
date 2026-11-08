@@ -1,6 +1,7 @@
 import { type MutationState, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { LetterFont, LetterStyle } from "@/api/types";
 import { Field } from "@/components/form";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -47,7 +48,9 @@ export function LetterStyleSection() {
   return (
     <Section title="信件样式">
       <p className="text-sm text-muted-foreground">每封信都用这套样式，修改后立即保存；已批准的信不受影响</p>
-      {style.error && <p className="text-sm text-destructive">信件样式未能加载：{errorMessage(style.error)}</p>}
+      {style.error && (
+        <FailureNote className="text-sm text-destructive" lead="信件样式未能加载：" failure={failureOf(style.error)} />
+      )}
       {style.data && <LetterStyleFields />}
     </Section>
   );
@@ -134,7 +137,7 @@ function LetterStyleFields() {
         段首空两格
       </label>
       {last?.status === "error" && (
-        <p className="text-sm text-destructive">信件样式未能保存：{errorMessage(last.error)}</p>
+        <FailureNote className="text-sm text-destructive" lead="信件样式未能保存：" failure={failureOf(last.error)} />
       )}
       <div className="flex flex-col gap-1.5">
         <p className="text-sm text-muted-foreground">预览</p>

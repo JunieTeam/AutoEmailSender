@@ -1,7 +1,7 @@
 //! Cloud backup operations; restoring is a host command, as it restarts the app.
 
 use crate::backup::cloud::{self, Enable, Enabled, Server, Status};
-use crate::{CallError, Context, ErrorCode, Nothing};
+use crate::{CallError, Context, Nothing};
 
 pub async fn get_cloud_backup(ctx: &Context, _: Nothing) -> Result<Status, CallError> {
     Ok(cloud::status(ctx).await?)
@@ -31,19 +31,10 @@ impl From<cloud::Error> for CallError {
     fn from(error: cloud::Error) -> Self {
         match error {
             cloud::Error::Account(error) => error.into(),
-            error => {
-                tracing::warn!(error = %error, "cloud backup operation failed");
-                let code = match error {
-                    cloud::Error::Local(_) | cloud::Error::Database(_) | cloud::Error::Io(_) => {
-                        ErrorCode::Internal
-                    }
-                    _ => ErrorCode::Invalid,
-                };
-                Self {
-                    code,
-                    message: error.message(),
-                }
-            }
+            cloud::Error::Local(error) => error.into(),
+            cloud::Error::Database(_) => CallError::internal(error),
+            cloud::Error::Io(_) => CallError::external(error.failure(), error),
+            error => CallError::invalid(error.failure().message).logging(error),
         }
     }
 }

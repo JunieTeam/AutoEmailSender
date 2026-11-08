@@ -1,7 +1,8 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { DraftKind, MentorDetail, MergePreview } from "@/api/types";
 import { ContactLabel, dropDrafts, placeOf, refreshMentors } from "@/components/mentor";
 import { Button } from "@/components/ui/button";
@@ -47,7 +48,7 @@ export function MergeDialog({ ids, onClose }: { ids: [number, number]; onClose: 
       <DialogContent>
         <DialogHeader>合并导师</DialogHeader>
         <DialogBody>
-          {failed && <p className="text-sm text-destructive">未能加载：{errorMessage(failed)}</p>}
+          {failed && <FailureNote className="text-sm text-destructive" lead="未能加载：" failure={failureOf(failed)} />}
           {ready && kept && gone && (
             <div className="flex flex-col gap-4">
               <p className="text-sm text-muted-foreground">选择保留哪一位，另一位的资料、邮件和往来都并入这一位</p>
@@ -76,9 +77,9 @@ export function MergeDialog({ ids, onClose }: { ids: [number, number]; onClose: 
           )}
         </DialogBody>
         <DialogFooter>
-          <p className="grow text-sm text-destructive" role="alert">
-            {merge.isError && errorMessage(merge.error)}
-          </p>
+          <div className="grow text-sm text-destructive" role="alert">
+            {merge.isError && <FailureNote failure={failureOf(merge.error)} />}
+          </div>
           <DialogClose render={<Button variant="ghost" />}>取消</DialogClose>
           <Button
             disabled={!ready || merge.isPending}

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Material, MaterialPurpose, Purpose } from "@/api/types";
 import { Confirm } from "@/components/batch-bar";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,9 @@ export function MaterialsSection() {
       <p className="text-sm text-muted-foreground">
         简历、成绩单这类材料。分析匹配度和 AI 写信时参考材料里的文字，勾选了“默认附件”的随信发出。
       </p>
-      {materials.error && <p className="text-sm text-destructive">材料未能加载：{errorMessage(materials.error)}</p>}
+      {materials.error && (
+        <FailureNote className="text-sm text-destructive" lead="材料未能加载：" failure={failureOf(materials.error)} />
+      )}
       {materials.data && materials.data.length > 0 && (
         <ul className="flex flex-col divide-y divide-border">
           {materials.data.map((m) => (
@@ -48,7 +51,7 @@ export function MaterialsSection() {
         <Button disabled={add.isPending} onClick={() => picker.current?.click()}>
           {add.isPending ? "正在提取文字…" : "添加材料"}
         </Button>
-        {add.error && <p className="text-sm text-destructive">{errorMessage(add.error)}</p>}
+        {add.error && <FailureNote className="text-sm text-destructive" failure={failureOf(add.error)} />}
       </div>
     </Section>
   );
@@ -120,7 +123,7 @@ export function MaterialRow({ material: m }: { material: Material }) {
           );
         })}
       </div>
-      {error && <p className="text-sm text-destructive">{errorMessage(error)}</p>}
+      {error && <FailureNote className="text-sm text-destructive" failure={failureOf(error)} />}
       {reading && <MaterialText id={m.id} fileName={m.fileName} onClose={() => setReading(false)} />}
     </li>
   );
@@ -139,7 +142,9 @@ function MaterialText({ id, fileName, onClose }: { id: number; fileName: string;
       <DialogContent>
         <DialogHeader>{fileName}</DialogHeader>
         <DialogBody className="pb-6">
-          {text.error && <p className="text-sm text-destructive">文字未能加载：{errorMessage(text.error)}</p>}
+          {text.error && (
+            <FailureNote className="text-sm text-destructive" lead="文字未能加载：" failure={failureOf(text.error)} />
+          )}
           {text.data && <p className="text-sm whitespace-pre-wrap">{text.data}</p>}
         </DialogBody>
       </DialogContent>

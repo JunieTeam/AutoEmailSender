@@ -69,7 +69,7 @@ fn types(check: bool) -> Result {
 
 async fn seed() -> Result {
     let dir = root().join(".dev-data");
-    let _lock = api::startup::DataLock::acquire(&dir).map_err(|e| e.message())?;
+    let _lock = api::startup::DataLock::acquire(&dir).map_err(|e| e.failure().message)?;
     let db = db::open(&dir.join("app.db")).await?;
     if sqlx::query_scalar::<_, i64>("SELECT count(*) FROM mentor")
         .fetch_one(&db)

@@ -15,8 +15,8 @@ const remote = vi.hoisted(
   } => ({ models: [], canceled: [] }),
 );
 vi.mock("@tanstack/react-router", () => ({ Link: ({ children }: { children: ReactNode }) => <span>{children}</span> }));
-vi.mock("@/api/call", () => ({
-  errorMessage: (error: Error) => error.message,
+vi.mock("@/api/call", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/call")>()),
   call: async (op: string, input: Record<string, unknown>) => {
     if (op === "writeReply" && remote.write) return remote.write(input);
     if (op === "cancelWriting") return void remote.canceled.push(input.request);

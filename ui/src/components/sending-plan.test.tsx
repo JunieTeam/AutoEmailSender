@@ -13,8 +13,8 @@ vi.mock("@tanstack/react-router", async (original) => ({
   useNavigate: () => () => undefined,
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }));
-vi.mock("@/api/call", () => ({
-  errorMessage: (error: Error) => error.message,
+vi.mock("@/api/call", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/call")>()),
   call: async (op: string, input: { column?: string }) => {
     if (op === "confirmUnsentEmail") {
       remote.confirmed = true;

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { AgentCli, McpClient } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, ExpandChevron } from "@/components/ui/collapsible";
@@ -56,8 +57,20 @@ function AgentRows() {
           <p>发信给导师、永久删除、同意把数据发给模型服务商之前，应用会弹出“Agent 请求”，你点“允许”后才会执行</p>
           <p>Agent 读到的导师资料、邮件和材料文字，会交给它所用的模型服务商。应用开着时 Agent 才能连上。</p>
         </div>
-        {access.error && <p className="mt-2 text-sm text-destructive">设置未能加载：{errorMessage(access.error)}</p>}
-        {save.error && <p className="mt-2 text-sm text-destructive">设置未能保存：{errorMessage(save.error)}</p>}
+        {access.error && (
+          <FailureNote
+            className="mt-2 text-sm text-destructive"
+            lead="设置未能加载："
+            failure={failureOf(access.error)}
+          />
+        )}
+        {save.error && (
+          <FailureNote
+            className="mt-2 text-sm text-destructive"
+            lead="设置未能保存："
+            failure={failureOf(save.error)}
+          />
+        )}
       </Row>
       {access.data && (
         <>
@@ -117,8 +130,12 @@ function McpRow() {
           </Collapsible>
         </li>
       </ul>
-      {text.error && <p className="text-sm text-destructive">未能生成配置：{errorMessage(text.error)}</p>}
-      {copy.error && <p className="text-sm text-destructive">未能复制：{errorMessage(copy.error)}</p>}
+      {text.error && (
+        <FailureNote className="text-sm text-destructive" lead="未能生成配置：" failure={failureOf(text.error)} />
+      )}
+      {copy.error && (
+        <FailureNote className="text-sm text-destructive" lead="未能复制：" failure={failureOf(copy.error)} />
+      )}
       {open && (
         <McpDialog
           client={open}
@@ -176,9 +193,13 @@ function McpDialog({ client, onClose, onWritten }: { client: McpClient; onClose:
             </>
           )}
           {preview.isPending && <p className="text-muted-foreground">正在读取配置…</p>}
-          {preview.error && <p className="text-destructive">无法写入：{errorMessage(preview.error)}</p>}
-          {write.error && <p className="text-destructive">未能写入：{errorMessage(write.error)}</p>}
-          {copy.error && <p className="text-destructive">未能复制：{errorMessage(copy.error)}</p>}
+          {preview.error && (
+            <FailureNote className="text-destructive" lead="无法写入：" failure={failureOf(preview.error)} />
+          )}
+          {write.error && (
+            <FailureNote className="text-destructive" lead="未能写入：" failure={failureOf(write.error)} />
+          )}
+          {copy.error && <FailureNote className="text-destructive" lead="未能复制：" failure={failureOf(copy.error)} />}
         </DialogBody>
         <DialogFooter className="justify-end">
           <Button variant="ghost" onClick={onClose} disabled={write.isPending}>
@@ -245,8 +266,10 @@ function CliRow() {
           </Button>
         )}
       </div>
-      {cli.error && <p className="text-sm text-destructive">未能读取：{errorMessage(cli.error)}</p>}
-      {change.error && <p className="text-sm text-destructive">{errorMessage(change.error)}</p>}
+      {cli.error && (
+        <FailureNote className="text-sm text-destructive" lead="未能读取：" failure={failureOf(cli.error)} />
+      )}
+      {change.error && <FailureNote className="text-sm text-destructive" failure={failureOf(change.error)} />}
     </Row>
   );
 }

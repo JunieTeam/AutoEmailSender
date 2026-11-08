@@ -1,6 +1,8 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
+use api::CallError;
+use failure::Failure;
 use tauri::AppHandle;
 #[cfg(target_os = "macos")]
 use tauri::Manager;
@@ -10,41 +12,63 @@ pub const ARG: &str = "--autostart";
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 #[tauri::command]
-pub async fn autostart_enabled(app: AppHandle) -> std::result::Result<bool, String> {
-    app.autolaunch()
-        .is_enabled()
-        .map_err(|e| format!("无法读取开机自启状态：{e}，请稍后重试"))
+pub async fn autostart_enabled(app: AppHandle) -> std::result::Result<bool, CallError> {
+    let enabled = app.autolaunch().is_enabled().map_err(|e| {
+        CallError::external(
+            Failure::unrecognized("无法读取开机自启状态，请稍后重试", &e.to_string()),
+            e,
+        )
+    });
+    crate::logged("autostart_enabled", enabled)
 }
 
 #[tauri::command]
-pub async fn set_autostart(app: AppHandle, enabled: bool) -> std::result::Result<(), String> {
+pub async fn set_autostart(app: AppHandle, enabled: bool) -> std::result::Result<(), CallError> {
+    crate::logged("set_autostart", set(&app, enabled))
+}
+
+fn set(app: &AppHandle, enabled: bool) -> std::result::Result<(), CallError> {
     if enabled {
         let executable = current_executable().map_err(setting_error)?;
-        check_location(&executable)?;
-        enable(&app, &executable).map_err(setting_error)
+        if translocated(&executable) {
+            return Err(CallError::invalid(
+                "请先把 Auto Email Sender 拖到“应用程序”文件夹，再从那里打开后开启".into(),
+            ));
+        }
+        enable(app, &executable).map_err(setting_error)
     } else {
         app.autolaunch().disable().map_err(setting_error)?;
         // On Windows, an app run as administrator turns it on for every user of the computer,
         // which only an administrator can turn off again.
         if app.autolaunch().is_enabled().map_err(setting_error)? {
-            return Err(
-                "开机自启是以管理员身份开启的。右键 Auto Email Sender 选“以管理员身份运行”，再关掉它。"
-                    .into(),
-            );
+            return Err(CallError::external(
+                Failure::new(
+                    "开机自启是以管理员身份开启的。右键 Auto Email Sender 选“以管理员身份运行”，再关掉它。",
+                ),
+                "autostart stays on for every user",
+            ));
         }
         Ok(())
     }
 }
 
-fn setting_error(e: impl std::fmt::Display) -> String {
-    format!("未能更改开机自启设置：{e}，请检查系统登录项设置后重试")
+fn setting_error(e: impl std::fmt::Display) -> CallError {
+    CallError::external(
+        Failure::unrecognized(
+            "未能更改开机自启设置，请检查系统登录项设置后重试",
+            &e.to_string(),
+        ),
+        e,
+    )
 }
 
 /// Refresh moved applications without rewriting an unchanged macOS login item.
 pub fn refresh(app: &AppHandle) -> Result<()> {
     if app.autolaunch().is_enabled()? {
         let executable = current_executable()?;
-        check_location(&executable)?;
+        if translocated(&executable) {
+            return Err("the app runs from a translocated copy".into());
+        }
         enable(app, &executable)?;
     }
     Ok(())
@@ -64,11 +88,9 @@ fn current_executable() -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
-fn check_location(executable: &Path) -> std::result::Result<(), String> {
-    if cfg!(target_os = "macos") && executable.to_string_lossy().contains("/AppTranslocation/") {
-        return Err("请先把 Auto Email Sender 拖到“应用程序”文件夹，再从那里打开后开启".into());
-    }
-    Ok(())
+/// Whether macOS runs the app from a temporary copy, which a login item must not point to.
+fn translocated(executable: &Path) -> bool {
+    cfg!(target_os = "macos") && executable.to_string_lossy().contains("/AppTranslocation/")
 }
 
 #[cfg(target_os = "macos")]
@@ -128,19 +150,13 @@ mod tests {
 
     #[test]
     fn translocated_app_cannot_enable_autostart() {
-        assert!(
-            check_location(Path::new(
-                "/private/var/folders/x/AppTranslocation/id/d/\
-                Auto Email Sender.app/Contents/MacOS/app"
-            ))
-            .is_err()
-        );
-        assert!(
-            check_location(Path::new(
-                "/Applications/Auto Email Sender.app/Contents/MacOS/app"
-            ))
-            .is_ok()
-        );
+        assert!(translocated(Path::new(
+            "/private/var/folders/x/AppTranslocation/id/d/\
+            Auto Email Sender.app/Contents/MacOS/app"
+        )));
+        assert!(!translocated(Path::new(
+            "/Applications/Auto Email Sender.app/Contents/MacOS/app"
+        )));
     }
 
     #[test]

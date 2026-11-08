@@ -1,7 +1,8 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { exportMentors } from "@/api/app";
-import { errorMessage } from "@/api/call";
+import { failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Scope, TableFormat } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -40,9 +41,9 @@ export function ExportDialog({ scope, count, onClose }: { scope: Scope; count: n
           </div>
         </DialogBody>
         <DialogFooter>
-          <p className="min-w-0 grow text-sm text-destructive" role="alert">
-            {save.error && errorMessage(save.error)}
-          </p>
+          <div className="min-w-0 grow text-sm text-destructive" role="alert">
+            {save.error && <FailureNote failure={failureOf(save.error)} />}
+          </div>
           <DialogClose render={<Button variant="ghost" disabled={save.isPending} />}>取消</DialogClose>
           <Button disabled={save.isPending} onClick={() => save.mutate()}>
             {save.isPending ? "正在导出…" : "导出"}

@@ -167,7 +167,6 @@ pub async fn delete_account(ctx: &Context, input: AccountCredentials) -> Result<
 
 impl From<account::Error> for CallError {
     fn from(error: account::Error) -> Self {
-        tracing::warn!(error = %error, "account operation failed");
         let code = match error {
             account::Error::Invalid(_) | account::Error::AccountChanged => ErrorCode::Invalid,
             account::Error::Database(_) | account::Error::Worker(_) => ErrorCode::Internal,
@@ -176,10 +175,7 @@ impl From<account::Error> for CallError {
             account::Error::TermsOutdated => ErrorCode::Invalid,
             _ => ErrorCode::External,
         };
-        Self {
-            code,
-            message: error.message(),
-        }
+        CallError::new(code, error.message()).logging(error)
     }
 }
 

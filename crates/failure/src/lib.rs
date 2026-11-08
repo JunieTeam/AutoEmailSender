@@ -37,6 +37,24 @@ impl Failure {
     }
 }
 
+/// Why reading or writing a file failed, after what failed (`what`, such as "日志未能导出").
+pub fn file(what: &str, e: &std::io::Error) -> Failure {
+    use std::io::ErrorKind;
+    let reason = match e.kind() {
+        ErrorKind::NotFound => "找不到这个文件或文件夹，可能已被移动或删除",
+        // Windows refuses to replace a file another program has open, such as a table in Excel.
+        ErrorKind::PermissionDenied | ErrorKind::ResourceBusy => {
+            "没有权限读写这个位置，或文件正被其他程序打开。请关闭打开它的程序，或换一个位置后重试。"
+        }
+        ErrorKind::StorageFull | ErrorKind::QuotaExceeded => "磁盘空间不足，请清理出空间后重试",
+        ErrorKind::ReadOnlyFilesystem => "这个位置只能读取，请换一个位置",
+        // FAT32, common on USB drives, holds no file over 4 GB.
+        ErrorKind::FileTooLarge => "文件超过了这个磁盘允许的大小，请换一个磁盘",
+        _ => return Failure::unrecognized(format!("{what}，请重试"), &e.to_string()),
+    };
+    Failure::new(format!("{what}：{reason}"))
+}
+
 /// Outside words for the log, cut to a length that still shows what was said.
 pub fn diagnostic(words: &str) -> String {
     match words.char_indices().nth(DIAGNOSTIC_CHARS) {

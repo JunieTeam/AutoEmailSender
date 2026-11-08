@@ -1,5 +1,6 @@
 //! Where desktop updates come from, and the update state returned by the application commands.
 
+use failure::Failure;
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -26,7 +27,7 @@ pub enum UpdateStatus {
     Current,
     Available {
         update: UpdateInfo,
-        error: Option<String>,
+        error: Option<Failure>,
     },
     Downloading {
         update: UpdateInfo,

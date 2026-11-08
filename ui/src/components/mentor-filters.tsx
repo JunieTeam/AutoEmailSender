@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { cn } from "cn";
 import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { MentorFilter } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -208,7 +209,7 @@ function Choices<T extends string | number>({
           className="mb-1 h-9"
         />
       )}
-      {error && <p className="px-2.5 py-2 text-destructive">未能加载：{errorMessage(error)}</p>}
+      {error && <FailureNote className="px-2.5 py-2 text-destructive" lead="未能加载：" failure={failureOf(error)} />}
       <div className="max-h-72 overflow-y-auto">
         {listed.map((c) => (
           <Option

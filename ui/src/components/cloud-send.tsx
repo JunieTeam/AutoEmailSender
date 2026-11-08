@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
 import type {
   CloudHandedOff,
   CloudSendBlocked,
@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { fileSize, sentence } from "@/format";
-import { FailureDetails } from "@/components/failure";
+import { FailureDetails, FailureNote } from "@/components/failure";
 
 // docs/ui.md#任务: handing scheduled first emails to the official server, which sends them while the
 // computer is off.
@@ -95,7 +95,7 @@ export function CloudSendDialog({ task, onClose }: { task?: number; onClose: () 
           <HandedOff result={handOff.data} />
         ) : (
           <DialogBody className="flex flex-col gap-4 text-sm">
-            {all.error && <p className="text-destructive">{errorMessage(all.error)}</p>}
+            {all.error && <FailureNote className="text-destructive" failure={failureOf(all.error)} />}
             {all.data && <Choices preview={all.data} plan={plan} unticked={unticked} onUntick={setUnticked} />}
             {plan && plan.emails.length > 0 && (
               <>
@@ -125,16 +125,16 @@ export function CloudSendDialog({ task, onClose }: { task?: number; onClose: () 
                 </ul>
               </>
             )}
-            {some.error && <p className="text-destructive">{errorMessage(some.error)}</p>}
+            {some.error && <FailureNote className="text-destructive" failure={failureOf(some.error)} />}
           </DialogBody>
         )}
         <DialogFooter>
-          <p className="grow text-sm text-destructive" role="alert">
-            {handOff.error && errorMessage(handOff.error)}
+          <div className="grow text-sm text-destructive" role="alert">
+            {handOff.error && <FailureNote failure={failureOf(handOff.error)} />}
             {!handOff.error && !handOff.data && missing.length > 0 && (
               <span className="text-muted-foreground">勾选同意后才能交出；不想交出的，取消勾选用这个邮箱的邮件</span>
             )}
-          </p>
+          </div>
           {handOff.data ? (
             <DialogClose render={<Button />}>完成</DialogClose>
           ) : (
@@ -263,7 +263,9 @@ export function WithdrawFromCloud({ withdraw, onDone }: { withdraw: CloudWithdra
       {action.data && action.data.sending > 0 && (
         <p className="w-full text-xs text-muted-foreground">{action.data.sending} 封正在发送，无法撤回，稍后同步结果</p>
       )}
-      {action.error && <p className="w-full text-xs text-destructive">未能撤回：{errorMessage(action.error)}</p>}
+      {action.error && (
+        <FailureNote className="w-full text-xs text-destructive" lead="未能撤回：" failure={failureOf(action.error)} />
+      )}
     </>
   );
 }

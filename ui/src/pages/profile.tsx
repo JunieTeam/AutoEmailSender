@@ -1,6 +1,7 @@
 import { type MutationState, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Profile, ProfileForm } from "@/api/types";
 import { Field } from "@/components/form";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,13 @@ export function ProfileSection() {
   return (
     <Section title="个人资料">
       <p className="text-sm text-muted-foreground">AI 写信和分析匹配度时参考这些内容。输入后自动保存。</p>
-      {profile.error && <p className="text-sm text-destructive">个人资料未能加载：{errorMessage(profile.error)}</p>}
+      {profile.error && (
+        <FailureNote
+          className="text-sm text-destructive"
+          lead="个人资料未能加载："
+          failure={failureOf(profile.error)}
+        />
+      )}
       {profile.data && <ProfileFields />}
     </Section>
   );
@@ -95,7 +102,7 @@ export function ProfileFields({ basic = false }: { basic?: boolean }) {
         </Field>
       )}
       {last?.status === "error" && (
-        <p className="text-sm text-destructive">个人资料未能保存：{errorMessage(last.error)}</p>
+        <FailureNote className="text-sm text-destructive" lead="个人资料未能保存：" failure={failureOf(last.error)} />
       )}
     </div>
   );

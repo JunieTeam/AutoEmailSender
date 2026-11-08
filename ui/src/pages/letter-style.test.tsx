@@ -19,7 +19,8 @@ const remote = vi.hoisted(() => {
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }));
-vi.mock("@/api/call", () => ({
+vi.mock("@/api/call", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/call")>()),
   call: (op: string, input: LetterStyle) => {
     if (op === "updateLetterStyle") return remote.save(input);
     if (op === "getLetterStyle") return structuredClone(remote.style);

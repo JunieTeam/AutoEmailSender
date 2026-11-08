@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { TemplateSummary } from "@/api/types";
 import { Confirm } from "@/components/batch-bar";
 import { TemplateDialog, usePlaceholders } from "@/components/template-dialog";
@@ -19,7 +20,7 @@ export function TemplatesSection() {
       <p className="text-sm text-muted-foreground">
         套用模板写信时，占位符换成每位导师的信息。也可以让 AI 逐一撰写，不使用模板。
       </p>
-      {error && <p className="text-sm text-destructive">模板未能加载：{errorMessage(error)}</p>}
+      {error && <FailureNote className="text-sm text-destructive" lead="模板未能加载：" failure={failureOf(error)} />}
       {templates.data && placeholders.data && (
         <>
           {templates.data.length > 0 && (
@@ -82,7 +83,7 @@ function TemplateRow({ template: t, placeholders }: { template: TemplateSummary;
         </div>
       </div>
       {(remove.error ?? makeDefault.error) && (
-        <p className="text-sm text-destructive">{errorMessage(remove.error ?? makeDefault.error)}</p>
+        <FailureNote className="text-sm text-destructive" failure={failureOf(remove.error ?? makeDefault.error)} />
       )}
       {edit > 0 && <EditTemplate key={edit} id={t.id} placeholders={placeholders} onClose={() => setEdit(0)} />}
     </li>
@@ -98,7 +99,9 @@ function EditTemplate({ id, placeholders, onClose }: { id: number; placeholders:
     gcTime: 0,
   });
   if (template.error) {
-    return <p className="text-sm text-destructive">模板未能打开：{errorMessage(template.error)}</p>;
+    return (
+      <FailureNote className="text-sm text-destructive" lead="模板未能打开：" failure={failureOf(template.error)} />
+    );
   }
   return template.data && <TemplateDialog template={template.data} placeholders={placeholders} onClose={onClose} />;
 }

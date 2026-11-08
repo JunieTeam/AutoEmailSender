@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRef, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Mailbox, MailboxTest, NewMailbox, Provider, Security, Server } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { formClose, Field, TestResult } from "@/components/form";
@@ -289,9 +290,9 @@ export function MailboxDialog({
             </p>
           )}
           <DialogFooter>
-            <p className="grow text-sm text-destructive" role="alert">
-              {save.isError && errorMessage(save.error)}
-            </p>
+            <div className="grow text-sm text-destructive" role="alert">
+              {save.isError && <FailureNote failure={failureOf(save.error)} />}
+            </div>
             <Button type="button" variant="quiet" disabled={pending || !complete} onClick={test}>
               测试连接
             </Button>

@@ -10,6 +10,7 @@ use chacha20poly1305::aead::{Aead, Payload};
 use chacha20poly1305::{KeyInit, XChaCha20Poly1305, XNonce};
 use cloud_api::backup::{self as wire, LIMIT, OBJECTS, RETENTION};
 use cloud_api::{ApiError, Empty, ErrorCode, path};
+use failure::Failure;
 use reqwest::{Method, header};
 use serde::{Deserialize, Serialize};
 use sqlx::{SqlitePool, types::Json};
@@ -125,11 +126,12 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 impl Error {
-    pub fn message(&self) -> String {
-        match self {
+    pub fn failure(&self) -> Failure {
+        let message = match self {
+            Self::Local(e) => return e.failure(),
+            Self::Io(e) => return failure::file("云端备份未能完成", e),
             Self::Account(e) => e.message(),
-            Self::Local(e) => e.message(),
-            Self::Database(_) | Self::Io(_) => {
+            Self::Database(_) => {
                 "云端备份未能完成，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题"
                     .into()
             }
@@ -148,7 +150,8 @@ impl Error {
                 "云端备份已损坏，无法恢复。请在还有数据的电脑上删除云端备份，再重新开启。".into()
             }
             Self::Newer => "这份备份来自更新版本的应用，请先升级应用再恢复".into(),
-        }
+        };
+        Failure::new(message)
     }
 }
 
@@ -437,7 +440,7 @@ pub async fn back_up(ctx: &Context, now: i64) -> Result<()> {
                     cloud_backup_error = ?
                 WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
                 now,
-                Json(failure::Failure::new(error.message())),
+                Json(error.failure()),
                 key
             )
             .execute(&ctx.db)
@@ -811,7 +814,7 @@ fn staged(error: Error) -> super::Error {
             operation: "restore cloud backup",
             source,
         },
-        error => super::Error::Invalid(error.message()),
+        error => super::Error::Invalid(error.failure().message),
     }
 }
 

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Pack, Quota as TrackingQuota } from "@/api/types";
 import { TermsNotice, useAccount, useTermsOutdated } from "@/components/account";
 import { PayDialog, REFUNDED, usePlusItems, yuan } from "@/components/plus";
@@ -60,8 +61,14 @@ export function TrackingSection() {
           </p>
           <p>{TRACKING_CAVEAT}</p>
         </div>
-        {status.error && <p className="mt-2 text-sm text-destructive">设置未能加载：{errorMessage(status.error)}</p>}
-        {save.error && <p className="mt-2 text-sm text-destructive">{errorMessage(save.error)}</p>}
+        {status.error && (
+          <FailureNote
+            className="mt-2 text-sm text-destructive"
+            lead="设置未能加载："
+            failure={failureOf(status.error)}
+          />
+        )}
+        {save.error && <FailureNote className="mt-2 text-sm text-destructive" failure={failureOf(save.error)} />}
       </div>
       {data && !data.account && <Prompt text="登录并开通 Plus 后可使用" action="去登录" />}
       {data?.account?.kind === "unreadable" && (
@@ -123,7 +130,7 @@ function Quota({ email, plusUntil, quota }: { email: string; plusUntil: number; 
         </p>
       )}
       {items.error ? (
-        <p className="text-sm text-destructive">额度包未能读取：{errorMessage(items.error)}</p>
+        <FailureNote className="text-sm text-destructive" lead="额度包未能读取：" failure={failureOf(items.error)} />
       ) : (
         items.data &&
         (items.data.refunded ? (

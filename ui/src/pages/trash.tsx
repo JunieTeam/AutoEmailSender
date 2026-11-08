@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useCanGoBack, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { ChevronLeft, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
 import { BatchBar, Confirm } from "@/components/batch-bar";
 import { refreshMentors } from "@/components/mentor";
 import { MentorTable, Pager, pageParam, useLastPage } from "@/components/mentor-table";
@@ -63,7 +63,7 @@ export function TrashPage() {
           className={`@container min-h-0 flex-1 overflow-y-auto px-4 phone:px-1.5 ${selected.size > 0 ? "pb-20" : ""}`}
         >
           {query.isError ? (
-            <Notice title="回收站未能加载" detail={errorMessage(query.error)} />
+            <Notice title="回收站未能加载" failure={failureOf(query.error)} />
           ) : !query.data ? (
             <Loading />
           ) : query.data.total === 0 ? (
@@ -79,7 +79,7 @@ export function TrashPage() {
         </div>
         <BatchBar
           count={selected.size}
-          errors={act.error ? [`${failed}：${errorMessage(act.error)}`] : []}
+          errors={act.error ? [{ lead: `${failed}：`, failure: failureOf(act.error) }] : []}
           onClear={() => {
             setSelected(new Set());
             if (!act.isPending) act.reset();

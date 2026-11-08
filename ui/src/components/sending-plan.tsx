@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import type { PlanCloud, PlanColumn, PlanEmail, Waiting } from "@/api/types";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
 import { Button } from "@/components/ui/button";
 import { Segments } from "@/components/ui/segments";
 import { Confirm } from "@/components/batch-bar";
@@ -91,7 +91,7 @@ function PlanList({ column, label, hidden }: { column: PlanColumn; label: string
                 : "尚无发送记录"}
           </p>
         )}
-        {query.error && <p className="p-3 text-sm text-destructive">{errorMessage(query.error)}</p>}
+        {query.error && <FailureNote className="p-3 text-sm text-destructive" failure={failureOf(query.error)} />}
       </div>
       <div className="flex justify-end p-2 empty:hidden">
         <Pager
@@ -199,7 +199,7 @@ function PlanRow({ email: e, column }: { email: PlanEmail; column: PlanColumn })
           )}
         </div>
       )}
-      {action.error && <p className="text-xs text-destructive">{errorMessage(action.error)}</p>}
+      {action.error && <FailureNote className="text-xs text-destructive" failure={failureOf(action.error)} />}
     </article>
   );
 }

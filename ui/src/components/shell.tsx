@@ -15,9 +15,9 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
-import { FailureDetails } from "@/components/failure";
+import { FailureDetails, FailureNote } from "@/components/failure";
 import appIcon from "../../../docs/icon.svg";
-import { call, errorMessage } from "@/api/call";
+import { call, errorMessage, failureOf } from "@/api/call";
 import { startupFailure } from "@/api/app";
 import type { MatchFinished, DraftsFinished, CrawlFinished } from "@/api/types";
 import { refreshTasks } from "@/components/task-cache";
@@ -154,7 +154,7 @@ export function Shell() {
   // docs/ui.md#动效: another page fades in.
   const page = useRouterState({ select: (s) => s.matches[1]?.routeId });
   if (failure.isPending) return null;
-  if (failure.data) return <StartupFailure reason={failure.data} />;
+  if (failure.data) return <StartupFailure failure={failure.data} />;
   return (
     <div className="flex h-dvh phone:flex-col">
       <aside className="flex w-[228px] shrink-0 flex-col px-3 py-4 phone:hidden">
@@ -698,7 +698,7 @@ function Background({ className }: { className?: string }) {
         {work.waiting === 0 && work.running === 0 && work.next === null && !work.receiving && work.finished === 0 && (
           <p className="text-muted-foreground">当前无后台工作</p>
         )}
-        {error && <p className="text-destructive">{errorMessage(error)}</p>}
+        {error && <FailureNote className="text-destructive" failure={failureOf(error)} />}
       </PopoverContent>
       {libraryUpdates && <LibraryUpdatesDialog onClose={() => setLibraryUpdates(false)} />}
     </Popover>

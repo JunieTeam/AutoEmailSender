@@ -8,7 +8,8 @@ import {
 } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useImperativeHandle, useRef, useState, type Ref, type ReactNode } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf, UiError } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { DraftEdit, Material, MentorDetail, TaskDraft, TaskSummary } from "@/api/types";
 import { useChangedElsewhere } from "@/changed-elsewhere";
 import { AiButton, FactCheckStatus, Rewrite, useFactCheck, useWriting } from "@/components/ai-writing";
@@ -124,7 +125,7 @@ export function TaskLetter({
     scope,
     mutationFn: async (current: DraftEdit) => {
       await saved();
-      if (!style.data) throw new Error("信件样式尚未加载，请稍后再试");
+      if (!style.data) throw new UiError("信件样式尚未加载，请稍后再试");
       await call("approveTaskEmails", {
         taskId: task.id,
         emails: [
@@ -314,17 +315,17 @@ export function TaskLetter({
         )}
       </div>
       {last?.status === "error" && (
-        <p className="text-sm text-destructive">
-          草稿未能保存：{errorMessage(last.error)}
+        <FailureNote className="text-sm text-destructive" lead="草稿未能保存：" failure={failureOf(last.error)}>
           <Button variant="quiet" size="sm" onClick={() => save.mutate(letter)}>
             重试保存
           </Button>
-        </p>
+        </FailureNote>
       )}
       {(checks.error ?? writing.latest?.error ?? style.error ?? mailboxes.error ?? approve.error) && (
-        <p className="text-sm text-destructive">
-          {errorMessage(checks.error ?? writing.latest?.error ?? style.error ?? mailboxes.error ?? approve.error)}
-        </p>
+        <FailureNote
+          className="text-sm text-destructive"
+          failure={failureOf(checks.error ?? writing.latest?.error ?? style.error ?? mailboxes.error ?? approve.error)}
+        />
       )}
     </div>
   );

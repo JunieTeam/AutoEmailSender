@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Schedule, TaskSummary } from "@/api/types";
 import { Field, formClose } from "@/components/form";
 import { Button } from "@/components/ui/button";
@@ -145,9 +146,7 @@ export function ScheduleFields({
           )}
           {capacity.isFetching && !capacity.data && <p className="text-sm text-muted-foreground">正在计算可用容量…</p>}
           {capacity.error && (
-            <p role="alert" className="text-sm text-destructive">
-              {errorMessage(capacity.error)}
-            </p>
+            <FailureNote className="text-sm text-destructive" role="alert" failure={failureOf(capacity.error)} />
           )}
           {!scheduleValid(value) && <p className="text-sm text-warning">请选择日期、有效时间窗口和每个窗口的数量</p>}
           {count !== undefined && capacity.data && scheduleValid(value) && capacity.data.emails < count && (
@@ -197,7 +196,7 @@ export function ChangeSchedule({ task, onClose }: { task: TaskSummary; onClose: 
               已重新排期 {saved} 封
             </p>
           )}
-          {save.error && <p className="text-sm text-destructive">{errorMessage(save.error)}</p>}
+          {save.error && <FailureNote className="text-sm text-destructive" failure={failureOf(save.error)} />}
         </DialogBody>
         <DialogFooter className="justify-end">
           <Button variant="ghost" disabled={save.isPending} onClick={onClose}>
@@ -252,7 +251,7 @@ export function DateTimeDialog({
             <p className="text-sm text-warning">所选日期的这个时间不存在，请选择其他时间</p>
           )}
           <p className="text-sm text-muted-foreground">所选时间后一小时内仍未发出的，留待处理</p>
-          {error != null && <p className="text-sm text-destructive">{errorMessage(error)}</p>}
+          {error != null && <FailureNote className="text-sm text-destructive" failure={failureOf(error)} />}
         </DialogBody>
         <DialogFooter className="justify-end">
           <Button variant="ghost" disabled={pending} onClick={onClose}>
@@ -326,7 +325,7 @@ export function ScheduleActions({ id, initial }: { id: number; initial?: number 
           error={reschedule.error}
         />
       )}
-      {action.error && <p className="w-full text-sm text-destructive">{errorMessage(action.error)}</p>}
+      {action.error && <FailureNote className="w-full text-sm text-destructive" failure={failureOf(action.error)} />}
     </>
   );
 }

@@ -15,8 +15,8 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   useNavigate: () => () => undefined,
 }));
-vi.mock("@/api/call", () => ({
-  errorMessage: (error: Error) => error.message,
+vi.mock("@/api/call", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/call")>()),
   // Every step but the test letter done, so that it is the one open.
   call: async (op: string) => {
     if (op === "getProfile") return { name: "林晓", school: null, major: null, research: null };

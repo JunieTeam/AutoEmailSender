@@ -8,8 +8,8 @@ import { TagPicker } from "./tags";
 import { TodoEditor } from "./todos";
 
 const remote = vi.hoisted((): { renames: string[] } => ({ renames: [] }));
-vi.mock("@/api/call", () => ({
-  errorMessage: (error: Error) => error.message,
+vi.mock("@/api/call", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/call")>()),
   call: async (op: string, input: { name: string }) => {
     if (op === "listTags") return [tag];
     if (op === "renameTag") {

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Tier } from "@/api/types";
 import { AccountDialog, type AccountMode, TermsNotice, useAccount } from "@/components/account";
 import { Confirm } from "@/components/batch-bar";
@@ -36,7 +37,9 @@ export function AccountSection() {
   const state = account.data;
   return (
     <Section title="账号和 Plus">
-      {account.error && <p className="text-sm text-destructive">账号未能读取：{errorMessage(account.error)}</p>}
+      {account.error && (
+        <FailureNote className="text-sm text-destructive" lead="账号未能读取：" failure={failureOf(account.error)} />
+      )}
       {state?.kind === "loggedOut" && (
         <>
           <p className="text-sm text-muted-foreground">
@@ -90,7 +93,13 @@ export function AccountSection() {
                   注销账号
                 </Button>
               </div>
-              {logout.error && <p className="text-sm text-destructive">未能退出登录：{errorMessage(logout.error)}</p>}
+              {logout.error && (
+                <FailureNote
+                  className="text-sm text-destructive"
+                  lead="未能退出登录："
+                  failure={failureOf(logout.error)}
+                />
+              )}
             </div>
           )}
         </>
@@ -132,7 +141,7 @@ function PlusRow({ email, outdated }: { email: string; outdated: boolean }) {
   return (
     <Row label="Plus">
       {plus.error ? (
-        <p className="text-sm text-destructive">Plus 状态未能读取：{errorMessage(plus.error)}</p>
+        <FailureNote className="text-sm text-destructive" lead="Plus 状态未能读取：" failure={failureOf(plus.error)} />
       ) : plus.data ? (
         <p className="text-sm">
           {until == null ? "尚未开通 Plus" : active ? `Plus，到${endOf(until)}` : `Plus 已于${day(until)}到期`}
@@ -152,7 +161,7 @@ function PlusRow({ email, outdated }: { email: string; outdated: boolean }) {
           </p>
         </>
       ) : items.error ? (
-        <p className="text-sm text-destructive">{errorMessage(items.error)}</p>
+        <FailureNote className="text-sm text-destructive" failure={failureOf(items.error)} />
       ) : (
         items.data &&
         (items.data.refunded ? (
@@ -227,7 +236,7 @@ function InviteRow({ email }: { email: string }) {
   return (
     <Row label="邀请同学">
       {invite.error ? (
-        <p className="text-sm text-destructive">邀请未能读取：{errorMessage(invite.error)}</p>
+        <FailureNote className="text-sm text-destructive" lead="邀请未能读取：" failure={failureOf(invite.error)} />
       ) : !state ? (
         <p className="text-sm text-muted-foreground">正在读取…</p>
       ) : state.status === "ineligible" ? (
@@ -280,7 +289,7 @@ function InviteRow({ email }: { email: string }) {
                     {fill.isPending ? "正在领取…" : "领取"}
                   </Button>
                 </div>
-                {fill.error && <p className="text-sm text-destructive">{errorMessage(fill.error)}</p>}
+                {fill.error && <FailureNote className="text-sm text-destructive" failure={failureOf(fill.error)} />}
               </form>
             )
           )}
@@ -321,9 +330,9 @@ function RedeemDialog({ submit, onClose }: { submit: (code: string) => Promise<v
             </fieldset>
           </DialogBody>
           <DialogFooter>
-            <p className="grow text-sm text-destructive" role="alert">
-              {run.error && errorMessage(run.error)}
-            </p>
+            <div className="grow text-sm text-destructive" role="alert">
+              {run.error && <FailureNote failure={failureOf(run.error)} />}
+            </div>
             <DialogClose render={<Button variant="ghost" />}>取消</DialogClose>
             <Button type="submit" disabled={run.isPending || code.trim() === ""}>
               {run.isPending ? "正在兑换…" : "兑换"}
@@ -394,10 +403,13 @@ function DeleteDialog({ email, onClose }: { email: string; onClose: () => void }
                 </p>
                 {/* What is given up is shown before the password counts. */}
                 {tracking.error || read?.kind === "unreadable" ? (
-                  <p className="text-destructive">
-                    Plus 和额度包未能读取：
-                    {read?.kind === "unreadable" ? read.reason : errorMessage(tracking.error)}
-                  </p>
+                  <FailureNote
+                    className="text-destructive"
+                    lead="Plus 和额度包未能读取："
+                    failure={
+                      read?.kind === "unreadable" ? { message: read.reason, details: null } : failureOf(tracking.error)
+                    }
+                  />
                 ) : !server ? (
                   <p className="text-muted-foreground">正在读取 Plus 和额度包…</p>
                 ) : (
@@ -421,9 +433,9 @@ function DeleteDialog({ email, onClose }: { email: string; onClose: () => void }
               </fieldset>
             </DialogBody>
             <DialogFooter>
-              <p className="grow text-sm text-destructive" role="alert">
-                {remove.error && errorMessage(remove.error)}
-              </p>
+              <div className="grow text-sm text-destructive" role="alert">
+                {remove.error && <FailureNote failure={failureOf(remove.error)} />}
+              </div>
               <DialogClose render={<Button variant="ghost" />}>取消</DialogClose>
               <Button type="submit" disabled={remove.isPending || password === "" || !server}>
                 {remove.isPending ? "正在注销…" : "注销账号"}

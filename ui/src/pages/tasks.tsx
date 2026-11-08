@@ -2,10 +2,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch, useParams, useBlocker } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ChevronLeft, ListChecks, Mail, MoreHorizontal, SearchX } from "lucide-react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
 import { refreshTasks } from "@/components/task-cache";
 import { FailureNote } from "@/components/failure";
-import type { DraftFilter, DraftState, PlanColumn, Progress, TaskState, TaskSummary, NewTask } from "@/api/types";
+import type {
+  DraftFilter,
+  DraftState,
+  Failure,
+  PlanColumn,
+  Progress,
+  TaskState,
+  TaskSummary,
+  NewTask,
+} from "@/api/types";
 import { cn } from "cn";
 import { ModelAction } from "@/components/ai-writing";
 import { Confirm } from "@/components/batch-bar";
@@ -148,7 +157,7 @@ export function TasksPage() {
           <>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 phone:px-2">
               {query.error ? (
-                <Notice title="任务列表未能加载" detail={errorMessage(query.error)} />
+                <Notice title="任务列表未能加载" failure={failureOf(query.error)} />
               ) : !query.data ? (
                 <Loading />
               ) : query.data.total === 0 ? (
@@ -229,7 +238,7 @@ export function TaskReviewPage() {
   const navigate = useNavigate({ from: "/tasks/$id" });
   const client = useQueryClient();
   const composer = useRef<ComposerHandle>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Failure | null>(null);
   const [bulk, setBulk] = useState(false);
   const [changingSchedule, setChangingSchedule] = useState(false);
   const [handingOff, setHandingOff] = useState(false);
@@ -268,7 +277,7 @@ export function TaskReviewPage() {
         await flush();
         return false;
       } catch (e) {
-        setError(errorMessage(e));
+        setError(failureOf(e));
         return true;
       }
     },
@@ -308,7 +317,7 @@ export function TaskReviewPage() {
           queryFn: () => call("listTaskDrafts", { taskId: id, filter, page: page - 1 }),
         })
         .then((previous) => navigate({ search: (s) => ({ ...s, page: page - 1, email: previous.drafts.at(-1)?.id }) }))
-        .catch((e: unknown) => setError(errorMessage(e)));
+        .catch((e: unknown) => setError(failureOf(e)));
     }
   }
   useEffect(() => {
@@ -351,7 +360,7 @@ export function TaskReviewPage() {
     mutationFn: () => call("withdrawFromCloud", { task: id }),
     onSettled: () => refreshTasks(client),
   });
-  if (task.error) return <Notice title="任务未能加载" detail={errorMessage(task.error)} />;
+  if (task.error) return <Notice title="任务未能加载" failure={failureOf(task.error)} />;
   const t = task.data;
   if (!t) return <Loading />;
   return (
@@ -413,7 +422,10 @@ export function TaskReviewPage() {
                 <p className="px-2 text-xs text-muted-foreground">无已取消、发送失败、生成失败或退信的导师</p>
               )}
               {(restart.error ?? prepareRestart.error) && (
-                <p className="px-2 text-sm text-destructive">{errorMessage(restart.error ?? prepareRestart.error)}</p>
+                <FailureNote
+                  className="px-2 text-sm text-destructive"
+                  failure={failureOf(restart.error ?? prepareRestart.error)}
+                />
               )}
               {t.state !== "stopped" && (
                 <Button
@@ -471,9 +483,11 @@ export function TaskReviewPage() {
             <p className="text-sm text-warning">你已暂停任务。可以继续审核和批准，继续任务后才会发出。</p>
           ))}
         {(error || action.error || withdrawCloud.error) && (
-          <p role="alert" className="text-sm text-destructive">
-            {error ?? errorMessage(action.error ?? withdrawCloud.error)}
-          </p>
+          <FailureNote
+            role="alert"
+            className="text-sm text-destructive"
+            failure={error ?? failureOf(action.error ?? withdrawCloud.error)}
+          />
         )}
         {withdrawCloud.data && withdrawCloud.data.sending > 0 && (
           <p className="text-sm text-muted-foreground">
@@ -510,7 +524,7 @@ export function TaskReviewPage() {
                       client.removeQueries({ queryKey: ["prepareTaskApproval", id] });
                       setBulk(true);
                     })
-                    .catch((e: unknown) => setError(errorMessage(e)));
+                    .catch((e: unknown) => setError(failureOf(e)));
                 }}
               >
                 批准全部待审核
@@ -524,7 +538,7 @@ export function TaskReviewPage() {
           </div>
           <div className="min-h-0 flex-1 space-y-[3px] overflow-y-auto px-2">
             {list.error ? (
-              <Notice title="草稿列表未能加载" detail={errorMessage(list.error)} />
+              <Notice title="草稿列表未能加载" failure={failureOf(list.error)} />
             ) : !list.data ? (
               <Loading />
             ) : list.data.total === 0 ? (
@@ -631,7 +645,7 @@ function DraftDetail({
   const error = draft.error ?? m.error ?? materials.error ?? placeholders.error;
   const d = draft.data;
   const mentor = m.data;
-  if (error) return <Notice title="邮件未能加载" detail={errorMessage(error)} />;
+  if (error) return <Notice title="邮件未能加载" failure={failureOf(error)} />;
   if (!d || !mentor || !materials.data || !placeholders.data) return <Loading />;
   const editable = d.state === "review" && task.state !== "stopped";
   return (
@@ -744,7 +758,9 @@ function DraftDetail({
           {d.error && d.state !== "generation_failed" && (
             <FailureNote failure={d.error} className="w-full text-sm text-warning" />
           )}
-          {action.error && <p className="w-full text-sm text-destructive">{errorMessage(action.error)}</p>}
+          {action.error && (
+            <FailureNote className="w-full text-sm text-destructive" failure={failureOf(action.error)} />
+          )}
         </div>
       </section>
       <aside className="min-h-0 overflow-y-auto border-l border-border p-5 text-sm max-[1240px]:hidden">
@@ -852,9 +868,10 @@ function BulkApproval({ task, onClose }: { task: TaskSummary; onClose: () => voi
           </p>
           <p className="text-sm text-muted-foreground">附件按各封草稿当前的清单发送，请在批准前核对。</p>
           {(drafts.error ?? style.error ?? approve.error ?? timing.error) && (
-            <p className="text-sm text-destructive">
-              {errorMessage(drafts.error ?? style.error ?? approve.error ?? timing.error)}
-            </p>
+            <FailureNote
+              className="text-sm text-destructive"
+              failure={failureOf(drafts.error ?? style.error ?? approve.error ?? timing.error)}
+            />
           )}
         </DialogBody>
         <DialogFooter className="justify-end">

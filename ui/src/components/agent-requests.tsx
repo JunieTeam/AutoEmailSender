@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { AgentRequest, ConfirmationLetter, SendAt } from "@/api/types";
 import { openLinks } from "@/components/correspondence";
 import { scheduledAt, scheduleText } from "@/components/schedule";
@@ -95,12 +96,18 @@ function RequestDialog({ request, queued }: { request: AgentRequest; queued: num
               </ul>
             </div>
           )}
-          {style.error && <p className="text-sm text-destructive">信件样式未能读取：{errorMessage(style.error)}</p>}
+          {style.error && (
+            <FailureNote
+              className="text-sm text-destructive"
+              lead="信件样式未能读取："
+              failure={failureOf(style.error)}
+            />
+          )}
           <p className="text-sm text-muted-foreground">
             这是你接入的 Agent 要做的事，允许后立即执行。5 分钟内未回应视为拒绝。
             {queued > 0 && `之后还有 ${queued} 条请求。`}
           </p>
-          {answer.error && <p className="text-sm text-destructive">{errorMessage(answer.error)}</p>}
+          {answer.error && <FailureNote className="text-sm text-destructive" failure={failureOf(answer.error)} />}
         </DialogBody>
         <DialogFooter className="justify-end">
           <Button variant="ghost" onClick={() => answer.mutate(false)} disabled={busy}>

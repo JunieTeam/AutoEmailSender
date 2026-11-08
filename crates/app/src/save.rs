@@ -4,6 +4,20 @@ use std::fs::File;
 use std::io;
 use std::path::Path;
 
+use api::CallError;
+use tauri_plugin_dialog::FilePath;
+
+/// Saves to where the user picked, telling what failed (`what`, such as "日志未能导出").
+pub fn picked(
+    target: FilePath,
+    what: &str,
+    write: impl FnOnce(&mut File) -> io::Result<()>,
+) -> Result<(), CallError> {
+    // The desktop's pickers only answer with paths.
+    let path = target.into_path().map_err(CallError::internal)?;
+    replace(&path, write).map_err(|e| crate::file_failed(what, e))
+}
+
 pub fn replace(path: &Path, write: impl FnOnce(&mut File) -> io::Result<()>) -> io::Result<()> {
     let mut file = tempfile::Builder::new()
         .prefix(".aes-export-")

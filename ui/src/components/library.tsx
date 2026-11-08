@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type {
   Decisions,
   LibraryAddPreview,
@@ -132,9 +133,9 @@ export function LibraryAddDialog({
           {preview.missing > 0 && <p className="text-sm text-warning">有 {preview.missing} 位已不在导师库，不会添加</p>}
         </DialogBody>
         <DialogFooter className="flex-wrap">
-          <p className="min-w-0 grow text-sm text-destructive" role="alert">
-            {(again.error ?? add.error) && errorMessage(again.error ?? add.error)}
-          </p>
+          <div className="min-w-0 grow text-sm text-destructive" role="alert">
+            {(again.error ?? add.error) && <FailureNote failure={failureOf(again.error ?? add.error)} />}
+          </div>
           <DialogClose render={<Button variant="ghost" disabled={add.isPending} />}>取消</DialogClose>
           <Button
             disabled={add.isPending || again.isFetching || again.isError || !possible}
@@ -194,9 +195,9 @@ export function LibraryUpdatesDialog({ onClose }: { onClose: () => void }) {
           )}
         </DialogBody>
         <DialogFooter className="flex-wrap">
-          <p className="min-w-0 grow text-sm text-destructive" role="alert">
-            {(updates.error ?? apply.error) && errorMessage(updates.error ?? apply.error)}
-          </p>
+          <div className="min-w-0 grow text-sm text-destructive" role="alert">
+            {(updates.error ?? apply.error) && <FailureNote failure={failureOf(updates.error ?? apply.error)} />}
+          </div>
           <DialogClose render={<Button variant="ghost" disabled={apply.isPending} />}>关闭</DialogClose>
           <Button disabled={items.length === 0 || apply.isPending} onClick={() => apply.mutate()}>
             {apply.isPending ? "正在更新…" : mentors > 0 ? `更新（${mentors} 位）` : "都保留本地的"}

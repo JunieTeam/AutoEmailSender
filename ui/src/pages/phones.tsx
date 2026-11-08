@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { PhoneCode, RelayStatus } from "@/api/types";
 import { AccountDialog, TermsNotice, useAccount } from "@/components/account";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,9 @@ export function PhonesRow() {
   const state = account.data;
   return (
     <Row label="手机">
-      {account.error && <p className="text-sm text-destructive">账号未能读取：{errorMessage(account.error)}</p>}
+      {account.error && (
+        <FailureNote className="text-sm text-destructive" lead="账号未能读取：" failure={failureOf(account.error)} />
+      )}
       {state?.kind === "loggedIn" && (state.termsOutdated ? <TermsNotice /> : <Phones key={state.email} />)}
       {state && state.kind !== "loggedIn" && (
         <>
@@ -81,8 +84,20 @@ function Phones() {
           手机经官方中继连到这台电脑，内容端到端加密，中继看不到。这台电脑上的应用开着时才能用。
         </p>
         {enabled && access.data && <StatusLine status={access.data.status} />}
-        {access.error && <p className="mt-2 text-sm text-destructive">设置未能加载：{errorMessage(access.error)}</p>}
-        {save.error && <p className="mt-2 text-sm text-destructive">设置未能保存：{errorMessage(save.error)}</p>}
+        {access.error && (
+          <FailureNote
+            className="mt-2 text-sm text-destructive"
+            lead="设置未能加载："
+            failure={failureOf(access.error)}
+          />
+        )}
+        {save.error && (
+          <FailureNote
+            className="mt-2 text-sm text-destructive"
+            lead="设置未能保存："
+            failure={failureOf(save.error)}
+          />
+        )}
       </div>
       {enabled && (
         <div className="flex flex-col gap-3">
@@ -91,9 +106,17 @@ function Phones() {
               添加手机
             </Button>
             {full && <p className="text-sm text-muted-foreground">最多配对 {MAX_PHONES} 部手机，先撤销一部</p>}
-            {add.error && <p className="text-sm text-destructive">未能生成二维码：{errorMessage(add.error)}</p>}
+            {add.error && (
+              <FailureNote
+                className="text-sm text-destructive"
+                lead="未能生成二维码："
+                failure={failureOf(add.error)}
+              />
+            )}
           </div>
-          {phones.error && <p className="text-sm text-destructive">手机未能读取：{errorMessage(phones.error)}</p>}
+          {phones.error && (
+            <FailureNote className="text-sm text-destructive" lead="手机未能读取：" failure={failureOf(phones.error)} />
+          )}
           {phones.data && phones.data.length > 0 && (
             <ul className="divide-y divide-border rounded-lg border border-border">
               {phones.data.map((phone) => (
@@ -121,7 +144,9 @@ function Phones() {
               ))}
             </ul>
           )}
-          {revoke.error && <p className="text-sm text-destructive">未能撤销：{errorMessage(revoke.error)}</p>}
+          {revoke.error && (
+            <FailureNote className="text-sm text-destructive" lead="未能撤销：" failure={failureOf(revoke.error)} />
+          )}
         </div>
       )}
       {add.data && (
@@ -221,7 +246,7 @@ function PairingDialog({
               </p>
             </>
           )}
-          {answer.error && <p className="text-destructive">{errorMessage(answer.error)}</p>}
+          {answer.error && <FailureNote className="text-destructive" failure={failureOf(answer.error)} />}
         </DialogBody>
         {asking !== null && !paired && (
           <DialogFooter>

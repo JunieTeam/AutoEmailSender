@@ -975,12 +975,16 @@ async fn seen(ctx: &Context, device: &str) {
 
 /// A phone's call: what the window may do, except what only the window may.
 async fn call(ctx: &Context, op: &str, input: Value) -> Result<Value, CallError> {
-    if crate::window_only(op) {
-        return Err(CallError::invalid("这个操作只能在电脑上完成".into()));
+    let result = if crate::window_only(op) {
+        Err(CallError::invalid("这个操作只能在电脑上完成".into()))
+    } else {
+        crate::call(ctx, op, input).await
+    };
+    match &result {
+        Ok(_) => ctx.phones.emit(Event::Called),
+        Err(e) => e.record(op, crate::Caller::Phone),
     }
-    let output = crate::call(ctx, op, input).await?;
-    ctx.phones.emit(Event::Called);
-    Ok(output)
+    result
 }
 
 #[cfg(test)]

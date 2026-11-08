@@ -43,10 +43,10 @@ pub async fn set_ai_reply_todos(ctx: &Context, input: AiReplyTodos) -> Result<()
             .await?
             .ok_or_else(|| CallError::invalid("请先在“设置 › AI › 模型”里添加模型".into()))?;
         if !chosen.agreed {
-            return Err(CallError {
-                code: ErrorCode::NeedsAgreement,
-                message: "请先确认发给模型服务商的内容，再开启回信待办".into(),
-            });
+            return Err(CallError::new(
+                ErrorCode::NeedsAgreement,
+                "请先确认发给模型服务商的内容，再开启回信待办",
+            ));
         }
     }
     email::todos::set_enabled(&ctx.db, input.enabled, now()).await?;

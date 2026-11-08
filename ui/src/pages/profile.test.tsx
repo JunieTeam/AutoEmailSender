@@ -20,7 +20,8 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   useNavigate: () => remote.navigate,
 }));
-vi.mock("@/api/call", () => ({
+vi.mock("@/api/call", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/call")>()),
   call: (op: string, form: ProfileForm) => {
     if (op === "updateProfile") return remote.save(form);
     if (op === "finishOnboarding") return remote.finish();

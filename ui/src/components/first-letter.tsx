@@ -9,7 +9,8 @@ import {
 import { Link } from "@tanstack/react-router";
 import { FileText, ChevronDown } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf, UiError } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type {
   FilledTemplate,
   FirstDraft,
@@ -77,7 +78,9 @@ function edited(mentorId: number, draft: FirstDraft | null): FirstDraftEdit {
 }
 
 function LoadFailed({ error }: { error: Error }) {
-  return <p className="px-5 py-4 text-sm text-destructive">草稿未能加载：{errorMessage(error)}</p>;
+  return (
+    <FailureNote className="px-5 py-4 text-sm text-destructive" lead="草稿未能加载：" failure={failureOf(error)} />
+  );
 }
 
 /**
@@ -190,7 +193,7 @@ function Composer({
     mutationFn: (e: FirstEmail) => {
       const saved = queryClient.getQueryData<FirstDraft | null>(["getFirstDraft", mentorId]);
       if (!saved || saved.subject !== e.subject.trim() || saved.bodyMd !== e.bodyMd)
-        throw new Error("草稿未能保存，请修改后重试");
+        throw new UiError("草稿未能保存，请修改后重试");
       return call("approveFirstEmail", e);
     },
     onSuccess: async () => {
@@ -282,16 +285,26 @@ function Composer({
         />
       )}
       {!review && <FactCheckStatus check={factCheck} stored={draft?.factCheck} />}
-      {checks.error && <p className="text-sm text-destructive">发送前检查未能完成：{errorMessage(checks.error)}</p>}
+      {checks.error && (
+        <FailureNote
+          className="text-sm text-destructive"
+          lead="发送前检查未能完成："
+          failure={failureOf(checks.error)}
+        />
+      )}
       {!touched && prefill.error && (
-        <p className="text-sm text-destructive">
-          未能按修改后的导师资料重新填写，现在仍是修改前的内容：{errorMessage(prefill.error)}
-        </p>
+        <FailureNote
+          className="text-sm text-destructive"
+          lead="未能按修改后的导师资料重新填写，现在仍是修改前的内容："
+          failure={failureOf(prefill.error)}
+        />
       )}
       {writing.latest?.status === "error" && (
-        <p className="text-sm text-destructive">
-          {drafting ? "AI 起草" : "AI 改写"}未能完成：{errorMessage(writing.latest.error)}
-        </p>
+        <FailureNote
+          className="text-sm text-destructive"
+          lead={`${drafting ? "AI 起草" : "AI 改写"}未能完成：`}
+          failure={failureOf(writing.latest.error)}
+        />
       )}
       <div className="flex flex-wrap items-center gap-2">
         {busy ? (
@@ -344,7 +357,7 @@ function Composer({
           }
         />
         {last?.status === "error" && (
-          <p className="text-sm text-destructive">草稿未能保存：{errorMessage(last.error)}</p>
+          <FailureNote className="text-sm text-destructive" lead="草稿未能保存：" failure={failureOf(last.error)} />
         )}
         <div className="ml-auto flex items-center gap-3">
           {review ? (
@@ -416,9 +429,11 @@ function Composer({
         />
       )}
       {(style.error ?? mailboxes.error ?? approve.error) && (
-        <p className="text-sm text-destructive">
-          未能发送：{errorMessage(style.error ?? mailboxes.error ?? approve.error)}
-        </p>
+        <FailureNote
+          className="text-sm text-destructive"
+          lead="未能发送："
+          failure={failureOf(style.error ?? mailboxes.error ?? approve.error)}
+        />
       )}
     </div>
   );
@@ -525,7 +540,7 @@ export function TemplateMenu({
           ))
         )}
         {(templates.error ?? apply.error) && (
-          <p className="p-1.5 text-sm text-destructive">{errorMessage(templates.error ?? apply.error)}</p>
+          <FailureNote className="p-1.5 text-sm text-destructive" failure={failureOf(templates.error ?? apply.error)} />
         )}
       </PopoverContent>
     </Popover>

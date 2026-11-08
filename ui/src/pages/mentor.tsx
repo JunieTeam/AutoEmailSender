@@ -2,7 +2,7 @@ import { type MutationState, useMutation, useMutationState, useQuery, useQueryCl
 import { Link, useCanGoBack, useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import { ChevronLeft, RotateCcw, Trash2, UserRound } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
 import type { MentorDetail } from "@/api/types";
 import { useChangedElsewhere } from "@/changed-elsewhere";
 import { Confirm } from "@/components/batch-bar";
@@ -51,7 +51,7 @@ export function MentorPage() {
   if (query.isPending) return <Loading />;
   if (query.isError) {
     return (
-      <Notice title="导师资料未能加载" detail={errorMessage(query.error)}>
+      <Notice title="导师资料未能加载" failure={failureOf(query.error)}>
         <Link to="/mentors" className="mt-4 inline-block text-sm text-brand-text">
           返回导师列表
         </Link>
@@ -66,9 +66,11 @@ export function MentorPage() {
         {(m.trashed || trash.isError) && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-muted px-5 py-2 text-sm phone:px-3">
             {trash.isError ? (
-              <p className="grow text-destructive">
-                未能{TRASH_LABEL[trash.variables]}：{errorMessage(trash.error)}
-              </p>
+              <FailureNote
+                className="grow text-destructive"
+                lead={`未能${TRASH_LABEL[trash.variables]}：`}
+                failure={failureOf(trash.error)}
+              />
             ) : (
               <p className="grow">这位导师在回收站里</p>
             )}
@@ -369,7 +371,7 @@ function SendingMailbox({ mentor: m }: { mentor: MentorDetail }) {
         {choosing && m.contact.status !== "none" && (
           <p className="mt-1 text-xs text-muted-foreground">更换发件邮箱后，导师看到的发件地址会随之改变</p>
         )}
-        {error && <p className="mt-1 text-xs text-destructive">{errorMessage(error)}</p>}
+        {error && <FailureNote className="mt-1 text-xs text-destructive" failure={failureOf(error)} />}
       </dd>
     </>
   );
@@ -473,7 +475,9 @@ function Note({ id }: { id: number }) {
         aria-label="备注"
         placeholder="仅自己可见"
       />
-      {last?.status === "error" && <p className="mt-1.5 text-destructive">备注未能保存：{errorMessage(last.error)}</p>}
+      {last?.status === "error" && (
+        <FailureNote className="mt-1.5 text-destructive" lead="备注未能保存：" failure={failureOf(last.error)} />
+      )}
     </>
   );
 }

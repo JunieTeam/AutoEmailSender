@@ -8,7 +8,9 @@ import {
 import { Link } from "@tanstack/react-router";
 import { Paperclip, Send, TriangleAlert } from "lucide-react";
 import { type ReactNode, type Ref, useEffect, useEffectEvent, useRef } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf, UiError } from "@/api/call";
+import { logUiError } from "@/ui-errors";
+import { FailureNote } from "@/components/failure";
 import type { DraftKind, FirstDraft, Material, Problem, ReplyDraft, FollowUpDraft, TaskEmail } from "@/api/types";
 import { Confirm } from "@/components/batch-bar";
 import { Button } from "@/components/ui/button";
@@ -230,7 +232,7 @@ export function AttachMenu({
       await queryClient.invalidateQueries({ queryKey: ["listMaterials"], refetchType: "all" });
       const updated = queryClient.getQueryData<Material[]>(["listMaterials"]);
       const material = updated?.find((m) => m.id === id);
-      if (!material) throw new Error("材料已添加，但列表未能刷新。请重新打开附件菜单后选择它。");
+      if (!material) throw logged(new UiError("材料已添加，但列表未能刷新。请重新打开附件菜单后选择它。"));
       const applied = task
         ? await call("attachTaskMaterial", { ...task, materialId: id })
         : await call("attachDraftMaterial", { mentorId, kind, materialId: id });
@@ -243,7 +245,7 @@ export function AttachMenu({
             ],
         refetchType: "all",
       });
-      if (!applied && prepared) throw new Error("草稿或材料已发生变化。请重新打开草稿，从附件菜单选择材料。");
+      if (!applied && prepared) throw logged(new UiError("草稿或材料已发生变化。请重新打开草稿，从附件菜单选择材料。"));
       return { material, applied };
     },
   });
@@ -312,10 +314,19 @@ export function AttachMenu({
       </PopoverContent>
       {/* Outside the menu, which the user may have closed while the file was being read. */}
       {last?.error && (
-        <p role="alert" className="order-last basis-full text-sm text-destructive">
-          未能添加附件：{errorMessage(last.error)}
-        </p>
+        <FailureNote
+          className="order-last basis-full text-sm text-destructive"
+          role="alert"
+          lead="未能添加附件："
+          failure={failureOf(last.error)}
+        />
       )}
     </Popover>
   );
+}
+
+/** An error that says something went unexpectedly, logged as it is raised. */
+function logged(error: UiError) {
+  logUiError(error);
+  return error;
 }

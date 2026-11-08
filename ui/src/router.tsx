@@ -6,6 +6,7 @@ import { queryClient } from "./query-client";
 import { TasksPage, TaskReviewPage, tasksSearch, taskSearch } from "./pages/tasks";
 import { ConversationsPage, conversationSearch } from "./pages/conversations";
 import { Shell, MorePage } from "./components/shell";
+import { RouteError } from "./components/route-error";
 import { MentorPage } from "./pages/mentor";
 import { MentorsPage, mentorSearch } from "./pages/mentors";
 import { MailboxesSection } from "./pages/mailboxes";
@@ -254,6 +255,7 @@ export const router = createRouter({
     ]),
   ]),
   history: createHashHistory(),
+  defaultErrorComponent: RouteError,
 });
 
 declare module "@tanstack/react-router" {

@@ -2,8 +2,9 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowDownToLine } from "lucide-react";
 import { useState } from "react";
 import { downloadUpdate, restartUpdate, updateStatus } from "@/api/app";
-import { errorMessage } from "@/api/call";
+import { failureOf } from "@/api/call";
 import type { UpdateStatus } from "@/api/types";
+import { FailureNote } from "@/components/failure";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { day, fileSize } from "@/format";
@@ -44,8 +45,8 @@ export function UpdateDialog({
   const restart = useMutation({ mutationFn: restartUpdate });
   const { update } = status;
   const failure = restart.error
-    ? errorMessage(restart.error)
-    : status.kind === "available" && (status.error ?? (download.error ? errorMessage(download.error) : null));
+    ? failureOf(restart.error)
+    : status.kind === "available" && (status.error ?? (download.error ? failureOf(download.error) : null));
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="w-[520px]">
@@ -60,9 +61,9 @@ export function UpdateDialog({
           {status.kind === "downloading" ? (
             <Progress downloaded={status.downloaded} total={status.total} />
           ) : (
-            <p className="grow text-sm text-destructive" role="alert">
-              {failure}
-            </p>
+            <div className="grow text-sm text-destructive" role="alert">
+              {failure && <FailureNote failure={failure} />}
+            </div>
           )}
           <Button variant="ghost" onClick={onClose}>
             稍后

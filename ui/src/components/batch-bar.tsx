@@ -2,6 +2,8 @@ import { X } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import { useState } from "react";
 import { cn } from "cn";
+import type { Failure } from "@/api/types";
+import { FailureNote } from "@/components/failure";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -17,7 +19,8 @@ export function BatchBar({
   children,
 }: {
   count: number;
-  errors: string[];
+  /** What failed and why. */
+  errors: { lead: string; failure: Failure }[];
   onClear: () => void;
   children: ReactNode;
 }) {
@@ -36,9 +39,12 @@ export function BatchBar({
         )}
       >
         {errors.map((e) => (
-          <p key={e} className="px-4 pt-2.5 text-sm text-destructive">
-            {e}
-          </p>
+          <FailureNote
+            key={e.lead}
+            className="px-4 pt-2.5 text-sm text-destructive"
+            lead={e.lead}
+            failure={e.failure}
+          />
         ))}
         <div className="flex items-center gap-1 overflow-x-auto p-1.5 [scrollbar-width:none]">
           <Button variant="ghost" size="icon" aria-label="取消选择" onClick={onClear}>

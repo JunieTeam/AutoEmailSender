@@ -18,8 +18,10 @@ use tokio::process::Command;
 
 pub async fn run() -> crate::Result {
     let dir = crate::root().join(".dev-data");
-    let _lock = api::startup::DataLock::acquire(&dir).map_err(|e| e.message())?;
-    let (context, _) = api::startup::open(&dir).await.map_err(|e| e.message())?;
+    let _lock = api::startup::DataLock::acquire(&dir).map_err(|e| e.failure().message)?;
+    let (context, _) = api::startup::open(&dir)
+        .await
+        .map_err(|e| e.failure().message)?;
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
     let api_url = format!("http://{}", listener.local_addr()?);
     let vite_listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
@@ -126,10 +128,7 @@ fn cors(mut response: Response, origin: HeaderValue) -> Response {
 fn denied(message: &str) -> Response {
     (
         StatusCode::FORBIDDEN,
-        Json(api::CallError {
-            code: api::ErrorCode::Invalid,
-            message: message.into(),
-        }),
+        Json(api::CallError::invalid(message.into())),
     )
         .into_response()
 }
@@ -144,10 +143,9 @@ async fn call(State(context): State<Arc<api::Context>>, Json(request): Json<Call
     if request.op == "receiveNow" {
         return (
             StatusCode::BAD_REQUEST,
-            Json(api::CallError {
-                code: api::ErrorCode::Invalid,
-                message: "浏览器预览未启动收信，请在桌面开发版里收信。".into(),
-            }),
+            Json(api::CallError::invalid(
+                "浏览器预览未启动收信，请在桌面开发版里收信。".into(),
+            )),
         )
             .into_response();
     }

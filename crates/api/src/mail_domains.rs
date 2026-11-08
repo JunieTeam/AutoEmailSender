@@ -1,4 +1,5 @@
-use crate::{CallError, ErrorCode};
+use crate::CallError;
+use failure::Failure;
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex, MutexGuard},
@@ -106,10 +107,10 @@ impl MailDomains {
 }
 
 fn lookup_failed() -> CallError {
-    CallError {
-        code: ErrorCode::External,
-        message: "未能查询导师邮箱的域名".into(),
-    }
+    CallError::external(
+        Failure::new("未能查询导师邮箱的域名"),
+        "the mail domain lookup ended",
+    )
 }
 
 #[cfg(test)]

@@ -166,10 +166,6 @@ pub async fn library_failure(
 
 impl From<library::Error> for CallError {
     fn from(error: library::Error) -> Self {
-        tracing::warn!(
-            category = error.category(),
-            "mentor library operation failed"
-        );
         let code = match error {
             library::Error::Invalid(_) => ErrorCode::Invalid,
             library::Error::Account(account::Error::Server(cloud_api::ApiError {
@@ -180,9 +176,6 @@ impl From<library::Error> for CallError {
             library::Error::Account(_) => ErrorCode::External,
             _ => ErrorCode::Internal,
         };
-        Self {
-            code,
-            message: error.message(),
-        }
+        CallError::new(code, error.message()).logging(error.category())
     }
 }

@@ -3,7 +3,8 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { notificationPermission, requestNotificationPermission } from "@/api/app";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf, UiError } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Mailbox, Material, TestLetter } from "@/api/types";
 import { Attachments } from "@/components/attachments";
 import { openLinks } from "@/components/correspondence";
@@ -80,7 +81,8 @@ export function WelcomePage() {
     templates.error ??
     mentors.error ??
     tasks.error;
-  if (error) return <p className="px-7 py-6 text-sm text-destructive">未能加载：{errorMessage(error)}</p>;
+  if (error)
+    return <FailureNote className="px-7 py-6 text-sm text-destructive" lead="未能加载：" failure={failureOf(error)} />;
   if (
     !profile.data ||
     !mailboxes.data ||
@@ -179,7 +181,7 @@ export function WelcomePage() {
         </header>
         <Steps steps={steps} />
         <div className="mt-6 flex items-center justify-end gap-3">
-          {finish.error && <p className="text-sm text-destructive">{errorMessage(finish.error)}</p>}
+          {finish.error && <FailureNote className="text-sm text-destructive" failure={failureOf(finish.error)} />}
           <Button disabled={finish.isPending} onClick={end}>
             完成
           </Button>
@@ -278,7 +280,7 @@ function AddMailbox() {
       <Button disabled={!providers.data} onClick={() => setAdding(true)}>
         添加邮箱
       </Button>
-      {providers.error && <p className="text-sm text-destructive">{errorMessage(providers.error)}</p>}
+      {providers.error && <FailureNote className="text-sm text-destructive" failure={failureOf(providers.error)} />}
       {adding && providers.data && (
         <MailboxDialog mailbox={null} providers={providers.data} onClose={() => setAdding(false)} />
       )}
@@ -294,7 +296,7 @@ function AddModel() {
       <Button disabled={!providers.data} onClick={() => setAdding(true)}>
         添加模型
       </Button>
-      {providers.error && <p className="text-sm text-destructive">{errorMessage(providers.error)}</p>}
+      {providers.error && <FailureNote className="text-sm text-destructive" failure={failureOf(providers.error)} />}
       {adding && providers.data && (
         <ModelDialog config={null} providers={providers.data} onClose={() => setAdding(false)} />
       )}
@@ -325,7 +327,7 @@ function AddMaterial() {
       <Button disabled={add.isPending} onClick={() => picker.current?.click()}>
         {add.isPending ? "正在提取文字…" : "添加材料"}
       </Button>
-      {add.error && <p className="w-full text-sm text-destructive">{errorMessage(add.error)}</p>}
+      {add.error && <FailureNote className="w-full text-sm text-destructive" failure={failureOf(add.error)} />}
     </>
   );
 }
@@ -338,7 +340,9 @@ function AddTemplate({ first }: { first: boolean }) {
       <Button disabled={!placeholders.data} onClick={() => setAdding(true)}>
         写模板
       </Button>
-      {placeholders.error && <p className="text-sm text-destructive">{errorMessage(placeholders.error)}</p>}
+      {placeholders.error && (
+        <FailureNote className="text-sm text-destructive" failure={failureOf(placeholders.error)} />
+      )}
       {adding && placeholders.data && (
         <TemplateDialog
           template={null}
@@ -378,7 +382,7 @@ function TestLetterPreview({ mailbox, materials }: { mailbox: Mailbox; materials
     // Kept for the rest of this run of the app: the step counts as done once sent.
     gcTime: Infinity,
     mutationFn: ({ letter: l }: { to: string; letter: TestLetter }) => {
-      if (!style.data) throw new Error("信件样式尚未加载，请稍后再试");
+      if (!style.data) throw new UiError("信件样式尚未加载，请稍后再试");
       return call("sendTestLetter", {
         mailboxId: mailbox.id,
         subject: l.subject,
@@ -391,7 +395,8 @@ function TestLetterPreview({ mailbox, materials }: { mailbox: Mailbox; materials
   // Closing the step and opening it again must not allow a second letter while the first is on its way.
   const last = useMutationState({ filters: { mutationKey: SEND_TEST_LETTER }, select: (m) => m.state }).at(-1);
   const error = letter.error ?? style.error;
-  if (error) return <p className="text-sm text-destructive">未能准备试发的邮件：{errorMessage(error)}</p>;
+  if (error)
+    return <FailureNote className="text-sm text-destructive" lead="未能准备试发的邮件：" failure={failureOf(error)} />;
   if (!letter.data || !style.data) return null;
   const l = letter.data;
   return (
@@ -414,7 +419,9 @@ function TestLetterPreview({ mailbox, materials }: { mailbox: Mailbox; materials
           {last?.status === "pending" ? "正在发送…" : `发给自己（${mailbox.address}）`}
         </Button>
         {last?.status === "success" && <p className="text-sm text-success">已发出，请到邮箱的收件箱查看</p>}
-        {last?.error && <p className="text-sm text-destructive">未能发出：{errorMessage(last.error)}</p>}
+        {last?.error && (
+          <FailureNote className="text-sm text-destructive" lead="未能发出：" failure={failureOf(last.error)} />
+        )}
       </div>
     </div>
   );

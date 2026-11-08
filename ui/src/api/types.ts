@@ -58,7 +58,11 @@ export type ApprovalPreview = { taskId: number, ids: Array<number>, };
 
 export type Attachment = { fileName: string, size: number, };
 
-export type CallError = { code: ErrorCode, message: string, };
+export type CallError = { code: ErrorCode, message: string,
+/**
+ * The outside words the app did not recognize, shown folded under the message.
+ */
+details: string | null, };
 
 export type Candidate = { id: number, name: string, reason: string | null, contactCount: number, lastContactAt: number | null, libraryStatus: LibraryStatus | null, previous: PreviousLetter | null, };
 
@@ -1029,6 +1033,13 @@ steps: Array<string>,
  */
 url: string, } | { "kind": "unsupported", reason: string, };
 
+export type StartupFailure = { reason: Failure,
+/**
+ * What failed and the words it failed with, scrubbed: for the user to copy, and added to
+ * the exported logs, which may not have been written.
+ */
+diagnostic: string, };
+
 export type StatsPeriod = { range: Range, timezone: string, now: number, };
 
 export type StatsQuery = { page: number, range: Range, timezone: string, now: number, };
@@ -1171,13 +1182,19 @@ export type Trashed = { rows: Array<number>, id: number, name: string, };
 
 export type Trend = { date: string, sent: number, replies: number, };
 
+export type UiErrorReport = { message: string, stack: string | null,
+/**
+ * The route's template, such as `/mentors/$id`, which leaves out what was searched for.
+ */
+route: string, };
+
 export type UpdateInfo = { version: string,
 /**
  * Unix milliseconds, or null when the release has no publication date.
  */
 publishedAt: number | null, notes: string | null, };
 
-export type UpdateStatus = { "kind": "current" } | { "kind": "available", update: UpdateInfo, error: string | null, } | { "kind": "downloading", update: UpdateInfo, downloaded: number, total: number | null, } | { "kind": "ready", update: UpdateInfo, };
+export type UpdateStatus = { "kind": "current" } | { "kind": "available", update: UpdateInfo, error: Failure | null, } | { "kind": "downloading", update: UpdateInfo, downloaded: number, total: number | null, } | { "kind": "ready", update: UpdateInfo, };
 
 export type UploadedFile = { fileName: string, data: string, };
 
@@ -1441,4 +1458,5 @@ export interface Operations {
   agreeModel: { input: ModelAgreement; output: null };
   listProviderModels: { input: ModelSource; output: Array<string> };
   testModel: { input: ModelTest; output: null };
+  logUiError: { input: UiErrorReport; output: null };
 }

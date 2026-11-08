@@ -1,11 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ExportMentors, NotificationPermission, RestoreInfo, UpdateStatus } from "@/api/types";
+import type { ExportMentors, NotificationPermission, RestoreInfo, StartupFailure, UpdateStatus } from "@/api/types";
 
-// Commands of the desktop app itself (crates/app), beside the core's operations in call.ts.
+// Commands of the desktop app itself (crates/app), beside the core's operations in call.ts. They
+// reject with a `CallError`, as calls do.
 
 /** Why the core could not start, or null when it is running. */
-export function startupFailure(): Promise<string | null> {
-  return invoke<string | null>("startup_failure");
+export function startupFailure(): Promise<StartupFailure | null> {
+  return invoke<StartupFailure | null>("startup_failure");
 }
 
 /** Asks where to save the logs and saves them there; false when the user cancels. */

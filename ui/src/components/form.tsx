@@ -1,6 +1,7 @@
 import { Check, LoaderCircle, X } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { errorMessage } from "@/api/call";
+import { failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import { Dialog } from "@/components/ui/dialog";
 
 // Pieces of the settings dialogs.
@@ -53,18 +54,26 @@ export function TestResult({
   label: string;
   mutation: { status: "idle" | "pending" | "success" | "error"; error: Error | null };
 }) {
-  if (mutation.status === "idle") return null;
-  const [icon, text] = {
-    pending: [<LoaderCircle key="i" className="animate-spin text-muted-foreground" />, "正在测试…"],
-    success: [<Check key="i" className="text-success" />, "正常"],
-    error: [<X key="i" className="text-destructive" />, errorMessage(mutation.error)],
-  }[mutation.status];
   return (
-    <p className="flex gap-2 [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0">
-      {icon}
-      <span>
-        {label}：{text}
-      </span>
-    </p>
+    mutation.status !== "idle" && (
+      <div className="flex gap-2 [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0">
+        {mutation.status === "pending" ? (
+          <>
+            <LoaderCircle className="animate-spin text-muted-foreground" />
+            <p>{label}：正在测试…</p>
+          </>
+        ) : mutation.status === "success" ? (
+          <>
+            <Check className="text-success" />
+            <p>{label}：正常</p>
+          </>
+        ) : (
+          <>
+            <X className="text-destructive" />
+            <FailureNote lead={`${label}：`} failure={failureOf(mutation.error)} />
+          </>
+        )}
+      </div>
+    )
   );
 }

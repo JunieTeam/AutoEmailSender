@@ -1,8 +1,9 @@
 import { type MutationState, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, TagIcon } from "lucide-react";
 import { useState } from "react";
-import { call, errorMessage } from "@/api/call";
-import type { Direction, MentorDetail, Tag } from "@/api/types";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
+import type { Direction, Failure, MentorDetail, Tag } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogHeader } from "@/components/ui/dialog";
@@ -89,20 +90,27 @@ export function TagSaveError({ mentorId }: { mentorId: number }) {
         const last = saves.findLast((s) => s.variables?.tagId === t.id);
         return (
           last?.status === "error" && (
-            <p key={t.id} className="text-destructive">
-              标签“{t.name}”未能{last.variables?.on ? "加上" : "去掉"}：{errorMessage(last.error)}
-            </p>
+            <FailureNote
+              key={t.id}
+              className="text-destructive"
+              lead={`标签“${t.name}”未能${last.variables?.on ? "加上" : "去掉"}：`}
+              failure={failureOf(last.error)}
+            />
           )
         );
       })}
-      {created?.status === "error" && <p className="text-destructive">未能新建标签：{errorMessage(created.error)}</p>}
+      {created?.status === "error" && (
+        <FailureNote className="text-destructive" lead="未能新建标签：" failure={failureOf(created.error)} />
+      )}
     </>
   );
 }
 
 /** Said where the tags would be listed, which a failed load would otherwise leave looking empty. */
 function TagsFailed({ error }: { error: Error | null }) {
-  return error && <p className="px-2 text-sm text-destructive">标签未能加载：{errorMessage(error)}</p>;
+  return (
+    error && <FailureNote className="px-2 text-sm text-destructive" lead="标签未能加载：" failure={failureOf(error)} />
+  );
 }
 
 /** Shows the mentor's tags from the page's cache, which each tick updates at once. */
@@ -261,12 +269,12 @@ function TagManager({ onClose }: { onClose: () => void }) {
       else next.delete(id);
       return next;
     });
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<Failure>();
   const run = useMutation({
     // In the order clicked: two quick colours end on the second, and moves of different tags add up.
     scope: { id: "manageTags" },
     mutationFn: (op: () => Promise<unknown>) => op(),
-    onError: (e) => setError(errorMessage(e)),
+    onError: (e) => setError(failureOf(e)),
     onSettled: () => refreshTags(queryClient),
   });
   // The error stays until the user does something else: a later change that works says nothing
@@ -324,7 +332,7 @@ function TagManager({ onClose }: { onClose: () => void }) {
               onDelete={() => act(() => call("deleteTag", { id: t.id }))}
             />
           ))}
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <FailureNote className="text-sm text-destructive" failure={error} />}
         </DialogBody>
       </DialogContent>
     </Dialog>

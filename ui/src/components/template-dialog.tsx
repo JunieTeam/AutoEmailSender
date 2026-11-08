@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ComponentProps, useRef, useState } from "react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf, UiError } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { Template, TemplateForm } from "@/api/types";
 import { Confirm } from "@/components/batch-bar";
 import { formClose, Field } from "@/components/form";
@@ -50,13 +51,13 @@ export function TemplateDialog({
   });
   const importWord = useMutation({
     mutationFn: async (file: File) => {
-      if (file.size > MAX_UPLOAD) throw new Error("文件超过 20 MB，无法导入");
+      if (file.size > MAX_UPLOAD) throw new UiError("文件超过 20 MB，无法导入");
       const [word, { pastedMarkdown }] = await Promise.all([
         call("importWordTemplate", { fileName: file.name, data: await base64(file) }),
         import("@/components/letter-editor"),
       ]);
       const bodyMd = pastedMarkdown(word.html);
-      if (bodyMd.trim() === "") throw new Error("文件中无可导入的文字，请换一个 Word 文件");
+      if (bodyMd.trim() === "") throw new UiError("文件中无可导入的文字，请换一个 Word 文件");
       return { name: word.name, bodyMd };
     },
     onSuccess: ({ name, bodyMd }) => {
@@ -146,7 +147,7 @@ export function TemplateDialog({
                   }}
                 />
                 {importWord.error && (
-                  <p className="mt-1.5 text-sm text-destructive">{errorMessage(importWord.error)}</p>
+                  <FailureNote className="mt-1.5 text-sm text-destructive" failure={failureOf(importWord.error)} />
                 )}
               </Field>
               <p className="text-sm text-muted-foreground">
@@ -155,9 +156,9 @@ export function TemplateDialog({
             </fieldset>
           </DialogBody>
           <DialogFooter>
-            <p className="grow text-sm text-destructive" role="alert">
-              {save.isError && errorMessage(save.error)}
-            </p>
+            <div className="grow text-sm text-destructive" role="alert">
+              {save.isError && <FailureNote failure={failureOf(save.error)} />}
+            </div>
             <DialogClose render={<Button variant="ghost" />}>取消</DialogClose>
             <Button type="submit" disabled={busy || !complete}>
               {template ? "保存" : "添加"}

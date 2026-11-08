@@ -7,7 +7,7 @@ import { Notice } from "@/components/notice";
 import { FailureDetails, FailureNote } from "@/components/failure";
 import { useState } from "react";
 import { exportCrawlLog } from "@/api/app";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf, UiError } from "@/api/call";
 import type {
   CandidateDetail,
   CandidateFilter,
@@ -144,7 +144,7 @@ function Crawls() {
   });
   const start = useMutation({
     mutationFn: () => {
-      if (!chosen) throw new Error("请在设置中添加模型");
+      if (!chosen) throw new UiError("请在设置中添加模型");
       return call("startCrawl", { urls, modelId: chosen.id });
     },
     onError: () => client.invalidateQueries({ queryKey: ["listModelConfigs"] }),
@@ -186,7 +186,11 @@ function Crawls() {
         </ModelAction>
         <div id="crawl-url-error" className="text-sm text-muted-foreground">
           {urls.trim() &&
-            (validation.error ? errorMessage(validation.error) : validation.isFetching ? "正在检查网址…" : null)}
+            (validation.error ? (
+              <FailureNote failure={failureOf(validation.error)} />
+            ) : validation.isFetching ? (
+              "正在检查网址…"
+            ) : null)}
         </div>
         <ErrorText error={models.error ?? start.error} />
       </section>
@@ -903,11 +907,7 @@ function ReviewDialog({
   );
 }
 function ErrorText({ error }: { error: unknown }) {
-  return error ? (
-    <p role="alert" className="text-sm text-destructive">
-      {errorMessage(error)}
-    </p>
-  ) : null;
+  return error ? <FailureNote className="text-sm text-destructive" role="alert" failure={failureOf(error)} /> : null;
 }
 /** The candidate's emails that its pages give only in images. */
 function onlyRecognized({ fields, evidence }: CandidateDetail) {

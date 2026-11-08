@@ -5,6 +5,7 @@ import { act, type ReactNode, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import type {
+  CallError,
   Email,
   Entry,
   FactCheck,
@@ -40,7 +41,7 @@ const remote = vi.hoisted(
     check?: (draft: ReplyDraft) => Promise<FactCheck>;
     listing?: Promise<void>;
     approving?: Promise<void>;
-    targetError?: Error;
+    targetError?: CallError;
   } => ({
     target: {
       id: 1,
@@ -67,8 +68,8 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => () => undefined,
   useSearch: () => ({}),
 }));
-vi.mock("@/api/call", () => ({
-  errorMessage: (error: Error) => error.message,
+vi.mock("@/api/call", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/call")>()),
   call: async (
     op: string,
     input: ReplyDraftEdit & { id?: number; ids?: number[]; column?: string; draftId?: number; subject?: string },
@@ -88,7 +89,7 @@ vi.mock("@/api/call", () => ({
           : { ...input, id: 5, target: remote.target, factCheck: remote.draft?.factCheck ?? null };
       return remote.draft;
     }
-    if (op === "addMaterial") throw new Error("文件里没有可读取的文字");
+    if (op === "addMaterial") throw failed("文件里没有可读取的文字");
     if (op === "getAiFactCheck") return remote.check !== undefined;
     const draft = remote.draft;
     if (op === "factCheckEmail" && remote.check && draft && draft.id === input.id) {
@@ -217,6 +218,11 @@ const reply: Extract<Message, { kind: "reply" }> = {
 };
 
 const received: Entry = { message: reply };
+
+/** A failure as the core reports it. */
+function failed(message: string): CallError {
+  return { code: "external", message, details: null };
+}
 
 function button(name: string) {
   const node = Array.from(document.querySelectorAll("button")).find((b) => b.textContent === name);
@@ -492,7 +498,7 @@ it("does not revive a trashed reply's late AI result or save a new draft after r
 
 it("keeps a failed empty reply's error and original target after new mail and leaving the page", async () => {
   const original = remote.target;
-  let fail: ((error: Error) => void) | undefined;
+  let fail: ((error: CallError) => void) | undefined;
   remote.write = () =>
     new Promise((_, reject) => {
       fail = reject;
@@ -509,7 +515,7 @@ it("keeps a failed empty reply's error and original target after new mail and le
       await view.client.invalidateQueries({ queryKey: ["getReplyTarget", mentor.id] });
     });
     expect(view.container.textContent).toContain("回复 王伟“面谈”");
-    await act(async () => fail?.(new Error("服务商出错了（503）。稍后再试。")));
+    await act(async () => fail?.(failed("服务商出错了（503）。稍后再试。")));
     await vi.waitFor(() => expect(view.container.textContent).toContain("AI 撰写未能完成：服务商出错了（503）"));
     expect(view.container.textContent).toContain("回复 王伟“面谈”");
     await view.render(false);
@@ -625,7 +631,7 @@ it("puts the cursor in the reply it opens, and an AI draft arriving later leaves
 
 it("opens the folded reply to say why the letter chosen to answer could not be read", async () => {
   remote.entries = [received];
-  remote.targetError = new Error("回复的那封信已不在往来里");
+  remote.targetError = failed("回复的那封信已不在往来里");
   const view = setup(true);
   try {
     await view.render();

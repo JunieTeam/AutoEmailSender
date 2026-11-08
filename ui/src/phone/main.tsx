@@ -7,9 +7,11 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { StrictMode, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import appIcon from "../../../docs/icon.svg";
+import { UiError } from "@/api/call";
 import { App } from "@/app";
 import { Button } from "@/components/ui/button";
 import { queryClient } from "@/query-client";
+import { listenForUiErrors } from "@/ui-errors";
 import "@/index.css";
 import { followTheme } from "@/theme";
 import { forget, named, type Pairing, pairings, Unreadable } from "./pairings";
@@ -187,12 +189,12 @@ async function invoke(link: Link, command: string, args?: InvokeArgs): Promise<u
     case "plugin:opener|open_url": {
       if (!args || !("url" in args) || typeof args.url !== "string") throw new Error("链接无效");
       const url = new URL(args.url);
-      if (!["http:", "https:", "mailto:"].includes(url.protocol)) throw new Error("手机上无法打开这种链接");
+      if (!["http:", "https:", "mailto:"].includes(url.protocol)) throw new UiError("手机上无法打开这种链接");
       window.open(url.href, "_blank", "noopener,noreferrer");
       return undefined;
     }
     default:
-      throw new Error("这个操作只能在电脑上完成");
+      throw new UiError("这个操作只能在电脑上完成");
   }
 }
 
@@ -215,6 +217,7 @@ if (!pairing) {
   mockWindows("main");
   mockIPC((command, args) => invoke(link, command, args), { shouldMockEvents: true });
   followTheme();
+  listenForUiErrors();
   link.connect();
   createRoot(root).render(
     <StrictMode>

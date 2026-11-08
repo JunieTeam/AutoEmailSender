@@ -12,7 +12,8 @@ const remote = vi.hoisted(() => ({
   order: vi.fn<() => Promise<OrderState>>(),
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: async (url: string) => remote.opened(url) }));
-vi.mock("@/api/call", () => ({
+vi.mock("@/api/call", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/call")>()),
   call: async (op: string, input: unknown) => {
     if (op === "createPlusOrder") {
       remote.ordered(input);

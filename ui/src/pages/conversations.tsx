@@ -10,10 +10,10 @@ import {
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
 import { ChevronLeft, Inbox, ListTodo, MessagesSquare, RefreshCw, UserRound } from "lucide-react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
 import type { TodoPage } from "@/api/types";
 import { Correspondence } from "@/components/correspondence";
-import { FailureDetails } from "@/components/failure";
+import { FailureDetails, FailureNote } from "@/components/failure";
 import { Avatar, ContactLabel, placeOf } from "@/components/mentor";
 import { Pager, pageParam, useLastPage } from "@/components/mentor-table";
 import { Notice } from "@/components/notice";
@@ -138,9 +138,10 @@ export function ConversationsPage() {
             onChange={(show) => navigate({ search: (s) => ({ ...s, show, page: undefined }) })}
           />
           {(receiveError || status.error || mailboxes.error) && (
-            <p className="mt-2 text-sm text-destructive">
-              {errorMessage(receiveError ?? status.error ?? mailboxes.error)}
-            </p>
+            <FailureNote
+              className="mt-2 text-sm text-destructive"
+              failure={failureOf(receiveError ?? status.error ?? mailboxes.error)}
+            />
           )}
           {mailboxes.data
             ?.filter((m) => m.receiveError !== null)
@@ -160,7 +161,7 @@ export function ConversationsPage() {
           {todos ? (
             <TodoList query={todoQuery} selected={search.mentor} />
           ) : query.isError ? (
-            <Notice title="往来列表未能加载" detail={errorMessage(query.error)} />
+            <Notice title="往来列表未能加载" failure={failureOf(query.error)} />
           ) : !query.data ? (
             <Loading />
           ) : query.data.total === 0 ? (
@@ -223,7 +224,7 @@ export function ConversationsPage() {
 /** Every open todo, overdue first, then by due time, those without one last (docs/ui.md#交互). */
 function TodoList({ query, selected }: { query: UseQueryResult<TodoPage>; selected?: number }) {
   const now = useNow();
-  if (query.isError) return <Notice title="待办未能加载" detail={errorMessage(query.error)} />;
+  if (query.isError) return <Notice title="待办未能加载" failure={failureOf(query.error)} />;
   if (!query.data) return <Loading />;
   if (query.data.total === 0) {
     return <Notice icon={ListTodo} title="尚无待办" detail="导师回信里要你做的事和你自己添加的待办会列在这里" />;
@@ -271,7 +272,7 @@ function ConversationDetail({ id }: { id: number }) {
     return (
       <>
         {back}
-        <Notice title="导师资料未能加载" detail={errorMessage(query.error)} />
+        <Notice title="导师资料未能加载" failure={failureOf(query.error)} />
       </>
     );
   if (!query.data) return <Loading />;

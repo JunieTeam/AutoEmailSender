@@ -4,6 +4,10 @@ use std::error::Error as StdError;
 use std::fs::{File, TryLockError};
 use std::path::Path;
 
+use failure::Failure;
+use serde::Serialize;
+use ts_rs::TS;
+
 use crate::Context;
 
 /// Kept alive by the host so that no other host can write the same data directory.
@@ -83,32 +87,53 @@ impl std::fmt::Display for Error {
 impl StdError for Error {}
 
 impl Error {
-    pub fn message(&self) -> String {
+    pub fn failure(&self) -> Failure {
         use db::OpenError;
         match self {
-            Self::InUse => {
-                "数据目录正在使用中，请先关闭这个工作树的桌面开发版或浏览器预览，再重试".into()
+            Self::InUse => Failure::new(
+                "数据目录正在使用中，请先关闭这个工作树的桌面开发版或浏览器预览，再重试",
+            ),
+            Self::Restore(e) => {
+                let reason = e.failure();
+                Failure {
+                    message: format!(
+                        "恢复尚未完成，原数据已保留，请重启重试。{}。",
+                        reason.message.trim_end_matches('。')
+                    ),
+                    details: reason.details,
+                }
             }
-            Self::Restore(e) => format!("恢复尚未完成，原数据已保留，请重启重试。{}", e.message()),
-            Self::DataDir(e) => format!("数据目录无法使用：{e}"),
-            Self::Net(e) => format!("网络连接无法初始化：{e}"),
-            Self::Database(OpenError::Open(e)) => format!("数据库无法打开：{e}"),
+            Self::DataDir(e) => failure::file("数据目录无法使用", e),
+            Self::Net(e) => Failure::unrecognized("网络连接无法初始化", &e.to_string()),
+            Self::Database(OpenError::Open(e)) => {
+                Failure::unrecognized("数据库无法打开", &e.to_string())
+            }
             Self::Database(OpenError::Backup(e)) => {
-                format!("升级数据库前未能备份，为保护数据未做升级：{e}")
+                Failure::unrecognized("升级数据库前未能备份，为保护数据未做升级", &e.to_string())
             }
             Self::Database(OpenError::Upgrade {
                 error,
                 backup: Some(path),
-            }) => format!(
-                "数据库升级失败：{error}。升级前的数据库已备份到 {}。",
-                path.display()
+            }) => Failure::unrecognized(
+                format!(
+                    "数据库升级失败。升级前的数据库已备份到 {}。",
+                    path.display()
+                ),
+                &error.to_string(),
             ),
             Self::Database(OpenError::Upgrade {
                 error,
                 backup: None,
-            }) => {
-                format!("数据库创建失败：{error}")
-            }
+            }) => Failure::unrecognized("数据库创建失败", &error.to_string()),
         }
     }
+}
+
+/// What the window shows in place of the app when it could not start (docs/ui.md#页面).
+#[derive(Debug, Clone, Serialize, TS)]
+pub struct StartupFailure {
+    pub reason: Failure,
+    /// What failed and the words it failed with, scrubbed: for the user to copy, and added to
+    /// the exported logs, which may not have been written.
+    pub diagnostic: String,
 }

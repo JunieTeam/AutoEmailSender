@@ -10,9 +10,9 @@ import {
 } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { TriangleAlert } from "lucide-react";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf, UiError } from "@/api/call";
 import type { FactCheck, Failure, FirstDraftEdit, Letter, ModelConfig, ModelProvider, ReplyTarget } from "@/api/types";
-import { FailureDetails } from "@/components/failure";
+import { FailureNote } from "@/components/failure";
 import { Confirm } from "@/components/batch-bar";
 import { useModelProviders } from "@/components/model-dialog";
 import { Button } from "@/components/ui/button";
@@ -61,7 +61,7 @@ export function useWriting(
         await waitForSaves(queryClient, ["saveReplyDraft", mentorId]);
         // Canceled while the draft was saving, so that the core had nothing to withdraw yet.
         const current = queryClient.getMutationCache().find<Letter, Error, WritingEdit>({ mutationKey });
-        if (current?.state.variables?.request !== letter.request) throw new Error("这个请求已取消");
+        if (current?.state.variables?.request !== letter.request) throw new UiError("这个请求已取消");
         return call("writeReply", {
           mentorId,
           replyTo,
@@ -203,7 +203,7 @@ export function ModelAction({
       ) : (
         button(onWrite)
       )}
-      {error && <p className="text-sm text-destructive">{errorMessage(error)}</p>}
+      {error && <FailureNote className="text-sm text-destructive" failure={failureOf(error)} />}
     </>
   );
 }
@@ -268,21 +268,17 @@ export function FactCheckStatus({
   if (check.latest?.status === "pending") return <p className="text-sm text-muted-foreground">AI 正在核对…</p>;
   const reason: Failure | null =
     check.latest?.status === "error"
-      ? { message: errorMessage(check.latest.error), details: null }
+      ? failureOf(check.latest.error)
       : on.data && stored?.state === "failed"
         ? stored.reason
         : null;
   return (
     reason !== null && (
-      <div className="text-sm text-destructive">
-        <p>
-          AI 核对未能完成：{reason.message}
-          <Button variant="quiet" size="sm" onClick={check.start}>
-            重试
-          </Button>
-        </p>
-        <FailureDetails failure={reason} />
-      </div>
+      <FailureNote className="text-sm text-destructive" lead="AI 核对未能完成：" failure={reason}>
+        <Button variant="quiet" size="sm" onClick={check.start}>
+          重试
+        </Button>
+      </FailureNote>
     )
   );
 }

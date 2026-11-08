@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { call, errorCode, errorMessage } from "@/api/call";
+import { call, errorCode, errorMessage, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import { Field, formClose } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -210,9 +211,9 @@ export function AccountDialog({
             </fieldset>
           </DialogBody>
           <DialogFooter>
-            <p className="grow text-sm text-destructive" role="alert">
-              {error && errorMessage(error)}
-            </p>
+            <div className="grow text-sm text-destructive" role="alert">
+              {error && <FailureNote failure={failureOf(error)} />}
+            </div>
             <DialogClose render={<Button variant="ghost" />}>取消</DialogClose>
             <Button type="submit" disabled={submit.isPending || !complete}>
               {submit.isPending ? MODES[mode].pending : MODES[mode].action}
@@ -304,9 +305,9 @@ function TermsDialog({ onClose }: { onClose: () => void }) {
           </p>
         </DialogBody>
         <DialogFooter>
-          <p className="grow text-sm text-destructive" role="alert">
-            {agree.error && errorMessage(agree.error)}
-          </p>
+          <div className="grow text-sm text-destructive" role="alert">
+            {agree.error && <FailureNote failure={failureOf(agree.error)} />}
+          </div>
           <Button variant="ghost" disabled={agree.isPending} onClick={onClose}>
             不同意
           </Button>

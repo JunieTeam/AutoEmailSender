@@ -1,4 +1,5 @@
 import { cn } from "cn";
+import type { ReactNode } from "react";
 import type { Failure } from "@/api/types";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -18,13 +19,29 @@ export function FailureDetails({ failure, className }: { failure: Failure; class
   );
 }
 
-/** Why something failed, after what failed if `lead` says it, with its details underneath. */
-export function FailureNote({ failure, lead, className }: { failure: Failure; lead?: string; className?: string }) {
+/**
+ * Why something failed, after what failed if `lead` says it, followed by `children` such as a way to
+ * try again, with its details underneath.
+ */
+export function FailureNote({
+  failure,
+  lead,
+  className,
+  role,
+  children,
+}: {
+  failure: Failure;
+  lead?: string;
+  className?: string;
+  role?: "alert";
+  children?: ReactNode;
+}) {
   return (
-    <div className={className}>
+    <div className={className} role={role}>
       <p className="wrap-anywhere">
         {lead}
         {failure.message}
+        {children}
       </p>
       <FailureDetails failure={failure} />
     </div>

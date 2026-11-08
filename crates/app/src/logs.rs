@@ -5,6 +5,7 @@ use std::error::Error;
 use std::io::Write;
 use std::path::Path;
 
+use api::CallError;
 use chrono::{DateTime, Local, SecondsFormat, Utc};
 use crawl::queue::{CrawlDetail, CrawlState};
 use tauri::AppHandle;
@@ -46,9 +47,14 @@ pub fn init(dir: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Asks where to save, then writes the log files in `dir` there as one text file. False when the
-/// user cancels.
-pub fn export(app: &AppHandle, dir: &Path) -> Result<bool, Box<dyn Error>> {
+/// Asks where to save, then writes there as one text file why starting up failed, if it did, and
+/// the log files in `dir`, if it was found. False when the user cancels.
+pub fn export(
+    app: &AppHandle,
+    dir: Option<&Path>,
+    startup: Option<&str>,
+) -> Result<bool, CallError> {
+    const WHAT: &str = "日志未能导出";
     let Some(target) = app
         .dialog()
         .file()
@@ -57,17 +63,22 @@ pub fn export(app: &AppHandle, dir: &Path) -> Result<bool, Box<dyn Error>> {
     else {
         return Ok(false);
     };
-    let out = content(dir)?;
-    crate::save::replace(&target.into_path()?, |file| file.write_all(out.as_bytes()))?;
+    let out = content(dir, startup).map_err(|e| crate::file_failed(WHAT, e))?;
+    crate::save::picked(target, WHAT, |file| file.write_all(out.as_bytes()))?;
     Ok(true)
 }
 
 /// Every log file in `dir`, oldest first, scrubbed.
-fn content(dir: &Path) -> std::io::Result<String> {
+fn content(dir: Option<&Path>, startup: Option<&str>) -> std::io::Result<String> {
     let mut out = environment();
-    for name in files(dir)? {
-        out.push_str(&format!("\n== {name} ==\n"));
-        out.push_str(&std::fs::read_to_string(dir.join(name))?);
+    if let Some(startup) = startup {
+        out.push_str(&format!("启动失败：{startup}\n"));
+    }
+    if let Some(dir) = dir {
+        for name in files(dir)? {
+            out.push_str(&format!("\n== {name} ==\n"));
+            out.push_str(&std::fs::read_to_string(dir.join(name))?);
+        }
     }
     Ok(failure::scrub(&out))
 }
@@ -177,20 +188,19 @@ pub fn export_crawl(
     dir: &Path,
     detail: &CrawlDetail,
     created_at: DateTime<Utc>,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<bool, CallError> {
+    const WHAT: &str = "整理日志未能导出";
     let local = created_at.with_timezone(&Local);
     let date = local.format("%Y-%m-%d").to_string();
     let started = local.format("%Y-%m-%d %H:%M:%S").to_string();
-    let Some(target) = app
-        .dialog()
-        .file()
-        .set_file_name(crawl_filename(detail, &date)?)
-        .blocking_save_file()
-    else {
+    // Its addresses were checked when the crawl was added.
+    let name = crawl_filename(detail, &date).map_err(CallError::internal)?;
+    let Some(target) = app.dialog().file().set_file_name(name).blocking_save_file() else {
         return Ok(false);
     };
-    let out = crawl_content(dir, detail, created_at, &started)?;
-    crate::save::replace(&target.into_path()?, |file| file.write_all(out.as_bytes()))?;
+    let out = crawl_content(dir, detail, created_at, &started)
+        .map_err(|e| crate::file_failed(WHAT, e))?;
+    crate::save::picked(target, WHAT, |file| file.write_all(out.as_bytes()))?;
     Ok(true)
 }
 

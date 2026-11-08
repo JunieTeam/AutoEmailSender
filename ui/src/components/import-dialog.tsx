@@ -2,7 +2,8 @@ import { IntakeChoices } from "@/components/intake-choices";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { exportMentors } from "@/api/app";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf, UiError } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type {
   Decisions,
   Field,
@@ -48,7 +49,7 @@ export function ImportDialog({ onClose, onImported }: { onClose: () => void; onI
       remapping?: Preview;
     }) => {
       const version = ++revision.current;
-      if (selected instanceof File && selected.size > MAX_UPLOAD) throw new Error("文件超过 20 MB，请缩小文件后重试");
+      if (selected instanceof File && selected.size > MAX_UPLOAD) throw new UiError("文件超过 20 MB，请缩小文件后重试");
       const input =
         selected instanceof File
           ? { fileName: selected.name, data: await base64(selected), setup }
@@ -269,9 +270,9 @@ export function ImportDialog({ onClose, onImported }: { onClose: () => void; onI
           )}
         </DialogBody>
         <DialogFooter className="flex-wrap">
-          <p className="min-w-0 grow text-sm text-destructive" role="alert">
-            {error && errorMessage(error)}
-          </p>
+          <div className="min-w-0 grow text-sm text-destructive" role="alert">
+            {error && <FailureNote failure={failureOf(error)} />}
+          </div>
           <DialogClose render={<Button variant="ghost" disabled={busy} />}>取消</DialogClose>
           <Button
             disabled={busy || read.isError || !file || !!preview?.issue || !possible}

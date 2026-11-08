@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { cn } from "cn";
-import { call, errorMessage } from "@/api/call";
+import { call, failureOf } from "@/api/call";
+import { FailureNote } from "@/components/failure";
 import type { ContactProgress, MentorOverview, Range, Trend, TokenUsage, UsagePurpose } from "@/api/types";
 import { BarChart, Legend, type Point, type Series } from "@/components/bar-chart";
 import { Pager } from "@/components/mentor-table";
@@ -129,7 +130,7 @@ function Loaded<T>({
   query: { data: T | undefined; error: Error | null };
   children: (data: T) => React.ReactNode;
 }) {
-  if (query.error) return <p className="text-sm text-destructive">{errorMessage(query.error)}</p>;
+  if (query.error) return <FailureNote className="text-sm text-destructive" failure={failureOf(query.error)} />;
   return query.data === undefined ? (
     <div className="flex h-40">
       <Loading />

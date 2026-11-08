@@ -3,6 +3,7 @@ import type { InvokeArgs } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import type { CallError } from "./api/types";
+import { UiError } from "./api/call";
 
 declare global {
   interface ImportMetaEnv {
@@ -29,7 +30,7 @@ mockIPC(invoke, { shouldMockEvents: true });
 async function invoke(command: string, args?: InvokeArgs): Promise<unknown> {
   switch (command) {
     case "call": {
-      if (!token) throw new Error("缺少预览令牌，请打开终端打印的完整网址。");
+      if (!token) throw new UiError("缺少预览令牌，请打开终端打印的完整网址。");
       const response = await fetch(`${import.meta.env.AES_PREVIEW_API}/call`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -60,11 +61,11 @@ async function invoke(command: string, args?: InvokeArgs): Promise<unknown> {
     case "plugin:opener|open_url": {
       if (!args || !("url" in args) || typeof args.url !== "string") throw new Error("链接无效。");
       const url = new URL(args.url);
-      if (!["http:", "https:", "mailto:"].includes(url.protocol)) throw new Error("预览不支持打开这种链接。");
+      if (!["http:", "https:", "mailto:"].includes(url.protocol)) throw new UiError("预览不支持打开这种链接。");
       window.open(url.href, "_blank", "noopener,noreferrer");
       return undefined;
     }
     default:
-      throw new Error(`浏览器预览不支持此桌面功能：${command}。请在桌面开发版中操作。`);
+      throw new UiError(`浏览器预览不支持此桌面功能：${command}。请在桌面开发版中操作。`);
   }
 }

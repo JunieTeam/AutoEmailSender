@@ -19,8 +19,8 @@ const remote = vi.hoisted(
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }));
-vi.mock("@/api/call", () => ({
-  errorMessage: (error: Error) => error.message,
+vi.mock("@/api/call", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/call")>()),
   call: async (op: string, input: FirstDraftEdit & DraftEdit) => {
     if (op === "getFirstDraft") return remote.first;
     if (op === "saveFirstDraft") {
