@@ -96,6 +96,26 @@ async fn what_the_user_agreed_to_holds_only_for_the_same_provider(db: SqlitePool
     assert!(!agreed().await);
 }
 
+#[sqlx::test(migrations = false)]
+async fn an_address_saved_with_chat_completions_keeps_its_key_after_the_upgrade(db: SqlitePool) {
+    db::MIGRATOR.run_to(21, &db).await.unwrap();
+    sqlx::query(
+        "INSERT INTO model_config (id, provider, base_url, model, api_key, agreed, created_at)
+        VALUES (1, 'custom', 'https://relay.example/v1/chat/completions', 'm', 'sk-relay', 1, 0)",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    db::MIGRATOR.run(&db).await.unwrap();
+
+    let source = Source::check("custom", "https://relay.example/v1/chat/completions").unwrap();
+    assert_eq!(
+        model::api_key(&db, 1, &source).await.unwrap(),
+        Some(Some("sk-relay".into()))
+    );
+    assert!(model::chosen(&db).await.unwrap().unwrap().agreed);
+}
+
 #[test]
 fn a_custom_address_must_be_a_web_address() {
     let source = Source::check("custom", " https://api.example.com/v1/ ").unwrap();

@@ -114,7 +114,7 @@ fn checked_server(server: Server, role: &str) -> Result<Server, String> {
 }
 
 impl MailboxFields {
-    /// The password or authorization code typed in; None when left blank. One the provider made
+    /// The password or authorization code typed in; None when left blank. One made by the provider
     /// is taken as pasted (`net::pasted_key`); a mailbox's own password only loses the spaces
     /// around it.
     pub fn secret(&self, typed: &str) -> Result<Option<String>, &'static str> {
