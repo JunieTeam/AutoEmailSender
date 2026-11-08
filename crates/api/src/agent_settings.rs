@@ -30,9 +30,12 @@ fn executable() -> Result<PathBuf, CallError> {
         "autoemail"
     });
     std::fs::metadata(&path).map_err(|e| {
-        CallError::invalid(format!(
-            "找不到应用附带的命令行工具：{e}。开发版请用 pnpm dev 启动，安装版请重新安装应用。"
-        ))
+        CallError::external(
+            failure::Failure::new(
+                "找不到应用附带的命令行工具。开发版请用 pnpm dev 启动，安装版请重新安装应用。",
+            ),
+            format!("{}: {e}", path.display()),
+        )
     })?;
     Ok(paths::plain_path(path))
 }

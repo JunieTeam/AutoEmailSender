@@ -140,7 +140,8 @@ pub async fn write_task_draft(
             )
         },
     )
-    .await?;
+    .await
+    .map_err(|e| crate::writing_failed(e, d.mentor_id, chosen.id))?;
     if t.kind == "follow_up" {
         letter.subject = d.subject;
     }

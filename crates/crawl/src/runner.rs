@@ -371,6 +371,7 @@ impl Reader<'_> {
                     model::ModelError::Refused { status, .. } => Some(*status),
                     _ => None,
                 };
+                let (error, diagnostic) = (e.to_string(), e.diagnostic());
                 let failure = model::background::classify(e, &self.chosen.access);
                 let action = match &failure {
                     Effect::Pause(_) => "pause",
@@ -383,6 +384,8 @@ impl Reader<'_> {
                     attempt,
                     category,
                     status,
+                    %error,
+                    diagnostic,
                     action,
                     elapsed_ms = started.elapsed().as_millis(),
                     "model call failed"

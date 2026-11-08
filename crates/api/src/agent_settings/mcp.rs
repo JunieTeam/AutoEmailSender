@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
 use ts_rs::TS;
 
+use failure::Failure;
+
 use super::{paths::plain_path, shell::command_line};
 use crate::CallError;
 
@@ -303,9 +305,7 @@ fn read(path: &Path) -> Result<Option<String>, CallError> {
 }
 
 fn file_error(e: io::Error) -> CallError {
-    CallError::invalid(format!(
-        "无法读写 MCP 配置：{e}。请检查文件和目录权限后重试。"
-    ))
+    CallError::external(failure::file("MCP 配置未能读写", &e), e)
 }
 
 fn env_path(name: &str) -> Result<PathBuf, CallError> {
@@ -415,13 +415,23 @@ fn run(args: &[String]) -> Result<(), CallError> {
         .args(&args[1..])
         .stdin(std::process::Stdio::null())
         .output()
-        .map_err(|e| CallError::invalid(format!("无法运行 Claude Code：{e}")))?;
+        .map_err(|e| {
+            CallError::external(
+                Failure::unrecognized(
+                    "无法运行 Claude Code，请确认它已正确安装后重试",
+                    &e.to_string(),
+                ),
+                e,
+            )
+        })?;
     if !result.status.success() {
         // Client output can contain credentials from its configuration.
-        return Err(CallError::invalid(format!(
-            "Claude Code 未能更新 MCP 配置（{}），请检查 Claude Code 的配置和文件权限后重试",
-            result.status
-        )));
+        return Err(CallError::external(
+            Failure::new(
+                "Claude Code 未能更新 MCP 配置，请检查 Claude Code 的配置和文件权限后重试",
+            ),
+            result.status,
+        ));
     }
     Ok(())
 }

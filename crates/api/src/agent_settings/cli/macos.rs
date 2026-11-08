@@ -145,13 +145,17 @@ fn authorize(executable: &Path, link: &Path, install: bool) -> Result<(), CallEr
             "/usr/local/bin/autoemail 已被其他文件占用，未覆盖".into(),
         ));
     }
-    Err(CallError::invalid(format!(
-        "管理员操作未完成：{message}。请检查 /usr/local/bin 的权限后重试。"
-    )))
+    Err(CallError::external(
+        failure::Failure::unrecognized(
+            "管理员操作未完成。请检查 /usr/local/bin 的权限后重试。",
+            &message,
+        ),
+        message,
+    ))
 }
 
-fn error(e: impl std::fmt::Display) -> CallError {
-    CallError::invalid(format!("命令行工具未能更改：{e}"))
+fn error(e: io::Error) -> CallError {
+    CallError::external(failure::file("命令行工具未能更改", &e), e)
 }
 
 #[cfg(test)]

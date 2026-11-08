@@ -1624,13 +1624,25 @@ async fn delete_mailbox(ctx: &Context, input: MailboxId) -> Result<(), CallError
 }
 
 async fn test_sending(ctx: &Context, input: MailboxTest) -> Result<(), CallError> {
+    let id = input.id;
     let account = test_account(ctx, input).await?;
-    Ok(transport::check_sending(&ctx.net, &account.sender).await?)
+    let smtp = &account.sender.smtp;
+    transport::check_sending(&ctx.net, &account.sender)
+        .await
+        .map_err(|e| {
+            CallError::from(e).logging(format!("mailbox {id:?} at {}:{}", smtp.host, smtp.port))
+        })
 }
 
 async fn test_receiving(ctx: &Context, input: MailboxTest) -> Result<(), CallError> {
+    let id = input.id;
     let account = test_account(ctx, input).await?;
-    Ok(mailbox::check_receiving(&ctx.net, &account).await?)
+    let imap = &account.imap;
+    mailbox::check_receiving(&ctx.net, &account)
+        .await
+        .map_err(|e| {
+            CallError::from(e).logging(format!("mailbox {id:?} at {}:{}", imap.host, imap.port))
+        })
 }
 
 async fn test_account(ctx: &Context, input: MailboxTest) -> Result<mailbox::Account, CallError> {
@@ -1873,18 +1885,29 @@ async fn list_provider_models(ctx: &Context, input: ModelSource) -> Result<Vec<S
     let source =
         model::Source::check(&input.provider, &input.base_url).map_err(CallError::invalid)?;
     let api_key = entered_or_saved_key(ctx, &input.api_key, input.id, &source).await?;
-    Ok(model::list_models(&ctx.net, &source.access(Some(api_key))).await?)
+    model::list_models(&ctx.net, &source.access(Some(api_key)))
+        .await
+        .map_err(|e| {
+            CallError::from(e).logging(format!("model config {:?} of {}", input.id, input.provider))
+        })
 }
 
 async fn test_model(ctx: &Context, input: ModelTest) -> Result<(), CallError> {
+    let provider = input.form.provider.clone();
     let fields = input.form.check().map_err(CallError::invalid)?;
     let api_key = entered_or_saved_key(ctx, &input.api_key, input.id, &fields.source).await?;
-    Ok(model::test(
+    model::test(
         &ctx.net,
         &fields.source.access(Some(api_key)),
         &fields.model,
     )
-    .await?)
+    .await
+    .map_err(|e| {
+        CallError::from(e).logging(format!(
+            "model config {:?} of {provider}: {}",
+            input.id, fields.model
+        ))
+    })
 }
 
 /// The API key typed in, else the saved one of the configuration being edited if it is still for
@@ -2315,20 +2338,23 @@ async fn write_letter(
         .await?
         .map(|draft| draft.id);
     turn.send()?;
-    Ok(
-        writing::write(&ctx.net, &prepared, &current, |purpose, usage| {
-            model::usage::record_for_email(
-                &ctx.db,
-                chosen.id,
-                &chosen.model,
-                purpose,
-                email_id,
-                usage,
-                at,
-            )
-        })
-        .await?,
-    )
+    writing::write(&ctx.net, &prepared, &current, |purpose, usage| {
+        model::usage::record_for_email(
+            &ctx.db,
+            chosen.id,
+            &chosen.model,
+            purpose,
+            email_id,
+            usage,
+            at,
+        )
+    })
+    .await
+    .map_err(|e| writing_failed(e, input.mentor_id, chosen.id))
+}
+
+fn writing_failed(e: writing::Error, mentor: i64, model_config: i64) -> CallError {
+    CallError::from(e).logging(format!("mentor {mentor}, model config {model_config}"))
 }
 
 impl From<writing::Error> for CallError {
@@ -2712,7 +2738,7 @@ async fn write_follow_up(
         .map(|draft| draft.id);
     let at = now();
     turn.send()?;
-    Ok(writing::write(
+    writing::write(
         &ctx.net,
         &prepared,
         &writing::Letter {
@@ -2731,7 +2757,8 @@ async fn write_follow_up(
             )
         },
     )
-    .await?)
+    .await
+    .map_err(|e| writing_failed(e, input.mentor_id, chosen.id))
 }
 
 impl From<writing::reply::Error> for CallError {
@@ -2776,7 +2803,7 @@ async fn write_reply(
         .map(|draft| draft.id);
     let at = now();
     turn.send()?;
-    Ok(writing::write(
+    writing::write(
         &ctx.net,
         &prepared,
         &writing::Letter {
@@ -2795,7 +2822,8 @@ async fn write_reply(
             )
         },
     )
-    .await?)
+    .await
+    .map_err(|e| writing_failed(e, input.mentor_id, chosen.id))
 }
 
 async fn discard_follow_up_draft(ctx: &Context, key: EmailId) -> Result<(), CallError> {
