@@ -97,10 +97,11 @@ static URL: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// The characters an address may have before its @, but for those that more often stand around
-/// one in a log, such as quotes, slashes, = and braces.
+/// one in a log, such as double quotes, slashes, = and braces. An apostrophe, as in o'neil, and *
+/// are taken inside it, but do not start it: they also quote or stress one.
 static EMAIL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"([A-Za-z0-9!#$%&*+^_`~-])[A-Za-z0-9.!#$%&*+^_`~-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)",
+        r"([A-Za-z0-9!#$%&+^_`~-])[A-Za-z0-9.!#$%&'*+^_`~-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)",
     )
     .unwrap_or_else(|e| unreachable!("a fixed pattern: {e}"))
 });
@@ -121,7 +122,8 @@ mod tests {
     #[test]
     fn scrubs_addresses_home_and_query_strings() {
         let text = "550 5.1.1 <wang.jianguo@example.edu.cn>: user unknown\n\
-            from alice!smith@example.com\n\
+            from alice!smith@example.com, o'neil@example.com\n\
+            to='li@example.com' **zhao@example.com** key=sun@example.com\n\
             open /Users/zhang/Documents/简历.pdf: denied, /users/ZHANG too, not /Users/zhang2\n\
             GET https://school.example.edu/list?token=abc#top 404\n\
             https://school.example.edu/teacher/1 ok";
@@ -129,7 +131,8 @@ mod tests {
         assert_eq!(
             scrubbed,
             "550 5.1.1 <w***@example.edu.cn>: user unknown\n\
-            from a***@example.com\n\
+            from a***@example.com, o***@example.com\n\
+            to='l***@example.com' **z***@example.com** key=s***@example.com\n\
             open ~/Documents/简历.pdf: denied, ~ too, not /Users/zhang2\n\
             GET https://school.example.edu/list 404\n\
             https://school.example.edu/teacher/1 ok"
