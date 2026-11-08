@@ -296,6 +296,27 @@ fn require_applied(applied: bool, message: &str) -> Result<(), CallError> {
     }
 }
 
+/// Runs one operation, its future boxed and built in a function of its own. Awaited in `call`,
+/// every call would hold the largest operation; boxed there, unoptimized builds would still give
+/// `call` stack for building every operation's future, and a few calls together overflowed a
+/// Windows thread's stack in debug builds.
+fn run<'a, I, O, F>(
+    ctx: &'a Context,
+    input: serde_json::Value,
+    handler: impl FnOnce(&'a Context, I) -> F + 'a,
+) -> std::pin::Pin<Box<impl Future<Output = Result<serde_json::Value, CallError>> + 'a>>
+where
+    I: serde::de::DeserializeOwned,
+    O: serde::Serialize,
+    F: Future<Output = Result<O, CallError>> + 'a,
+{
+    Box::pin(async move {
+        let input =
+            serde_path_to_error::deserialize::<_, I>(input).map_err(CallError::bad_input)?;
+        serde_json::to_value(handler(ctx, input).await?).map_err(CallError::internal)
+    })
+}
+
 macro_rules! operation_confirmation {
     (none) => {
         agent::OperationConfirmation::None
@@ -324,11 +345,7 @@ macro_rules! operations {
             input: serde_json::Value,
         ) -> Result<serde_json::Value, CallError> {
             match op {
-                $($($op => {
-                    let input = serde_path_to_error::deserialize::<_, $input>(input)
-                        .map_err(CallError::bad_input)?;
-                    serde_json::to_value($handler(ctx, input).await?).map_err(CallError::internal)
-                })*)*
+                $($($op => run::<$input, _, _>(ctx, input, $handler).await,)*)*
                 _ => Err(CallError::bad_input(format!("不存在操作 {op}"))),
             }
         }
