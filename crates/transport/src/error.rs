@@ -141,6 +141,9 @@ impl MailError {
 
     /// What happened and what to do about it; the server's words only when no case fits them.
     pub fn failure(&self) -> Failure {
+        if let Effect::Pause(PauseKind::Throttled(throttle)) = classify(self) {
+            return Failure::new(throttle.message());
+        }
         match self {
             MailError::Resolve { host, .. } => Failure::new(format!(
                 "找不到服务器 {host}。请检查服务器地址是否正确、网络是否连通。"
@@ -167,15 +170,6 @@ impl MailError {
                 "与 {host} 建立加密连接失败。请检查加密方式和端口是否对应：SSL/TLS \
                 一般用 465、993 端口，STARTTLS 一般用 587、143 端口。"
             )),
-            // Checking the code or trying again at once would only keep the limit on.
-            MailError::Login { .. } | MailError::Refused { .. }
-                if matches!(classify(self), Effect::Pause(PauseKind::Throttled(_))) =>
-            {
-                Failure::new(
-                    "服务商限制了登录或发信的频率。请稍后再试，无需修改授权码；\
-                    短时间内反复尝试会延长限制。",
-                )
-            }
             MailError::Login { reply, .. } => login(reply),
             MailError::Refused { reply, .. } => match Refusal::of(reply) {
                 Some(refusal) => Failure::new(refusal.message()),
@@ -202,6 +196,9 @@ impl MailError {
     }
 }
 
+const REJECTED: &str = "登录被拒绝。请检查授权码或密码是否正确，邮箱设置中是否已开启 IMAP/SMTP 服务；\
+    学校和公司的邮箱可能被管理员关闭了客户端登录，需联系管理员。";
+
 /// Why a login was turned down, by what the server says; markers from real replies.
 fn login(reply: &str) -> Failure {
     let words = reply.to_lowercase();
@@ -224,12 +221,18 @@ fn login(reply: &str) -> Failure {
         )
     } else if let Some(Refusal::Account) = Refusal::of(reply) {
         Failure::new(Refusal::Account.message())
+    // Plain wrong credentials, which the message already covers: SMTP's 535 5.7.8 and the
+    // usual words for it.
+    } else if says(&[
+        "5.7.8",
+        "credentials invalid",
+        "invalid credentials",
+        "authentication failed",
+        "password not accepted",
+    ]) {
+        Failure::new(REJECTED)
     } else {
-        Failure::unrecognized(
-            "登录被拒绝。请检查授权码或密码是否正确，邮箱设置中是否已开启 IMAP/SMTP 服务；\
-            学校和公司的邮箱可能被管理员关闭了客户端登录，需联系管理员。",
-            reply,
-        )
+        Failure::unrecognized(REJECTED, reply)
     }
 }
 
@@ -263,7 +266,7 @@ mod tests {
     #[test]
     fn a_refused_login_quoting_the_secret_does_not_pass_it_on() {
         let refused = MailError::Refused {
-            reply: "permanent error (535): 5.7.8 bad secret abcd-1234".into(),
+            reply: "permanent error (535): 5.7.0 bad secret abcd-1234".into(),
             smtp_code: Some(535),
         }
         .login()

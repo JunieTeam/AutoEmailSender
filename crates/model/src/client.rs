@@ -209,7 +209,7 @@ async fn chat(
                 ))
             })?;
             if let Some(failure) = chunk.error {
-                return Err(ModelError::Failed(quote(&failure.message, access)));
+                return Err(ModelError::Failed(without_key(&failure.message, access)));
             }
             tokens = chunk.usage.or(tokens);
             // The last chunk may only count tokens.
@@ -272,12 +272,12 @@ async fn send(
     let code = parsed
         .as_ref()
         .and_then(|v| v["error"]["code"].as_str().or(v["error"]["type"].as_str()))
-        .map(str::to_owned);
+        .map(|code| without_key(code, access));
     Err(ModelError::Refused {
         status: status.as_u16(),
         retry_after,
         code,
-        reply: quote(words.unwrap_or(&body), access),
+        reply: without_key(words.unwrap_or(&body), access),
     })
 }
 
@@ -325,11 +325,11 @@ fn unreachable(access: &Access, source: reqwest::Error) -> ModelError {
     }
 }
 
-/// What the provider said, shortened for the user and the log. Without the key, in case the
-/// provider quotes it back.
-fn quote(text: &str, access: &Access) -> String {
-    failure::diagnostic(&match access.api_key.as_deref() {
+/// What the provider said, in case it quotes the key back. Whole, so that what it is about is
+/// found even past what the user and the log are shown.
+fn without_key(text: &str, access: &Access) -> String {
+    match access.api_key.as_deref() {
         None | Some("") => text.to_owned(),
         Some(key) => text.replace(key, "***"),
-    })
+    }
 }

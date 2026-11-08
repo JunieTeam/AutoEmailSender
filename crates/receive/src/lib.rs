@@ -776,8 +776,10 @@ impl Session<'_> {
                 mentor::assign_mailbox(&mut tx, bounced.mentor_id, mailbox).await?;
             }
             if let Some(throttle) = undelivered.throttle {
-                let mut pause = transport::pause::PauseKind::Throttled(throttle).at(sent_at);
-                pause.reason.message = format!("退信说明{}", pause.reason.message);
+                let pause = transport::pause::Pause {
+                    until: transport::pause::PauseKind::Throttled(throttle).local_until(sent_at),
+                    reason: Failure::new(format!("退信说明{}", throttle.message())),
+                };
                 if pause.until > self.now {
                     mailbox::pause::apply(&mut tx, mailbox, &pause).await?;
                 }

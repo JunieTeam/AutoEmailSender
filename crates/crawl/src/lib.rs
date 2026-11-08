@@ -83,18 +83,17 @@ impl CrawlError {
             Self::Redirect => Failure::new("网页的跳转地址无效，或跳转次数过多。请检查原网址。"),
             Self::TooLarge => Failure::new("网页过大，无法读取。请改用具体的名单页或导师个人页。"),
             Self::TimedOut => Failure::new("读取网页超时。请检查网络，稍后重试。"),
-            Self::Status(code @ (404 | 410)) => Failure::new(format!(
-                "网页不存在（HTTP {code}）。请在浏览器中打开网址检查，或改用别的页面。"
-            )),
-            Self::Status(code @ (401 | 403)) => Failure::new(format!(
-                "网站拒绝访问（HTTP {code}），可能要登录或只对校内网络开放。请改用公开的页面。"
-            )),
-            Self::Status(code @ 500..=599) => {
-                Failure::new(format!("网站出错（HTTP {code}）。请稍后重试。"))
+            Self::Status(404 | 410) => {
+                Failure::new("网页不存在。请在浏览器中打开网址检查，或改用别的页面。")
             }
-            Self::Status(code) => Failure::new(format!(
-                "网站返回了 HTTP {code}。请稍后重试，或在浏览器中检查网址。"
-            )),
+            Self::Status(401 | 403) => {
+                Failure::new("网站拒绝访问，可能要登录或只对校内网络开放。请改用公开的页面。")
+            }
+            Self::Status(500..=599) => Failure::new("网站出错了。请稍后重试。"),
+            Self::Status(code) => Failure::unrecognized(
+                "网站没有正常返回网页。请稍后重试，或在浏览器中检查网址。",
+                &format!("HTTP {code}"),
+            ),
             Self::SlowDown(_) => Failure::new("网站要求放慢访问。请稍后重试。"),
             Self::ContentType => Failure::new("这个地址返回的不是网页。请改用名单页或导师个人页。"),
             Self::Document(reason) => {

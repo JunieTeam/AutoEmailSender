@@ -12,7 +12,7 @@ use net::Net;
 use profile::Rotation;
 use sqlx::{Connection, SqlitePool, types::Json};
 use tokio::sync::Notify;
-use transport::pause::{self, Effect};
+use transport::pause::{self, Effect, Pause};
 use transport::{Letter, SendError, SendStatus};
 
 const MINUTE: i64 = 60_000;
@@ -471,7 +471,10 @@ async fn send<T: chrono::TimeZone>(
             );
             return match failure {
                 Effect::Pause(kind) => {
-                    let pause = kind.in_zone(now(), zone);
+                    let pause = Pause {
+                        until: kind.until(now(), zone),
+                        reason: err.failure(),
+                    };
                     apply_for_account(&mut *db.acquire().await?, mailbox_id, &account, &pause).await
                 }
                 Effect::Email => {
@@ -518,7 +521,10 @@ async fn send<T: chrono::TimeZone>(
                     "email {id} from mailbox {mailbox_id}: {err}"
                 );
                 match failure {
-                    Effect::Pause(kind) => Outcome::Paused(kind.in_zone(now(), zone)),
+                    Effect::Pause(kind) => Outcome::Paused(Pause {
+                        until: kind.until(now(), zone),
+                        reason: err.failure(),
+                    }),
                     Effect::Email => Outcome::Failed(err.failure()),
                 }
             }

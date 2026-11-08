@@ -102,34 +102,33 @@ pub fn next_day_start<T: TimeZone>(now: i64, zone: &T) -> i64 {
     now.saturating_add(24 * 60 * MINUTE)
 }
 
-impl PauseKind {
-    pub fn at(self, now: i64) -> Pause {
-        self.in_zone(now, &chrono::Local)
+impl Throttle {
+    pub fn message(self) -> &'static str {
+        match self {
+            Throttle::Daily => "邮箱服务商的每日发送额度已用完。可减少每天的发信数量。",
+            // Checking the code or trying again at once would only keep the limit on.
+            Throttle::Hour => {
+                "服务商限制了登录或发信的频率。请稍后再试，无需修改授权码；\
+                短时间内反复尝试会延长限制，平时可降低发信频率。"
+            }
+        }
     }
+}
 
-    pub fn in_zone<T: TimeZone>(self, now: i64, zone: &T) -> Pause {
-        let until = match self {
+impl PauseKind {
+    /// When a pause that begins `now` ends. Its reason is the failure as classified, which says
+    /// best what to do.
+    pub fn until<T: TimeZone>(self, now: i64, zone: &T) -> i64 {
+        match self {
             Self::Throttled(Throttle::Daily) => next_day_start(now, zone),
             Self::Throttled(Throttle::Hour) | Self::LoginRejected => now + 60 * MINUTE,
             Self::Connection => now + MINUTE,
-        };
-        let reason = match self {
-            Self::Throttled(Throttle::Daily) => {
-                "邮箱服务商的每日发送额度已用完。可减少每天的发信数量。"
-            }
-            Self::Throttled(Throttle::Hour) => "已被邮箱服务商限流。可降低发信频率。",
-            Self::LoginRejected => {
-                "登录被拒绝。请检查授权码是否正确、SMTP 服务是否开启，\
-                学校和公司的邮箱可联系管理员；修改邮箱设置后可立即恢复。"
-            }
-            Self::Connection => {
-                "无法连接邮箱服务器。请检查网络和代理，以及服务器地址、端口和加密方式。"
-            }
-        };
-        Pause {
-            until,
-            reason: Failure::new(reason),
         }
+    }
+
+    /// `until` in this computer's time zone.
+    pub fn local_until(self, now: i64) -> i64 {
+        self.until(now, &chrono::Local)
     }
 }
 
@@ -263,19 +262,14 @@ mod tests {
             .with_ymd_and_hms(2026, 10, 26, 23, 59, 0)
             .unwrap()
             .timestamp_millis();
-        let daily = PauseKind::Throttled(Throttle::Daily).in_zone(now, &zone);
-        assert_eq!(daily.until, now + MINUTE);
+        let daily = PauseKind::Throttled(Throttle::Daily).until(now, &zone);
+        assert_eq!(daily, now + MINUTE);
         assert_eq!(
-            PauseKind::Throttled(Throttle::Hour)
-                .in_zone(now, &zone)
-                .until,
+            PauseKind::Throttled(Throttle::Hour).until(now, &zone),
             now + 60 * MINUTE
         );
-        assert_eq!(
-            PauseKind::Connection.in_zone(now, &zone).until,
-            now + MINUTE
-        );
-        let midnight = PauseKind::Throttled(Throttle::Daily).in_zone(daily.until, &zone);
-        assert_eq!(midnight.until, daily.until + 24 * 60 * MINUTE);
+        assert_eq!(PauseKind::Connection.until(now, &zone), now + MINUTE);
+        let midnight = PauseKind::Throttled(Throttle::Daily).until(daily, &zone);
+        assert_eq!(midnight, daily + 24 * 60 * MINUTE);
     }
 }

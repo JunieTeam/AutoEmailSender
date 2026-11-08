@@ -179,14 +179,18 @@ async fn a_refusal_says_what_the_provider_said() {
 
 #[tokio::test]
 async fn a_key_quoted_back_is_not_shown() {
-    let (address, _) = provider(401, r#"{"error":{"message":"Invalid API key: sk-test"}}"#).await;
+    let (address, _) = provider(
+        401,
+        r#"{"error":{"message":"Invalid API key: sk-test","code":"sk-test"}}"#,
+    )
+    .await;
     let net = Net::new(Vec::new()).unwrap();
     let error = model::test(&net, &access(address, None), "gpt")
         .await
         .unwrap_err();
     assert_eq!(
         error.diagnostic().as_deref(),
-        Some("Invalid API key: ***"),
+        Some("***: Invalid API key: ***"),
         "{error}"
     );
     assert!(
@@ -218,6 +222,25 @@ async fn a_refusal_quoting_the_request_keeps_it_out_of_the_log() {
             .is_some_and(|d| d.contains("绩点是 3.8")),
         "{failure:?}"
     );
+}
+
+#[tokio::test]
+async fn a_cause_past_what_is_shown_is_still_found() {
+    let reply = format!(
+        r#"{{"error":{{"message":"{} maximum context length exceeded"}}}}"#,
+        "x".repeat(600)
+    );
+    let (address, _) = provider(400, reply.leak()).await;
+    let net = Net::new(Vec::new()).unwrap();
+    let error = model::test(&net, &access(address, None), "gpt")
+        .await
+        .unwrap_err();
+    let failure = error.failure();
+    assert!(
+        failure.message.contains("超出了模型能读取的长度"),
+        "{failure:?}"
+    );
+    assert_eq!(failure.details, None);
 }
 
 #[tokio::test]
