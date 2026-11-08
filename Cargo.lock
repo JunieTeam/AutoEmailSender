@@ -531,6 +531,7 @@ dependencies = [
  "block2",
  "chrono",
  "crawl",
+ "failure",
  "matching",
  "net",
  "objc2",
@@ -1999,6 +2000,15 @@ checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
 dependencies = [
  "event-listener 5.4.2",
  "pin-project-lite",
+]
+
+[[package]]
+name = "failure"
+version = "3.0.0-alpha.0"
+dependencies = [
+ "regex",
+ "serde",
+ "ts-rs",
 ]
 
 [[package]]

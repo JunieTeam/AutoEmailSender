@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 matching.workspace = true
 api.workspace = true
+failure.workspace = true
 net.workspace = true
 profile.workspace = true
 receive.workspace = true

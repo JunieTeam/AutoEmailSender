@@ -1,5 +1,5 @@
 //! The log files users export to send to the developer. Nothing private is logged: no mail bodies,
-//! passwords or keys.
+//! passwords or keys. What leaves the computer is scrubbed (docs/development.md#错误和日志).
 
 use std::error::Error;
 use std::io::Write;
@@ -57,14 +57,19 @@ pub fn export(app: &AppHandle, dir: &Path) -> Result<bool, Box<dyn Error>> {
     else {
         return Ok(false);
     };
-    let names = files(dir)?;
+    let out = content(dir)?;
+    crate::save::replace(&target.into_path()?, |file| file.write_all(out.as_bytes()))?;
+    Ok(true)
+}
+
+/// Every log file in `dir`, oldest first, scrubbed.
+fn content(dir: &Path) -> std::io::Result<String> {
     let mut out = environment();
-    for name in names {
+    for name in files(dir)? {
         out.push_str(&format!("\n== {name} ==\n"));
         out.push_str(&std::fs::read_to_string(dir.join(name))?);
     }
-    crate::save::replace(&target.into_path()?, |file| file.write_all(out.as_bytes()))?;
-    Ok(true)
+    Ok(failure::scrub(&out))
 }
 
 fn environment() -> String {
@@ -152,7 +157,7 @@ fn crawl_content(
     } else {
         &lines
     });
-    Ok(out)
+    Ok(failure::scrub(&out))
 }
 
 fn crawl_filename(detail: &CrawlDetail, date: &str) -> Result<String, Box<dyn Error>> {
@@ -293,10 +298,11 @@ mod tests {
             .with_writer(std::sync::Mutex::new(file))
             .finish();
         tracing::subscriber::with_default(subscriber, || {
-            crawl::span(5).in_scope(|| tracing::info!("crawl started"));
+            crawl::span(5).in_scope(|| tracing::info!("crawl started for li@example.edu.cn"));
         });
         let content = crawl_content(dir.path(), &detail, created_at, started).unwrap();
         assert!(content.contains("crawl{id=5}"));
+        assert!(!content.contains("li@"), "{content}");
         assert!(content.contains("crawl started"));
         assert!(!content.contains("未找到这次整理的日志"));
         detail.urls.clear();

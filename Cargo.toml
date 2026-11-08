@@ -16,6 +16,7 @@ crawl = { path = "crates/crawl" }
 check = { path = "crates/check" }
 db = { path = "crates/db" }
 email = { path = "crates/email" }
+failure = { path = "crates/failure" }
 fakemail = { path = "crates/fakemail" }
 mailbox = { path = "crates/mailbox" }
 material = { path = "crates/material" }
