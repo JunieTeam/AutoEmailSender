@@ -103,6 +103,8 @@ fn a_custom_address_must_be_a_web_address() {
         source.access(Some("k".into())).base_url,
         "https://api.example.com/v1"
     );
+    let pasted = Source::check("custom", "https://api.example.com/v1/chat/completions").unwrap();
+    assert_eq!(pasted.access(None).base_url, "https://api.example.com/v1");
     assert!(Source::check("custom", "api.example.com/v1").is_err());
     for secret in [
         "https://user:pass@api.example.com/v1",
