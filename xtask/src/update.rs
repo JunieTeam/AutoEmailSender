@@ -10,7 +10,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 
 /// The rclone remote and the bucket behind the mirror.
-const BUCKET: &str = "aes-dl:aes-dl-1301555531";
+const BUCKET: &str = "aes-dl:aes-dl-1302038384";
 
 pub async fn publish(tag: &str, dir: &Path) -> crate::Result {
     let version = tag
