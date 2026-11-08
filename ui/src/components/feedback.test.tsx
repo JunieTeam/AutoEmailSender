@@ -8,13 +8,17 @@ import { FeedbackDialog } from "./feedback";
 
 const remote = vi.hoisted(() => {
   const submitted: FeedbackInput[] = [];
-  return { submitted, fail: true };
+  return { submitted, fail: true, previews: 0 };
 });
 vi.mock("@/api/call", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/call")>()),
   call: async (op: string, input: FeedbackInput) => {
     if (op === "getAccount") return { kind: "loggedIn", email: "lisi@163.com", termsOutdated: false, cloudEmails: 0 };
-    if (op === "previewFeedback") return { size: 88_064, days: { first: 0, last: 0 } };
+    if (op === "previewFeedback") {
+      remote.previews += 1;
+      return { size: 88_064, days: { first: 0, last: 0 } };
+    }
+    if (op === "getFeedbackLog") return `log ${remote.previews}`;
     if (op === "submitFeedback") {
       remote.submitted.push(input);
       if (remote.fail)
@@ -29,6 +33,10 @@ function written() {
   return document.querySelector("textarea")?.value;
 }
 
+function shownLog() {
+  return document.querySelector("pre")?.textContent;
+}
+
 function button(text: string) {
   return Array.from(document.querySelectorAll("button")).find((item) => item.textContent === text);
 }
@@ -37,7 +45,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-it("keeps what was written through closing and a failed try, and clears it once sent", async () => {
+it("keeps what was written through closing and a failed try, and shows the log the next one sends", async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRoot(document.body.appendChild(document.createElement("div")));
   const open = () =>
@@ -62,6 +70,8 @@ it("keeps what was written through closing and a failed try, and clears it once 
     await act(async () => root.render(<></>));
     await open();
     await vi.waitFor(() => expect(written()).toBe("导出日志时卡住了"));
+    await act(async () => button("查看")?.click());
+    await vi.waitFor(() => expect(shownLog()).toBe(`log ${remote.previews}`));
 
     await act(async () => button("提交")?.click());
     await vi.waitFor(() => expect(document.body.textContent).toContain("反馈次数已达上限，请在 5 小时后再试"));
@@ -69,9 +79,12 @@ it("keeps what was written through closing and a failed try, and clears it once 
     expect(written()).toBe("导出日志时卡住了");
 
     remote.fail = false;
+    const before = remote.previews;
     await act(async () => button("提交")?.click());
     await vi.waitFor(() => expect(document.body.textContent).toContain("已发给开发者"));
     expect(written()).toBe("");
+    // A new snapshot is taken for the next feedback, and its log shown in place of the one sent.
+    await vi.waitFor(() => expect(shownLog()).toBe(`log ${before + 1}`));
     expect(remote.submitted).toEqual([
       { description: "导出日志时卡住了", withLog: true },
       { description: "导出日志时卡住了", withLog: true },

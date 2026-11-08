@@ -102,7 +102,7 @@ function Submit({ email }: { email: string }) {
             />
             附上日志
           </label>
-          {preview.data && <LogLine preview={preview.data} />}
+          {preview.data && <LogLine preview={preview.data} taken={preview.dataUpdatedAt} />}
           {preview.error && <FailureNote className="mt-1 text-destructive" failure={failureOf(preview.error)} />}
         </div>
         <p className="text-muted-foreground">
@@ -121,8 +121,9 @@ function Submit({ email }: { email: string }) {
         )}
       </DialogBody>
       <DialogFooter className="justify-end">
+        {/* Not while a new snapshot is being taken: the log shown would not be the one sent. */}
         <Button
-          disabled={pending || !preview.data || input.description.trim() === ""}
+          disabled={pending || !preview.data || preview.isFetching || input.description.trim() === ""}
           onClick={() => submit.mutate(input)}
         >
           {pending ? "正在提交…" : "提交"}
@@ -132,8 +133,9 @@ function Submit({ email }: { email: string }) {
   );
 }
 
-/** What goes with the description, and the log to look through before it does. */
-function LogLine({ preview }: { preview: FeedbackPreview }) {
+/** What goes with the description, and the log to look through before it does; `taken` tells one
+ * snapshot from the next. */
+function LogLine({ preview, taken }: { preview: FeedbackPreview; taken: number }) {
   const { days } = preview;
   const span =
     days === null ? "" : day(days.first) === day(days.last) ? day(days.first) : `${day(days.first)}至${day(days.last)}`;
@@ -145,15 +147,19 @@ function LogLine({ preview }: { preview: FeedbackPreview }) {
       </p>
       <CollapsibleTrigger>查看</CollapsibleTrigger>
       <CollapsibleContent>
-        <LogText />
+        <LogText taken={taken} />
       </CollapsibleContent>
     </Collapsible>
   );
 }
 
-function LogText() {
+function LogText({ taken }: { taken: number }) {
   // Read when shown: it may be a couple of megabytes.
-  const log = useQuery({ queryKey: ["getFeedbackLog"], queryFn: () => call("getFeedbackLog", {}), gcTime: 0 });
+  const log = useQuery({
+    queryKey: ["getFeedbackLog", taken],
+    queryFn: () => call("getFeedbackLog", {}),
+    gcTime: 0,
+  });
   if (log.error) return <FailureNote className="text-destructive" failure={failureOf(log.error)} />;
   return (
     <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap wrap-anywhere">
