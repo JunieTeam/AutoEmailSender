@@ -73,9 +73,9 @@ fn content(dir: Option<&Path>, startup: Option<&str>) -> std::io::Result<String>
         out.push_str(&format!("启动失败：{startup}\n"));
     }
     if let Some(dir) = dir {
-        for name in api::logs::files(dir)? {
+        for (name, text) in api::logs::files(dir)? {
             out.push_str(&format!("\n== {name} ==\n"));
-            out.push_str(&std::fs::read_to_string(dir.join(name))?);
+            out.push_str(&text);
         }
     }
     Ok(failure::scrub(&out))

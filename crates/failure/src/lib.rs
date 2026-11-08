@@ -67,7 +67,28 @@ pub fn diagnostic(words: &str) -> String {
 /// its first character and domain, the home directory, which names the user, becomes `~`, and a
 /// web address loses what follows `?` or `#`.
 pub fn scrub(text: &str) -> String {
-    scrubbed(text, std::env::home_dir().as_deref())
+    static HOME: LazyLock<Option<Regex>> =
+        LazyLock::new(|| std::env::home_dir().as_deref().and_then(home));
+    scrubbed(text, HOME.as_ref())
+}
+
+/// The home directory however it is written: in either case, as Windows and macOS do not tell
+/// them apart, and on Windows with backslashes, doubled ones as `{:?}` writes them, or slashes.
+/// Only whole, so that /Users/li does not take /Users/lin with it.
+fn home(home: &Path) -> Option<Regex> {
+    let home = home.to_string_lossy();
+    // A home of "/" would take every path with it.
+    if home.len() <= 1 {
+        return None;
+    }
+    let separator = if home.contains('\\') {
+        r"(?:\\\\|\\|/)"
+    } else {
+        "/"
+    };
+    let parts: Vec<String> = home.split(['/', '\\']).map(regex::escape).collect();
+    let pattern = format!(r"(?i){}([^\w.-]|$)", parts.join(separator));
+    Some(Regex::new(&pattern).unwrap_or_else(|e| unreachable!("an escaped path: {e}")))
 }
 
 static URL: LazyLock<Regex> = LazyLock::new(|| {
@@ -75,21 +96,20 @@ static URL: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap_or_else(|e| unreachable!("a fixed pattern: {e}"))
 });
 
+/// The characters an address may have before its @, but for those that more often stand around
+/// one in a log, such as quotes, slashes, = and braces.
 static EMAIL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
-        .unwrap_or_else(|e| unreachable!("a fixed pattern: {e}"))
+    Regex::new(
+        r"([A-Za-z0-9!#$%&*+^_`~-])[A-Za-z0-9.!#$%&*+^_`~-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)",
+    )
+    .unwrap_or_else(|e| unreachable!("a fixed pattern: {e}"))
 });
 
-fn scrubbed(text: &str, home: Option<&Path>) -> String {
-    let mut text = text.to_owned();
-    // A home of "/" would take every path with it.
-    if let Some(home) = home.map(|h| h.to_string_lossy()).filter(|h| h.len() > 1) {
-        text = text.replace(home.as_ref(), "~");
-        // Windows paths are written with doubled backslashes when logged with `{:?}`.
-        if home.contains('\\') {
-            text = text.replace(&home.replace('\\', r"\\"), "~");
-        }
-    }
+fn scrubbed(text: &str, home: Option<&Regex>) -> String {
+    let text = match home {
+        Some(home) => home.replace_all(text, "~$1"),
+        None => text.into(),
+    };
     let text = URL.replace_all(&text, "$1");
     EMAIL.replace_all(&text, "$1***@$2").into_owned()
 }
@@ -101,14 +121,16 @@ mod tests {
     #[test]
     fn scrubs_addresses_home_and_query_strings() {
         let text = "550 5.1.1 <wang.jianguo@example.edu.cn>: user unknown\n\
-            open /Users/zhang/Documents/简历.pdf: denied\n\
+            from alice!smith@example.com\n\
+            open /Users/zhang/Documents/简历.pdf: denied, /users/ZHANG too, not /Users/zhang2\n\
             GET https://school.example.edu/list?token=abc#top 404\n\
             https://school.example.edu/teacher/1 ok";
-        let scrubbed = scrubbed(text, Some(Path::new("/Users/zhang")));
+        let scrubbed = scrubbed(text, home(Path::new("/Users/zhang")).as_ref());
         assert_eq!(
             scrubbed,
             "550 5.1.1 <w***@example.edu.cn>: user unknown\n\
-            open ~/Documents/简历.pdf: denied\n\
+            from a***@example.com\n\
+            open ~/Documents/简历.pdf: denied, ~ too, not /Users/zhang2\n\
             GET https://school.example.edu/list 404\n\
             https://school.example.edu/teacher/1 ok"
         );
@@ -117,10 +139,11 @@ mod tests {
 
     #[test]
     fn scrubs_a_windows_home_however_it_was_written() {
-        let text = r#"open C:\Users\zhang\a.pdf; path: "C:\\Users\\zhang\\a.pdf""#;
+        let text =
+            r#"open C:\Users\zhang\a.pdf; path: "C:\\Users\\zhang\\a.pdf"; c:/users/Zhang/b"#;
         assert_eq!(
-            scrubbed(text, Some(Path::new(r"C:\Users\zhang"))),
-            r#"open ~\a.pdf; path: "~\\a.pdf""#
+            scrubbed(text, home(Path::new(r"C:\Users\zhang")).as_ref()),
+            r#"open ~\a.pdf; path: "~\\a.pdf"; ~/b"#
         );
     }
 

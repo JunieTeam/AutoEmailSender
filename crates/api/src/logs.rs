@@ -10,8 +10,8 @@ use chrono::{DateTime, Utc};
 pub const PREFIX: &str = "app";
 pub const SUFFIX: &str = "log";
 
-/// The names of the log files in `dir`, oldest first.
-pub fn files(dir: &Path) -> io::Result<Vec<String>> {
+/// The log files in `dir`, oldest first: each one's name and text.
+pub fn files(dir: &Path) -> io::Result<Vec<(String, String)>> {
     let mut names = Vec::new();
     for entry in std::fs::read_dir(dir)? {
         let name = entry?.file_name().to_string_lossy().into_owned();
@@ -22,7 +22,17 @@ pub fn files(dir: &Path) -> io::Result<Vec<String>> {
     }
     // Daily file names sort by date.
     names.sort();
-    Ok(names)
+    let mut files = Vec::new();
+    for name in names {
+        match std::fs::read(dir.join(&name)) {
+            // An app stopped partway through a line leaves a character cut short.
+            Ok(bytes) => files.push((name, String::from_utf8_lossy(&bytes).into_owned())),
+            // The oldest goes when a new day's file begins.
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(files)
 }
 
 /// One logged event, its lines each ending in a newline.
@@ -35,8 +45,8 @@ pub struct Event {
 /// Every event logged in `dir`, oldest first.
 pub fn events(dir: &Path) -> io::Result<Vec<Event>> {
     let mut events: Vec<Event> = Vec::new();
-    for name in files(dir)? {
-        for line in std::fs::read_to_string(dir.join(name))?.lines() {
+    for (_, text) in files(dir)? {
+        for line in text.lines() {
             let at = line
                 .split_whitespace()
                 .next()
@@ -55,4 +65,30 @@ pub fn events(dir: &Path) -> io::Result<Vec<Event>> {
         }
     }
     Ok(events)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_line_cut_short_by_a_stop_leaves_the_rest_readable() {
+        let dir = tempfile::tempdir().unwrap();
+        // "导" with its last byte missing.
+        let log = b"2026-11-07T08:00:00.000000Z  INFO app: started\n\
+            2026-11-07T08:00:01.000000Z  INFO app: \xe5\xaf";
+        std::fs::write(dir.path().join("app.2026-11-07.log"), log).unwrap();
+        let texts: Vec<_> = events(dir.path())
+            .unwrap()
+            .into_iter()
+            .map(|e| e.text)
+            .collect();
+        assert_eq!(
+            texts,
+            [
+                "2026-11-07T08:00:00.000000Z  INFO app: started\n",
+                "2026-11-07T08:00:01.000000Z  INFO app: \u{fffd}\n"
+            ]
+        );
+    }
 }
