@@ -1,5 +1,6 @@
 #![cfg(test)]
 use email::tasks::{self as queue, DraftState};
+use failure::Failure;
 use mentor::MentorFields;
 use sqlx::SqlitePool;
 use task::*;
@@ -178,12 +179,14 @@ async fn follow_up_eligibility_and_concurrent_task_creation(db: SqlitePool) {
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("UPDATE email SET state='bounced',error='退信' WHERE mentor_id=?")
-        .bind(ids[1])
-        .execute(&db)
-        .await
-        .unwrap();
-    sqlx::query("UPDATE email SET state='maybe_sent',error='连接断开' WHERE mentor_id=?")
+    sqlx::query(
+        "UPDATE email SET state='bounced',error=json_object('message', '退信') WHERE mentor_id=?",
+    )
+    .bind(ids[1])
+    .execute(&db)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE email SET state='maybe_sent',error=json_object('message', '连接断开') WHERE mentor_id=?")
         .bind(ids[2])
         .execute(&db)
         .await
@@ -450,7 +453,10 @@ async fn receiving_reply_cancels_unsent_follow_ups_and_fences_inflight_generatio
         .bind(T)
         .bind(format!("<follow-{}@example.com>", d.id))
         .bind(T)
-        .bind(matches!(state, "generation_failed" | "failed" | "maybe_sent").then_some("示例失败"))
+        .bind(
+            matches!(state, "generation_failed" | "failed" | "maybe_sent")
+                .then(|| sqlx::types::Json(Failure::new("示例失败"))),
+        )
         .bind(d.id)
         .execute(&db)
         .await
@@ -600,7 +606,7 @@ async fn resend_bounced_follow_up_respects_received_replies_in_both_orders(db: S
         .unwrap();
         sqlx::query(
             "UPDATE email SET state = 'bounced', mailbox_id = 1, from_address = 'me@example.com',
-               to_address = ?, message_id = ?, sent_at = ?, error = '550 address unknown'
+               to_address = ?, message_id = ?, sent_at = ?, error = json_object('message', '550 address unknown')
              WHERE id = ?",
         )
         .bind(format!("m{n}@example.com"))
@@ -721,7 +727,7 @@ async fn resend_bounced_follow_up_respects_parent_bounces_in_both_orders(db: Sql
             .unwrap();
             sqlx::query(
                 "UPDATE email SET state = 'bounced', mailbox_id = 1, from_address = 'me@example.com',
-                   to_address = ?, message_id = ?, sent_at = ?, error = '550 address unknown'
+                   to_address = ?, message_id = ?, sent_at = ?, error = json_object('message', '550 address unknown')
                  WHERE id = ?",
             )
             .bind(format!("m{n}@example.com"))
@@ -864,7 +870,7 @@ async fn missing_parent_mailbox_blocks_follow_up_in_plan_and_sender(db: SqlitePo
     }
     for d in items(&db, t).await {
         assert_eq!(d.state, DraftState::Failed);
-        assert!(d.error.unwrap().contains("无可发信的邮箱"));
+        assert!(d.error.unwrap().message.contains("无可发信的邮箱"));
     }
 }
 
@@ -1496,9 +1502,14 @@ async fn changing_task_time_defers_handover_and_retry_reserves_again(db: SqliteP
         send::Next::At(new)
     );
     assert!(inbox.lock().unwrap().is_empty());
-    email::failed(&mut db.acquire().await.unwrap(), d.id, "连接失败", T)
-        .await
-        .unwrap();
+    email::failed(
+        &mut db.acquire().await.unwrap(),
+        d.id,
+        &Failure::new("连接失败"),
+        T,
+    )
+    .await
+    .unwrap();
     email::retry(&db, d.id, T).await.unwrap();
     let retried = items(&db, task).await.remove(0);
     assert!(retried.planned_at.unwrap() > T);
@@ -1633,7 +1644,7 @@ async fn stale_generation_results_cannot_revive_removed_or_regenerated_items(db:
         .unwrap()
     );
     assert!(
-        !generation::requeue(&db, old, Some(("旧错误", None)), T)
+        !generation::requeue(&db, old, Some((&Failure::new("旧错误"), None)), T)
             .await
             .unwrap()
     );
@@ -2280,7 +2291,7 @@ async fn standalone_follow_up_admission_and_concurrent_first_or_task(db: SqliteP
                     .unwrap();
             }
             "bounced" | "maybe_sent" => {
-                sqlx::query("UPDATE email SET state=?,error='failure' WHERE mentor_id=?")
+                sqlx::query("UPDATE email SET state=?,error=json_object('message', 'failure') WHERE mentor_id=?")
                     .bind(state)
                     .bind(m)
                     .execute(&db)
@@ -2563,7 +2574,8 @@ async fn restart_selects_only_unsuccessful_and_reuses_saved_inputs(db: SqlitePoo
             SET state = ?1,
                 cancel_reason = CASE WHEN ?1 = 'canceled' THEN '停止任务' END, error =
                 CASE WHEN ?1 IN ('failed', 'generation_failed', 'bounced', 'maybe_sent')
-                THEN 'failure' END, planned_at = ?2, from_address = 'me@example.com',
+                THEN json_object('message', 'failure') END, planned_at = ?2,
+                from_address = 'me@example.com',
                 to_address = 'mentor@example.com', message_id = ?3,
                 sent_at = CASE WHEN ?1 <> 'cloud' THEN ?2 END,
                 latest_at = CASE WHEN ?1 = 'cloud' THEN ?2 + 3600000 END,
@@ -2753,9 +2765,14 @@ async fn failed_task(db: &SqlitePool, ids: Vec<i64>, generation: bool, kind: Kin
     let t = create(db, &f, T).await.unwrap();
     if generation {
         while let Some(claim) = queue::next(db).await.unwrap() {
-            queue::fail(&mut db.acquire().await.unwrap(), claim, "模型失败", T + 1)
-                .await
-                .unwrap();
+            queue::fail(
+                &mut db.acquire().await.unwrap(),
+                claim,
+                &Failure::new("模型失败"),
+                T + 1,
+            )
+            .await
+            .unwrap();
         }
     } else {
         let drafts = items(db, t).await;
@@ -2770,9 +2787,14 @@ async fn failed_task(db: &SqlitePool, ids: Vec<i64>, generation: bool, kind: Kin
         .await
         .unwrap();
         for d in drafts {
-            email::failed(&mut db.acquire().await.unwrap(), d.id, "连接失败", T + 1)
-                .await
-                .unwrap();
+            email::failed(
+                &mut db.acquire().await.unwrap(),
+                d.id,
+                &Failure::new("连接失败"),
+                T + 1,
+            )
+            .await
+            .unwrap();
         }
     }
     t
@@ -3137,7 +3159,7 @@ async fn background_work_only_includes_paused_generating_and_failed_tasks(db: Sq
         .bind(id)
         .bind(task_state)
         .bind(paused.then_some(T))
-        .bind(paused.then_some("模型配置需要确认"))
+        .bind(paused.then(|| sqlx::types::Json(Failure::new("模型配置需要确认"))))
         .execute(&db)
         .await
         .unwrap();
@@ -3168,7 +3190,10 @@ async fn background_work_only_includes_paused_generating_and_failed_tasks(db: Sq
             .bind(id)
             .bind(member)
             .bind(email_state)
-            .bind(matches!(email_state, "generation_failed" | "failed").then_some("失败原因"))
+            .bind(
+                matches!(email_state, "generation_failed" | "failed")
+                    .then(|| sqlx::types::Json(Failure::new("失败原因"))),
+            )
             .bind(T)
             .execute(&db)
             .await
@@ -3180,7 +3205,7 @@ async fn background_work_only_includes_paused_generating_and_failed_tasks(db: Sq
         r#"INSERT INTO email (task_id, mentor_id, kind, state, subject, body_md,
             html, text, error, planned_at, created_at, updated_at)
         SELECT id, ?, 'first', 'failed', '主题', '正文', '<p>正文</p>', '正文',
-            '失败原因', 0, 0, 0
+            json_object('message', '失败原因'), 0, 0, 0
         FROM task WHERE id IN (1010, 1011)"#,
     )
     .bind(failed_mentor)
@@ -3218,5 +3243,8 @@ async fn background_work_only_includes_paused_generating_and_failed_tasks(db: Sq
             page.tasks.iter().find(|row| row.id == t.id).unwrap().state
         );
     }
-    assert_eq!(tasks[6].pause_reason.as_deref(), Some("模型配置需要确认"));
+    assert_eq!(
+        tasks[6].pause_reason.as_ref().map(|r| r.message.as_str()),
+        Some("模型配置需要确认")
+    );
 }

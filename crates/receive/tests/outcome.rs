@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use email::outcome::{self as queue, ReplyOutcome as R, ReplyProcessing};
+use failure::Failure;
 use mentor::{ContactStatus, MentorFields, MentorQuery, ReplyOutcomeFilter as F};
 use provider::{Provider, Response};
 use receive::outcome::Processor;
@@ -158,7 +159,11 @@ async fn switches_backfill_deduplicate_and_invalidate_deleted_claim_generations(
     let new = queue::next(&db).await.unwrap().unwrap();
     assert_ne!(old, new);
     assert!(!queue::complete(&db, old, R::Declined).await.unwrap());
-    assert!(!queue::fail(&db, old, "旧错误").await.unwrap());
+    assert!(
+        !queue::fail(&db, old, &Failure::new("旧错误"))
+            .await
+            .unwrap()
+    );
     assert!(queue::set(&db, first, R::NoSlot).await.unwrap());
     assert!(!queue::complete(&db, new, R::Interested).await.unwrap());
     assert_eq!(outcome(&db, first).await.as_deref(), Some("no_slot"));
@@ -457,7 +462,7 @@ async fn invalid_output_retries_once_fails_then_user_retry_succeeds(db: SqlitePo
         receive::MessageKind::Reply {
             marking: Some(queue::OutcomeMarking::Failed { reason }),
             ..
-        } if reason.contains("模型")
+        } if reason.message.contains("模型")
     ));
     assert!(queue::retry(&db, id).await.unwrap());
     runner.processor.wake();
@@ -499,7 +504,9 @@ async fn missing_model_and_consent_pause_and_resume_without_losing_the_queue(db:
     runner.processor.restart();
     runner
         .until(&db, |p| {
-            p.pause.as_ref().is_some_and(|p| p.reason.contains("确认"))
+            p.pause
+                .as_ref()
+                .is_some_and(|p| p.reason.message.contains("确认"))
         })
         .await;
     assert!(p.requests.try_recv().is_err());
@@ -857,7 +864,7 @@ async fn storage_rejects_half_pauses_and_failed_work_without_a_reason(db: Sqlite
     assert!(
         sqlx::query(
             r#"INSERT INTO reply_processing (message_id, action, state, error)
-            VALUES (?, 'outcome', 'queued', '失败原因')"#
+            VALUES (?, 'outcome', 'queued', json_object('message', '失败原因'))"#
         )
         .bind(id)
         .execute(&db)
@@ -871,10 +878,12 @@ async fn storage_rejects_half_pauses_and_failed_work_without_a_reason(db: Sqlite
             .is_err()
     );
     assert!(
-        sqlx::query("UPDATE profile SET reply_processing_pause_reason='暂停原因'")
-            .execute(&db)
-            .await
-            .is_err()
+        sqlx::query(
+            "UPDATE profile SET reply_processing_pause_reason=json_object('message', '暂停原因')"
+        )
+        .execute(&db)
+        .await
+        .is_err()
     );
 }
 
@@ -927,7 +936,11 @@ async fn todos_switch_looks_back_two_weeks_once_and_invalidates_old_claims(db: S
             .await
             .unwrap()
     );
-    assert!(!queue::fail(&db, claim, "旧错误").await.unwrap());
+    assert!(
+        !queue::fail(&db, claim, &Failure::new("旧错误"))
+            .await
+            .unwrap()
+    );
     // Never looked at, so it is queued afresh.
     assert_eq!(queue::next(&db).await.unwrap().map(|c| c.id), Some(id));
     assert_eq!(outcome(&db, older).await, None);
@@ -1264,7 +1277,7 @@ async fn disabling_one_reply_action_preserves_the_other_actions_pause(db: Sqlite
         .unwrap();
     queue::set_enabled(&db, true).await.unwrap();
     let mut conn = db.acquire().await.unwrap();
-    queue::pause_if_unpaused(&mut conn, 2, "模型配置需要修正")
+    queue::pause_if_unpaused(&mut conn, 2, &Failure::new("模型配置需要修正"))
         .await
         .unwrap();
     drop(conn);
@@ -1279,7 +1292,7 @@ async fn disabling_one_reply_action_preserves_the_other_actions_pause(db: Sqlite
         .await
         .unwrap();
     let mut conn = db.acquire().await.unwrap();
-    queue::pause_if_unpaused(&mut conn, 5, "模型配置需要修正")
+    queue::pause_if_unpaused(&mut conn, 5, &Failure::new("模型配置需要修正"))
         .await
         .unwrap();
     drop(conn);

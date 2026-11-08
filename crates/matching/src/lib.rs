@@ -1,5 +1,6 @@
 //! Matching a student's interests and experience to mentors, on a persisted queue.
 
+use failure::Failure;
 use mentor::{MentorDetail, matching as queue};
 use model::{
     Chosen, ModelError,
@@ -203,8 +204,8 @@ pub struct MatchFinished {
 
 enum Outcome {
     Done(queue::MatchAnswer, String, i64),
-    Failed(String),
-    Pause(String, Option<Chosen>),
+    Failed(Failure),
+    Pause(Failure, Option<Chosen>),
     /// With the round the limited request went out in.
     RateLimit(RateLimit, Chosen, u64),
     Gone,
@@ -220,10 +221,10 @@ async fn analyze(
     let id = claim.id;
     let started_at = now();
     let Some(chosen) = model::chosen(db).await? else {
-        return Ok(Outcome::Pause(NO_MODEL.into(), None));
+        return Ok(Outcome::Pause(Failure::new(NO_MODEL), None));
     };
     if !chosen.agreed {
-        return Ok(Outcome::Pause(NOT_AGREED.into(), Some(chosen)));
+        return Ok(Outcome::Pause(Failure::new(NOT_AGREED), Some(chosen)));
     }
     let Some(mentor) = mentor::get(db, id).await? else {
         return Ok(Outcome::Gone);
@@ -232,14 +233,14 @@ async fn analyze(
         return Ok(Outcome::Gone);
     }
     if mentor.research.is_none() && mentor.papers.is_empty() {
-        return Ok(Outcome::Failed(
-            "导师资料不足。请先补充研究方向或代表论文后重试。".into(),
-        ));
+        return Ok(Outcome::Failed(Failure::new(
+            "导师资料不足。请先补充研究方向或代表论文后重试。",
+        )));
     }
     let me = profile::get(db).await?;
     let references = material::for_matching(db).await?;
     if me.research_interests.is_none() && references.is_empty() {
-        return Ok(Outcome::Pause(NO_BASIS.into(), None));
+        return Ok(Outcome::Pause(Failure::new(NO_BASIS), None));
     }
     let message = message(&me, &references, &mentor);
     let mut system = SYSTEM.to_owned();
@@ -252,6 +253,7 @@ async fn analyze(
                     tracing::warn!(
                         mentor_id = id,
                         model = chosen.model,
+                        diagnostic = e.diagnostic(),
                         "match model failed: {e}"
                     );
                     return Ok(classify(e, chosen, round));
@@ -282,9 +284,9 @@ async fn analyze(
             ));
         }
         if answer.finish_reason == Some(model::Finish::Length) {
-            return Ok(Outcome::Failed(
-                "模型的回答过长，已被截断。请重试或更换模型。".into(),
-            ));
+            return Ok(Outcome::Failed(Failure::new(
+                "模型的回答过长，已被截断。请重试或更换模型。",
+            )));
         }
         match parse(&answer.text) {
             Ok(answer) => return Ok(Outcome::Done(answer, chosen.model, started_at)),
@@ -296,7 +298,7 @@ async fn analyze(
                     "{SYSTEM}\n上一次回答的校验错误：{error}。请按字段要求重新输出一个完整的 JSON 对象。"
                 )
             }
-            Err(_) => return Ok(Outcome::Failed(INVALID.into())),
+            Err(_) => return Ok(Outcome::Failed(Failure::new(INVALID))),
         }
     }
     unreachable!("both attempts return")
@@ -304,9 +306,9 @@ async fn analyze(
 
 fn classify(error: ModelError, chosen: Chosen, round: u64) -> Outcome {
     match model::background::classify(error, &chosen.access) {
-        model::background::Failure::Pause(message) => Outcome::Pause(message, Some(chosen)),
-        model::background::Failure::RateLimit(limit) => Outcome::RateLimit(limit, chosen, round),
-        model::background::Failure::Failed(message) => Outcome::Failed(message),
+        model::background::Effect::Pause(message) => Outcome::Pause(message, Some(chosen)),
+        model::background::Effect::RateLimit(limit) => Outcome::RateLimit(limit, chosen, round),
+        model::background::Effect::Failed(message) => Outcome::Failed(message),
     }
 }
 
@@ -314,7 +316,7 @@ fn classify(error: ModelError, chosen: Chosen, round: u64) -> Outcome {
 async fn requeue(
     db: &SqlitePool,
     claim: queue::Claim,
-    pause: Option<(i64, &str)>,
+    pause: Option<(i64, &Failure)>,
     model: Option<&Chosen>,
 ) -> Result<bool, sqlx::Error> {
     let mut tx = db.begin().await?;
@@ -408,7 +410,13 @@ pub async fn run(
                             Ok(o) => o,
                             Err(e) => {
                                 tracing::error!(mentor_id = id, "match database: {e}");
-                                Outcome::Pause("匹配分析的数据暂时无法读取，请重试；仍然出错时，导出日志发给开发者".into(), None)
+                                Outcome::Pause(
+                                    Failure::new(
+                                        "匹配分析的数据暂时无法读取，请重试；仍然出错的，\
+                                        可在电脑上的 设置 › 关于和日志 里反馈问题",
+                                    ),
+                                    None,
+                                )
                             }
                         };
                         let completed_at = now();
@@ -455,18 +463,13 @@ pub async fn run(
                     Err(e) => {
                         tracing::error!("match worker: {e}");
                         if let Some(claim) = claims.remove(&e.id()) {
+                            let reason = Failure::new(
+                                "匹配分析意外中断，请继续或重启应用；仍然出错的，\
+                                可在电脑上的 设置 › 关于和日志 里反馈问题",
+                            );
                             writes
                                 .retry("recover match worker", || {
-                                    requeue(
-                                        &db,
-                                        claim,
-                                        Some((
-                                            now(),
-                                            "匹配分析意外中断，请继续或重启应用；\
-                                    仍然出错时，导出日志发给开发者。",
-                                        )),
-                                        None,
-                                    )
+                                    requeue(&db, claim, Some((now(), &reason)), None)
                                 })
                                 .await;
                         }
@@ -564,8 +567,12 @@ mod tests {
         enqueue(&db, &[id], true, true, 4).await.unwrap();
         let new = next(&db).await.unwrap().unwrap();
         assert_ne!(old, new);
-        assert!(!fail(&db, old, "旧错误").await.unwrap());
-        assert!(!requeue(&db, old, Some((5, "旧暂停")), None).await.unwrap());
+        assert!(!fail(&db, old, &Failure::new("旧错误")).await.unwrap());
+        assert!(
+            !requeue(&db, old, Some((5, &Failure::new("旧暂停"))), None)
+                .await
+                .unwrap()
+        );
         assert!(!complete(&db, old, &answer(), "old", 5).await.unwrap());
         assert!(progress(&db).await.unwrap().pause.is_none());
         assert_eq!(
@@ -585,8 +592,12 @@ mod tests {
         cancel(&db).await.unwrap();
         recover(&db).await.unwrap();
         assert_eq!(progress(&db).await.unwrap().remaining, 0);
-        assert!(!fail(&db, old, "旧错误").await.unwrap());
-        assert!(!requeue(&db, old, Some((2, "旧暂停")), None).await.unwrap());
+        assert!(!fail(&db, old, &Failure::new("旧错误")).await.unwrap());
+        assert!(
+            !requeue(&db, old, Some((2, &Failure::new("旧暂停"))), None)
+                .await
+                .unwrap()
+        );
         enqueue(&db, &[id], true, true, 3).await.unwrap();
         assert!(!complete(&db, old, &answer(), "old", 4).await.unwrap());
         cancel(&db).await.unwrap();
@@ -616,9 +627,9 @@ mod tests {
                 mentor::trash::delete(&db, &[id]).await.unwrap();
             }
             assert!(!complete(&db, claim, &answer(), "old", 3).await.unwrap());
-            assert!(!fail(&db, claim, "旧错误").await.unwrap());
+            assert!(!fail(&db, claim, &Failure::new("旧错误")).await.unwrap());
             assert!(
-                !requeue(&db, claim, Some((3, "旧暂停")), None)
+                !requeue(&db, claim, Some((3, &Failure::new("旧暂停"))), None)
                     .await
                     .unwrap()
             );

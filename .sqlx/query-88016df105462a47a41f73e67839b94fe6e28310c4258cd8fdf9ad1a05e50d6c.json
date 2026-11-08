@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT status AS \"status: PageStatus\", error AS \"error: Json<Failure>\"\n            FROM crawl_page\n            WHERE candidate_id = ? AND status != 'success'\n            ORDER BY status = 'needs_browser' DESC, kind = 'enrich_profile' DESC, id\n            LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "status: PageStatus",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl_page",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "error: Json<Failure>",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl_page",
+            "name": "error"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "88016df105462a47a41f73e67839b94fe6e28310c4258cd8fdf9ad1a05e50d6c"
+}

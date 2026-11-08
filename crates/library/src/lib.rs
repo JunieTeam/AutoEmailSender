@@ -246,7 +246,10 @@ impl Error {
             })) => "这位导师已不在导师库，请刷新列表".into(),
             Self::Account(error) => error.message(),
             Self::Invalid(message) => message.clone(),
-            _ => "导师库处理未能完成，请重试；仍然失败时导出日志联系开发者".into(),
+            _ => {
+                "导师库处理未能完成，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题"
+                    .into()
+            }
         }
     }
 }

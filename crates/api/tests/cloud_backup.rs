@@ -358,7 +358,7 @@ async fn backups_over_the_limit_fail_naming_the_largest_files(db: SqlitePool) {
     );
     assert_eq!(setup.uploads(), 0);
     let failure = cloud::status(&setup.ctx).await.unwrap().failure.unwrap();
-    assert_eq!(failure.message, message);
+    assert_eq!(failure.reason.message, message);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

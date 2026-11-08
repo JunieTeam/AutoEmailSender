@@ -167,7 +167,7 @@ function Match({ state: { result, state } }: { state: MatchSummary }) {
       )}
       {state ? (
         <span
-          title={state.state === "failed" ? state.error : undefined}
+          title={state.state === "failed" ? state.error.message : undefined}
           className={state.state === "failed" ? "text-warning" : "text-muted-foreground"}
         >
           {state.state === "queued" ? "排队中" : state.state === "running" ? "分析中" : "失败"}

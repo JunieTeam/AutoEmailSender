@@ -174,7 +174,7 @@ async fn a_refusal_says_what_the_provider_said() {
         ),
         "{result:?}"
     );
-    assert!(result.unwrap_err().message().contains("API Key"));
+    assert!(result.unwrap_err().failure().message.contains("API Key"));
 }
 
 #[tokio::test]
@@ -184,8 +184,15 @@ async fn a_key_quoted_back_is_not_shown() {
     let error = model::test(&net, &access(address, None), "gpt")
         .await
         .unwrap_err();
-    assert!(error.message().contains("Invalid API key: ***"), "{error}");
-    assert!(!error.message().contains("sk-test"), "{error}");
+    assert_eq!(
+        error.diagnostic().as_deref(),
+        Some("Invalid API key: ***"),
+        "{error}"
+    );
+    assert!(
+        !format!("{:?}", error.failure()).contains("sk-test"),
+        "{error}"
+    );
     assert!(!error.to_string().contains("sk-test"), "{error}");
 }
 
@@ -201,11 +208,15 @@ async fn a_refusal_quoting_the_request_keeps_it_out_of_the_log() {
         .await
         .unwrap_err();
     assert_eq!(error.to_string(), "refused with 400");
-    // The user still reads what the provider said.
+    // The user still reads what the provider said, under the message.
+    let failure = error.failure();
+    assert!(!failure.message.contains("3.8"), "{failure:?}");
     assert!(
-        error.message().contains("绩点是 3.8"),
-        "{}",
-        error.message()
+        failure
+            .details
+            .as_deref()
+            .is_some_and(|d| d.contains("绩点是 3.8")),
+        "{failure:?}"
     );
 }
 
@@ -322,7 +333,7 @@ async fn what_the_model_wrote_stays_out_of_errors() {
         .unwrap_err();
     assert!(matches!(error, ModelError::Broken(_)), "{error:?}");
     assert!(!error.to_string().contains("3.8"), "{error}");
-    assert!(!error.message().contains("3.8"), "{error}");
+    assert!(!format!("{:?}", error.failure()).contains("3.8"), "{error}");
     // As a gateway that answers in plain text.
     let (address, _) = provider(200, "我的绩点是 3.8").await;
     let error = model::ask(&net, &access(address, None), "m", "规则", "资料", false)
@@ -387,7 +398,10 @@ async fn a_model_list_it_cannot_read_is_not_quoted() {
         .unwrap_err();
     assert!(matches!(error, ModelError::Broken(_)), "{error:?}");
     assert!(!error.to_string().contains("sk-test"), "{error}");
-    assert!(!error.message().contains("sk-test"), "{error}");
+    assert!(
+        !format!("{:?}", error.failure()).contains("sk-test"),
+        "{error}"
+    );
 }
 
 #[tokio::test]
@@ -410,5 +424,6 @@ async fn a_finish_reason_of_the_providers_own_is_not_quoted() {
         ),
         "{error:?}"
     );
-    assert!(!error.message().contains("sk-test"), "{}", error.message());
+    let failure = error.failure();
+    assert!(!format!("{failure:?}").contains("sk-test"), "{failure:?}");
 }

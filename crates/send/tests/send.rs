@@ -3,6 +3,7 @@
 
 //! Sending approved emails through the fake SMTP server.
 
+use failure::Failure;
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::path::Path;
@@ -254,7 +255,10 @@ async fn a_refused_email_fails_and_a_cut_off_one_may_have_gone_out(db: SqlitePoo
         .unwrap();
     let refused = first_email(&db, unknown).await.delivery;
     assert!(
-        matches!(refused, Delivery::Failed { ref error } if error.contains("550")),
+        matches!(
+            refused,
+            Delivery::Failed { ref error } if error.message.starts_with("收件地址不存在") && error.details.is_none()
+        ),
         "{refused:?}"
     );
     assert!(mailbox::list(&db, T).await.unwrap()[0].pause.is_none());
@@ -696,7 +700,7 @@ async fn paused_mailboxes_fail_over_but_owned_mail_and_follow_ups_wait(db: Sqlit
             .pause
             .unwrap();
         assert_eq!(pause.until, at + 60 * MINUTE);
-        assert!(!pause.reason.contains(SECRET));
+        assert!(!pause.reason.message.contains(SECRET));
         // This rejection has no prior delivery evidence and must not acquire any.
         assert_eq!(
             sqlx::query_as::<_, (Option<i64>, Option<String>, Option<i64>)>(
@@ -976,7 +980,7 @@ async fn emails_left_sending_may_have_gone_out(db: SqlitePool) {
             from_address: ADDRESS.into(),
             to_address: "wang@example.edu.cn".into(),
             sent_at: T,
-            error: email::INTERRUPTED.into(),
+            error: Failure::new(email::INTERRUPTED),
             cancel_reason: None,
         }
     );
@@ -1102,10 +1106,17 @@ async fn an_email_left_sending_to_no_address_failed(db: SqlitePool) {
         .unwrap();
     // A late bounce naming no one, of a try before the address was taken out, leaves it be.
     assert!(
-        email::bounced(&mut conn, "<x@example.com>", &[], "邮件被退回", T, T)
-            .await
-            .unwrap()
-            .is_none()
+        email::bounced(
+            &mut conn,
+            "<x@example.com>",
+            &[],
+            &Failure::new("邮件被退回"),
+            T,
+            T
+        )
+        .await
+        .unwrap()
+        .is_none()
     );
     drop(conn);
 
@@ -1113,7 +1124,7 @@ async fn an_email_left_sending_to_no_address_failed(db: SqlitePool) {
     assert_eq!(
         first_email(&db, wang).await.delivery,
         Delivery::Failed {
-            error: email::NO_ADDRESS.into()
+            error: Failure::new(email::NO_ADDRESS)
         }
     );
     assert_eq!(own_mailbox(&db, wang).await, None);
@@ -1198,7 +1209,7 @@ async fn attachments_are_read_from_their_files_as_the_email_goes(db: SqlitePool)
         .unwrap();
     let missing = first_email(&db, li).await.delivery;
     assert!(
-        matches!(missing, Delivery::Failed { ref error } if error.contains("成绩单.pdf")),
+        matches!(missing, Delivery::Failed { ref error } if error.message.contains("成绩单.pdf")),
         "{missing:?}"
     );
     assert!(inbox.lock().unwrap().is_empty());
@@ -1215,7 +1226,7 @@ async fn a_bounced_first_email_can_resend_once_even_after_a_reply(db: SqlitePool
         .await
         .unwrap();
     let bounced = first_email(&db, wang).await.id;
-    sqlx::query("UPDATE email SET state = 'bounced', error = '收件地址不存在' WHERE id = ?")
+    sqlx::query("UPDATE email SET state = 'bounced', error = json_object('message', '收件地址不存在') WHERE id = ?")
         .bind(bounced)
         .execute(&db)
         .await
@@ -1277,7 +1288,7 @@ async fn a_bounced_first_email_can_resend_once_even_after_a_reply(db: SqlitePool
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("UPDATE email SET state = 'bounced', error = '收件地址不存在' WHERE id = ?")
+    sqlx::query("UPDATE email SET state = 'bounced', error = json_object('message', '收件地址不存在') WHERE id = ?")
         .bind(emails[1].id)
         .execute(&db)
         .await
@@ -1416,7 +1427,7 @@ async fn a_reply_never_rotates_to_an_unrelated_mailbox_after_its_sender_is_delet
         Next::Now
     );
     assert!(matches!(first_email(&db, mentor).await.delivery,
-        Delivery::Failed { error } if error.contains("无可发信的邮箱")));
+        Delivery::Failed { error } if error.message.contains("无可发信的邮箱")));
     assert!(original_inbox.lock().unwrap().is_empty());
     assert!(other_inbox.lock().unwrap().is_empty());
     sqlx::query("UPDATE mentor SET mailbox_id = (SELECT max(id) FROM mailbox) WHERE id = ?")
@@ -1466,7 +1477,7 @@ async fn bounced_reply_uses_a_replacement_responsible_mailbox(db: SqlitePool) {
         Next::Now
     );
     let bounced = first_email(&db, mentor).await.id;
-    sqlx::query("UPDATE email SET state = 'bounced', error = '收件地址不存在' WHERE id = ?")
+    sqlx::query("UPDATE email SET state = 'bounced', error = json_object('message', '收件地址不存在') WHERE id = ?")
         .bind(bounced)
         .execute(&db)
         .await
@@ -1522,7 +1533,7 @@ async fn an_existing_reply_resend_can_retry_after_its_mailbox_is_replaced(db: Sq
         Next::Now
     );
     let bounced = first_email(&db, mentor).await.id;
-    sqlx::query("UPDATE email SET state = 'bounced', error = '收件地址不存在' WHERE id = ?")
+    sqlx::query("UPDATE email SET state = 'bounced', error = json_object('message', '收件地址不存在') WHERE id = ?")
         .bind(bounced)
         .execute(&db)
         .await
@@ -1547,7 +1558,7 @@ async fn an_existing_reply_resend_can_retry_after_its_mailbox_is_replaced(db: Sq
         .find(|e| e.resend_of == Some(bounced))
         .unwrap();
     assert!(
-        matches!(&resent.delivery, Delivery::Failed { error } if error.contains("无可发信的邮箱"))
+        matches!(&resent.delivery, Delivery::Failed { error } if error.message.contains("无可发信的邮箱"))
     );
     assert!(!email::withdraw(&db, resent.id, T + MINUTE).await.unwrap());
     let (net, replacement) = mailbox(&db, SECRET).await;
@@ -1591,7 +1602,7 @@ async fn a_reply_uses_the_responsible_mailbox_selected_after_approval(db: Sqlite
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("UPDATE mailbox SET paused_until = ?, pause_reason = '服务商限流' WHERE id = 1")
+    sqlx::query("UPDATE mailbox SET paused_until = ?, pause_reason = json_object('message', '服务商限流') WHERE id = 1")
         .bind(T + DAY)
         .execute(&db)
         .await
@@ -1853,13 +1864,18 @@ async fn plan_columns_explain_waiting_and_history_is_limited_and_paged(db: Sqlit
     email::schedule::reschedule(&db, ids[3], T - 2 * 3_600_000, T - 3 * 3_600_000)
         .await
         .unwrap();
-    email::failed(&mut db.acquire().await.unwrap(), ids[4], "拒收", T)
-        .await
-        .unwrap();
+    email::failed(
+        &mut db.acquire().await.unwrap(),
+        ids[4],
+        &Failure::new("拒收"),
+        T,
+    )
+    .await
+    .unwrap();
     sqlx::query(
         r#"UPDATE email SET state = 'maybe_sent', mailbox_id = 1, from_address =
              'me@example.com', to_address = 'unknown@example.edu.cn', message_id =
-             '<unknown@example.com>', sent_at = ?, error = '连接中断'
+             '<unknown@example.com>', sent_at = ?, error = json_object('message', '连接中断')
            WHERE id = ?"#,
     )
     .bind(T)
@@ -1922,7 +1938,7 @@ async fn plan_columns_explain_waiting_and_history_is_limited_and_paged(db: Sqlit
             .waiting,
         Some(Waiting::TaskPaused)
     ));
-    sqlx::query(r#"UPDATE mailbox SET paused_until = ?, pause_reason = '服务商限流'"#)
+    sqlx::query(r#"UPDATE mailbox SET paused_until = ?, pause_reason = json_object('message', '服务商限流')"#)
         .bind(T + MINUTE)
         .execute(&db)
         .await
@@ -2643,7 +2659,7 @@ async fn plan_returns_resend_origin_for_approved_and_failed_resends(db: SqlitePo
         .unwrap();
     let original = first_email(&db, mentor).await.id;
     sqlx::query(
-        r#"UPDATE email SET state = 'bounced', error = '退信'
+        r#"UPDATE email SET state = 'bounced', error = json_object('message', '退信')
            WHERE id = ?"#,
     )
     .bind(original)
@@ -2660,9 +2676,14 @@ async fn plan_returns_resend_origin_for_approved_and_failed_resends(db: SqlitePo
         .unwrap();
     for column in [PlanColumn::Upcoming, PlanColumn::Pending] {
         if matches!(column, PlanColumn::Pending) {
-            email::failed(&mut db.acquire().await.unwrap(), again, "拒收", T)
-                .await
-                .unwrap();
+            email::failed(
+                &mut db.acquire().await.unwrap(),
+                again,
+                &Failure::new("拒收"),
+                T,
+            )
+            .await
+            .unwrap();
         }
         let page = send::plan::list(
             &db,
@@ -2903,7 +2924,7 @@ async fn cancellation_accepts_late_delivery_evidence_after_retry(db: SqlitePool)
                 &mut conn,
                 &message_id,
                 &recipients,
-                "地址不存在",
+                &Failure::new("地址不存在"),
                 at,
                 at + MINUTE,
             )
@@ -3635,10 +3656,17 @@ async fn cancellation_without_a_handover_cannot_gain_delivery_from_a_copy(db: Sq
                 email::SentCopy::Confirmed
             );
             assert!(
-                email::bounced(&mut conn, &message_id, &recipients, "退信", at, at)
-                    .await
-                    .unwrap()
-                    .is_none()
+                email::bounced(
+                    &mut conn,
+                    &message_id,
+                    &recipients,
+                    &Failure::new("退信"),
+                    at,
+                    at
+                )
+                .await
+                .unwrap()
+                .is_none()
             );
         }
     }

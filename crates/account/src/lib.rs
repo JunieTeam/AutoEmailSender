@@ -754,7 +754,8 @@ impl Error {
         match self {
             Self::Invalid(message) => (*message).into(),
             Self::Worker(_) | Self::Database(_) => {
-                "账号处理未能完成，请重试；仍然失败时导出日志联系开发者".into()
+                "账号处理未能完成，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题"
+                    .into()
             }
             Self::Network(error) if error.is_decode() => {
                 "服务器返回的数据无法读取，请稍后重试或升级应用".into()
@@ -830,7 +831,10 @@ impl Error {
                 }
                 // Logging in to another account gives the computer a new room, so this is not
                 // expected to happen.
-                ErrorCode::RoomTaken => "手机远程的连接属于另一个账号，请导出日志发给开发者".into(),
+                ErrorCode::RoomTaken => {
+                    "手机远程的连接属于另一个账号。请在电脑上的 设置 › 关于和日志 里反馈问题。"
+                        .into()
+                }
                 ErrorCode::NotFound | ErrorCode::MethodNotAllowed => {
                     "服务器不支持这个操作，请升级应用后重试".into()
                 }

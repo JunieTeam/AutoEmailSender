@@ -1,8 +1,9 @@
 //! The background draft queue shares model capacity and failure policy with matching.
 use super::*;
+use failure::Failure;
 use model::{
     Chosen,
-    background::{CONCURRENCY, Cooldown, Failure, LASTING, Limit, Limited, RateLimit, Rounds},
+    background::{CONCURRENCY, Cooldown, Effect, LASTING, Limit, Limited, RateLimit, Rounds},
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -44,10 +45,10 @@ enum Outcome {
         model: String,
         fact_check: Option<email::fact_check::FactCheck>,
         /// With the round the check's last request went out in.
-        failure: Option<(Failure, Chosen, u64)>,
+        failure: Option<(Effect, Chosen, u64)>,
     },
-    Failed(String),
-    Pause(String, Option<Chosen>),
+    Failed(Failure),
+    Pause(Failure, Option<Chosen>),
     /// With the round the limited request went out in.
     RateLimit(RateLimit, Chosen, u64),
     Requeue,
@@ -78,13 +79,13 @@ async fn generate(
     };
     let Some(chosen) = model::selected(&mut *tx, t.model_config_id).await? else {
         return Ok(Outcome::Pause(
-            "尚未添加模型，请在设置中添加后继续".into(),
+            Failure::new("尚未添加模型，请在设置中添加后继续"),
             None,
         ));
     };
     if !chosen.agreed {
         return Ok(Outcome::Pause(
-            "模型配置已改变，请先确认发给服务商的内容".into(),
+            Failure::new("模型配置已改变，请先确认发给服务商的内容"),
             Some(chosen),
         ));
     }
@@ -222,26 +223,32 @@ async fn generate(
                             }),
                             Err(writing::fact_check::Error::Db(error)) => return Err(error),
                             Err(writing::fact_check::Error::Model(error)) => {
-                                let message = error.message();
+                                tracing::warn!(
+                                    email_id = claim.id,
+                                    model = check_config.model,
+                                    diagnostic = error.diagnostic(),
+                                    "fact check model failed: {error}"
+                                );
+                                let message = error.failure();
                                 let classified =
                                     model::background::classify(error, &check_config.access);
                                 let reason = match &classified {
-                                    Failure::Pause(reason) | Failure::Failed(reason) => {
+                                    Effect::Pause(reason) | Effect::Failed(reason) => {
                                         reason.clone()
                                     }
-                                    Failure::RateLimit(_) => message,
+                                    Effect::RateLimit(_) => message,
                                 };
                                 failure =
                                     Some((classified, check_config, sent.load(Ordering::Relaxed)));
                                 Some(email::fact_check::FactCheck::Failed { reason })
                             }
                             Err(error) => Some(email::fact_check::FactCheck::Failed {
-                                reason: error.message(),
+                                reason: error.failure(),
                             }),
                         }
                     }
                     None => Some(email::fact_check::FactCheck::Failed {
-                        reason: writing::fact_check::Error::NoModel.message(),
+                        reason: writing::fact_check::Error::NoModel.failure(),
                     }),
                 }
             } else {
@@ -258,18 +265,19 @@ async fn generate(
             tracing::warn!(
                 email_id = claim.id,
                 model = chosen.model,
+                diagnostic = error.diagnostic(),
                 "draft model failed: {error}"
             );
             match model::background::classify(error, &chosen.access) {
-                Failure::Pause(reason) => Outcome::Pause(reason, Some(chosen)),
-                Failure::RateLimit(limit) => {
+                Effect::Pause(reason) => Outcome::Pause(reason, Some(chosen)),
+                Effect::RateLimit(limit) => {
                     Outcome::RateLimit(limit, chosen, sent.load(Ordering::Relaxed))
                 }
-                Failure::Failed(reason) => Outcome::Failed(reason),
+                Effect::Failed(reason) => Outcome::Failed(reason),
             }
         }
         Err(writing::Error::NotALetter { .. }) => {
-            Outcome::Failed("模型未能写出完整的草稿，请重试或更换模型".into())
+            Outcome::Failed(Failure::new("模型未能写出完整的草稿，请重试或更换模型"))
         }
         Err(writing::Error::Db(e)) => return Err(e),
         Err(writing::Error::NoMentor) => Outcome::Requeue,
@@ -282,7 +290,7 @@ async fn generate(
 pub async fn requeue(
     db: &SqlitePool,
     claim: emails::Claim,
-    pause: Option<(&str, Option<&Chosen>)>,
+    pause: Option<(&Failure, Option<&Chosen>)>,
     at: i64,
 ) -> std::result::Result<bool, sqlx::Error> {
     let mut tx = db.begin().await?;
@@ -299,7 +307,7 @@ pub async fn requeue(
 async fn pause_task(
     conn: &mut SqliteConnection,
     task: i64,
-    reason: &str,
+    reason: &Failure,
     expected: Option<&Chosen>,
     at: i64,
 ) -> std::result::Result<(), sqlx::Error> {
@@ -319,7 +327,7 @@ async fn pause_task(
                 generation_pause_reason = ?
             WHERE id = ? AND state = 'active' AND generation_paused_at IS NULL"#,
             at,
-            reason,
+            Json(reason),
             task
         )
         .execute(conn)
@@ -352,7 +360,7 @@ async fn apply(
                 at,
             )
             .await?;
-            if applied && let Some((Failure::Pause(reason), config, _)) = failure {
+            if applied && let Some((Effect::Pause(reason), config, _)) = failure {
                 pause_task(&mut tx, claim.task, reason, Some(config), at).await?;
             }
             tx.commit().await?;
@@ -489,23 +497,24 @@ pub async fn run(
                                 letter,
                                 model,
                                 fact_check,
-                                failure: Some((Failure::RateLimit(limit), config, round)),
+                                failure: Some((Effect::RateLimit(limit), config, round)),
                             }) if current(round) && limit.wait > LASTING =>
                             {
                                 Outcome::Done {
                                     letter,
                                     model,
                                     fact_check,
-                                    failure: Some((Failure::Pause(limit.lasting), config, round)),
+                                    failure: Some((Effect::Pause(limit.lasting), config, round)),
                                 }
                             }
                             Ok(o) => o,
                             Err(e) => {
                                 tracing::error!("draft database: {e}");
                                 Outcome::Pause(
-                                    "草稿数据暂时无法读取，请继续或重启应用；\
-                                    仍然出错时，请导出日志。"
-                                        .into(),
+                                    Failure::new(
+                                        "草稿数据暂时无法读取，请继续或重启应用；仍然出错的，\
+                                        可在电脑上的 设置 › 关于和日志 里反馈问题",
+                                    ),
                                     None,
                                 )
                             }
@@ -524,7 +533,7 @@ pub async fn run(
                                 Outcome::RateLimit(RateLimit { wait, .. }, _, round)
                                 | Outcome::Done {
                                     failure:
-                                        Some((Failure::RateLimit(RateLimit { wait, .. }), _, round)),
+                                        Some((Effect::RateLimit(RateLimit { wait, .. }), _, round)),
                                     ..
                                 } if current(round) => Some((wait, round)),
                                 _ => None,
@@ -537,14 +546,13 @@ pub async fn run(
                     Err(e) => {
                         tracing::error!("draft worker: {e}");
                         if let Some(claim) = claims.remove(&e.id()) {
+                            let reason = Failure::new(
+                                "草稿生成意外中断，请继续或重启应用；仍然出错的，\
+                                可在电脑上的 设置 › 关于和日志 里反馈问题",
+                            );
                             writes
                                 .retry("recover draft worker", || {
-                                    requeue(
-                                        &db,
-                                        claim,
-                                        Some(("草稿生成意外中断，请继续或重启应用", None)),
-                                        now(),
-                                    )
+                                    requeue(&db, claim, Some((&reason, None)), now())
                                 })
                                 .await;
                         }

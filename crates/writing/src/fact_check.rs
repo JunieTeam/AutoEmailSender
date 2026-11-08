@@ -1,6 +1,7 @@
 //! Verify only the student's claims against their profile and writing materials.
 
 use email::fact_check::Finding;
+use failure::Failure;
 use serde_json::json;
 use sqlx::SqlitePool;
 use std::future::Future;
@@ -21,13 +22,15 @@ impl From<sqlx::Error> for Error {
     }
 }
 impl Error {
-    pub fn message(&self) -> String {
+    pub fn failure(&self) -> Failure {
         match self {
-            Self::NoModel => "尚未添加模型。在“设置 › AI › 模型”里添加后再试。".into(),
-            Self::NotAgreed => "请先确认发给模型服务商的内容".into(),
-            Self::Model(error) => error.message(),
-            Self::InvalidAnswer => "模型未返回完整的核对结果，请重试或更换模型".into(),
-            Self::Db(_) => "核对结果暂时无法保存，请重试；仍然出错时，请导出日志".into(),
+            Self::NoModel => Failure::new("尚未添加模型。在“设置 › AI › 模型”里添加后再试。"),
+            Self::NotAgreed => Failure::new("请先确认发给模型服务商的内容"),
+            Self::Model(error) => error.failure(),
+            Self::InvalidAnswer => Failure::new("模型未返回完整的核对结果，请重试或更换模型"),
+            Self::Db(_) => Failure::new(
+                "核对结果暂时无法保存，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题",
+            ),
         }
     }
 }

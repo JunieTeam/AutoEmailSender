@@ -1,4 +1,5 @@
 #![cfg(test)]
+use failure::Failure;
 use mentor::{MatchState, MentorFields, MentorQuery, matching::*};
 use sqlx::SqlitePool;
 use std::num::NonZeroU32;
@@ -120,7 +121,7 @@ async fn results_survive_queue_failure_retry_and_cancellation(db: SqlitePool) {
         MatchState::Queued,
         MatchState::Running,
         MatchState::Failed {
-            error: "回答不完整".into(),
+            error: Failure::new("回答不完整"),
         },
     ] {
         let list = mentor::list(&db, &query, 0).await.unwrap();
@@ -136,7 +137,9 @@ async fn results_survive_queue_failure_retry_and_cancellation(db: SqlitePool) {
                 claim = next(&db).await.unwrap();
             }
             MatchState::Running => {
-                fail(&db, claim.unwrap(), "回答不完整").await.unwrap();
+                fail(&db, claim.unwrap(), &Failure::new("回答不完整"))
+                    .await
+                    .unwrap();
             }
             _ => {}
         }
@@ -149,7 +152,11 @@ async fn results_survive_queue_failure_retry_and_cancellation(db: SqlitePool) {
             .await
             .unwrap()
     );
-    assert!(!fail(&db, claim.unwrap(), "late").await.unwrap());
+    assert!(
+        !fail(&db, claim.unwrap(), &Failure::new("late"))
+            .await
+            .unwrap()
+    );
     assert_eq!(
         mentor::get(&db, id)
             .await
@@ -216,8 +223,8 @@ async fn unchanged_interests_do_not_invalidate_a_result(db: SqlitePool) {
 async fn starting_single_or_batch_analysis_resumes_a_paused_queue(db: SqlitePool) {
     let id = add(&db, Some("视觉")).await;
     for single in [false, true] {
-        for reason in [None, Some("API Key 不正确")] {
-            pause(&db, 2, reason).await.unwrap();
+        for reason in [None, Some(Failure::new("API Key 不正确"))] {
+            pause(&db, 2, reason.as_ref()).await.unwrap();
             assert_eq!(enqueue(&db, &[id], single, true, 3).await.unwrap(), 1);
             assert!(progress(&db).await.unwrap().pause.is_none());
             assert!(next(&db).await.unwrap().is_some());

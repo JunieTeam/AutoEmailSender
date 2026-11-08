@@ -9,10 +9,11 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+failure.workspace = true
 serde.workspace = true
 transport.workspace = true
 ts-rs = { workspace = true, optional = true }
 url = "2.5.8"
 
 [features]
-ts-rs = ["dep:ts-rs"]
+ts-rs = ["dep:ts-rs", "failure/ts-rs", "transport/ts-rs"]

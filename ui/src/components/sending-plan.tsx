@@ -11,6 +11,7 @@ import { ScheduleActions, refreshSchedule, scheduledAt } from "@/components/sche
 import { dropDrafts } from "@/components/mentor";
 import { day, sentence, time } from "@/format";
 import { Loading } from "@/components/loading";
+import { FailureDetails, FailureNote } from "@/components/failure";
 
 const COLUMNS: [PlanColumn, string][] = [
   ["pending", "待处理"],
@@ -143,11 +144,14 @@ function PlanRow({ email: e, column }: { email: PlanEmail; column: PlanColumn })
       </p>
       {e.waiting !== null && <p className="text-xs text-muted-foreground">{WAITING[e.waiting]}</p>}
       {column === "pending" && (
-        <p className="text-xs text-warning">
-          {e.cancelReason === null
-            ? pendingReason(e)
-            : `${sentence(pendingReason(e))}已取消：${sentence(e.cancelReason)}确认未发出后，不再发送。`}
-        </p>
+        <div className="text-xs text-warning">
+          <p>
+            {e.cancelReason === null
+              ? pendingReason(e)
+              : `${sentence(pendingReason(e))}已取消：${sentence(e.cancelReason)}确认未发出后，不再发送。`}
+          </p>
+          {e.error && <FailureDetails failure={e.error} />}
+        </div>
       )}
       {column !== "history" && (
         <div className="flex flex-wrap gap-1">
@@ -217,9 +221,11 @@ function CloudRow({ email: e, cloud }: { email: PlanEmail; cloud: PlanCloud }) {
         {e.cancelReason !== null && `；已取消：${e.cancelReason}，正在从云端撤回`}
       </p>
       {cloud.pause && (
-        <p className="text-xs text-warning">
-          云端暂停到 {scheduledAt(cloud.pause.until)}：{cloud.pause.reason}
-        </p>
+        <FailureNote
+          failure={cloud.pause.reason}
+          lead={`云端暂停到 ${scheduledAt(cloud.pause.until)}：`}
+          className="text-xs text-warning"
+        />
       )}
       {e.cancelReason === null && (
         <div className="flex flex-wrap gap-1">
@@ -234,7 +240,8 @@ function CloudRow({ email: e, cloud }: { email: PlanEmail; cloud: PlanCloud }) {
 function pendingReason(e: PlanEmail): string {
   if (e.state === "approved")
     return e.latestAt !== null ? `${scheduledAt(e.latestAt)} 前未能发出` : "所选窗口已无空位，请修改发送时间或改期";
-  if (e.state === "generation_failed") return `生成失败：${e.error}`;
-  if (e.state === "maybe_sent") return `可能已发出：${e.error}`;
-  return `发送失败：${e.error}`;
+  const why = e.error?.message ?? "";
+  if (e.state === "generation_failed") return `生成失败：${why}`;
+  if (e.state === "maybe_sent") return `可能已发出：${why}`;
+  return `发送失败：${why}`;
 }

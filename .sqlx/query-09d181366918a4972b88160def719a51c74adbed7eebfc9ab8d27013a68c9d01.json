@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, name, kind AS \"kind: Kind\", writer AS \"writer: Writer\", state,\n            created_at, generation_paused_at, generation_pause_reason, model_config_id\n        FROM task\n        WHERE id = ?",
+  "query": "SELECT id, name, kind AS \"kind: Kind\", writer AS \"writer: Writer\", state,\n            created_at, generation_paused_at,\n            generation_pause_reason AS \"generation_pause_reason: Json<Failure>\", model_config_id\n        FROM task\n        ORDER BY id DESC\n        LIMIT 20\n        OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -81,7 +81,7 @@
         }
       },
       {
-        "name": "generation_pause_reason",
+        "name": "generation_pause_reason: Json<Failure>",
         "ordinal": 7,
         "type_info": "Text",
         "origin": {
@@ -118,5 +118,5 @@
       true
     ]
   },
-  "hash": "3c515553490c76f200de48df9136ab37955f89c25beedfaffce8ba6001a4860a"
+  "hash": "09d181366918a4972b88160def719a51c74adbed7eebfc9ab8d27013a68c9d01"
 }

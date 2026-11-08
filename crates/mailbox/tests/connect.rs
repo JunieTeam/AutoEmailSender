@@ -165,7 +165,7 @@ async fn an_untrusted_certificate_is_refused() {
             transport::check_sending(&net, &me.sender).await,
             mailbox::check_receiving(&net, &me).await,
         ] {
-            let message = result.unwrap_err().message();
+            let message = result.unwrap_err().failure().message;
             assert!(message.contains("证书不受信任"), "{security:?}: {message}");
         }
     }
@@ -209,7 +209,8 @@ async fn a_throttled_login_says_to_wait_not_to_change_the_code() {
     let message = transport::check_sending(&net, &me.sender)
         .await
         .unwrap_err()
-        .message();
+        .failure()
+        .message;
     assert!(
         message.starts_with("服务商限制了登录或发信的频率"),
         "{message}"

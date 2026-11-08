@@ -425,7 +425,7 @@ async fn task_material(db: &SqlitePool, material: i64, role: &str, state: &str, 
     .bind(task)
     .bind(state)
     .bind(claim)
-    .bind((state == "generation_failed").then_some("生成失败"))
+    .bind((state == "generation_failed").then_some(r#"{"message":"生成失败"}"#))
     .bind((state == "canceled").then_some("任务停止"))
     .execute(db)
     .await

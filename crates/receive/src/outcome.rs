@@ -1,6 +1,7 @@
 //! Automatic reply classification, with no mentor or student profile sent to the model.
 
 use email::outcome::{self as queue, ReplyOutcome};
+use failure::Failure;
 use model::{
     Chosen, ModelError,
     background::{Cooldown, Limited, RateLimit, Rounds},
@@ -52,8 +53,8 @@ enum Guard {
 enum Outcome {
     Done(ReplyOutcome),
     Todos(Vec<email::todos::Fields>),
-    Failed(String),
-    Pause(String, Guard),
+    Failed(Failure),
+    Pause(Failure, Guard),
     /// With the round the limited request went out in.
     RateLimit(RateLimit, Chosen, u64),
     /// A rate limit began while this waited for a turn at the model.
@@ -108,10 +109,13 @@ async fn analyze(
             return Ok(Outcome::Wait);
         }
         let Some(chosen) = model::chosen(db).await? else {
-            return Ok(Outcome::Pause(NO_MODEL.into(), Guard::Missing));
+            return Ok(Outcome::Pause(Failure::new(NO_MODEL), Guard::Missing));
         };
         if !chosen.agreed {
-            return Ok(Outcome::Pause(NOT_AGREED.into(), Guard::Model(chosen)));
+            return Ok(Outcome::Pause(
+                Failure::new(NOT_AGREED),
+                Guard::Model(chosen),
+            ));
         }
         let round = processor.round();
         let answer =
@@ -121,6 +125,7 @@ async fn analyze(
                     tracing::warn!(
                         message_id = claim.id,
                         model = chosen.model,
+                        diagnostic = error.diagnostic(),
                         "reply processing model failed: {error}"
                     );
                     return Ok(classify(error, chosen, round));
@@ -170,14 +175,11 @@ async fn analyze(
                 );
             }
             Err(_) => {
-                return Ok(Outcome::Failed(
-                    if todos {
-                        super::todos::INVALID
-                    } else {
-                        INVALID
-                    }
-                    .into(),
-                ));
+                return Ok(Outcome::Failed(Failure::new(if todos {
+                    super::todos::INVALID
+                } else {
+                    INVALID
+                })));
             }
         }
     }
@@ -186,16 +188,16 @@ async fn analyze(
 
 fn classify(error: ModelError, chosen: Chosen, round: u64) -> Outcome {
     match model::background::classify(error, &chosen.access) {
-        model::background::Failure::Pause(reason) => Outcome::Pause(reason, Guard::Model(chosen)),
-        model::background::Failure::RateLimit(limit) => Outcome::RateLimit(limit, chosen, round),
-        model::background::Failure::Failed(reason) => Outcome::Failed(reason),
+        model::background::Effect::Pause(reason) => Outcome::Pause(reason, Guard::Model(chosen)),
+        model::background::Effect::RateLimit(limit) => Outcome::RateLimit(limit, chosen, round),
+        model::background::Effect::Failed(reason) => Outcome::Failed(reason),
     }
 }
 
 async fn requeue(
     db: &SqlitePool,
     claim: queue::Claim,
-    pause: Option<(i64, &str)>,
+    pause: Option<(i64, &Failure)>,
     expected: Option<&Guard>,
 ) -> Result<bool, sqlx::Error> {
     let mut tx = db.begin().await?;
@@ -295,9 +297,10 @@ pub async fn run(
                             Err(e) => {
                                 tracing::error!(message_id = id, "reply processing database: {e}");
                                 Outcome::Pause(
-                                    "回信处理的数据暂时无法读取，请重试；\
-                                    仍然出错时，导出日志发给开发者。"
-                                        .into(),
+                                    Failure::new(
+                                        "回信处理的数据暂时无法读取，请重试；仍然出错的，\
+                                        可在电脑上的 设置 › 关于和日志 里反馈问题",
+                                    ),
                                     Guard::Local,
                                 )
                             }
@@ -352,18 +355,13 @@ pub async fn run(
                     Err(e) => {
                         tracing::error!("reply processing worker: {e}");
                         if let Some(claim) = claims.remove(&e.id()) {
+                            let reason = Failure::new(
+                                "回信处理意外中断，请继续或重启应用；仍然出错的，\
+                                可在电脑上的 设置 › 关于和日志 里反馈问题",
+                            );
                             writes
                                 .retry("recover reply processing worker", || {
-                                    requeue(
-                                        &db,
-                                        claim,
-                                        Some((
-                                            now(),
-                                            "回信处理意外中断，请继续或重启应用；\
-                                    仍然出错时，导出日志发给开发者。",
-                                        )),
-                                        Some(&Guard::Local),
-                                    )
+                                    requeue(&db, claim, Some((now(), &reason)), Some(&Guard::Local))
                                 })
                                 .await;
                         }

@@ -3,6 +3,7 @@
 use api::Context;
 use api::cloud_send::{self, Blocked, Choice, HandOff, PreviewInput, Reason, Withdraw};
 use cloud_api::cloud_send::Outcome;
+use failure::Failure;
 use serde_json::json;
 use sqlx::SqlitePool;
 use test_fixtures::cloud_send::{Sending, Server, State};
@@ -287,12 +288,12 @@ async fn what_became_of_the_emails_comes_back_once(db: SqlitePool) {
             &failed_id,
             Outcome::Failed {
                 at: NOW + DAY,
-                reason: "收件人不存在".into(),
+                reason: Failure::new("收件人不存在"),
             },
         );
         server.mailboxes.get_mut(QQ).unwrap().pause = Some(transport::pause::Pause {
             until: NOW + HOUR,
-            reason: "发信太频繁".into(),
+            reason: Failure::new("发信太频繁"),
         });
         server.fail_ack = true;
     }
@@ -318,7 +319,10 @@ async fn what_became_of_the_emails_comes_back_once(db: SqlitePool) {
     let mailboxes = mailbox::list(&setup.ctx.db, NOW).await.unwrap();
     assert_eq!(mailboxes[0].cloud_emails, 1);
     assert_eq!(
-        mailboxes[0].cloud_pause.as_ref().map(|p| p.reason.as_str()),
+        mailboxes[0]
+            .cloud_pause
+            .as_ref()
+            .map(|p| p.reason.message.as_str()),
         Some("发信太频繁")
     );
 
@@ -570,7 +574,7 @@ async fn a_changed_secret_goes_up_while_emails_wait(db: SqlitePool) {
     setup.hand_off().await;
     setup.server().mailboxes.get_mut(QQ).unwrap().pause = Some(transport::pause::Pause {
         until: NOW + DAY,
-        reason: "云端登录被拒".into(),
+        reason: Failure::new("云端登录被拒"),
     });
     setup.sync().await;
     let edit = |address: &str| {

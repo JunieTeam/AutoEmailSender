@@ -13,6 +13,7 @@ import { ChevronLeft, Inbox, ListTodo, MessagesSquare, RefreshCw, UserRound } fr
 import { call, errorMessage } from "@/api/call";
 import type { TodoPage } from "@/api/types";
 import { Correspondence } from "@/components/correspondence";
+import { FailureDetails } from "@/components/failure";
 import { Avatar, ContactLabel, placeOf } from "@/components/mentor";
 import { Pager, pageParam, useLastPage } from "@/components/mentor-table";
 import { Notice } from "@/components/notice";
@@ -144,12 +145,15 @@ export function ConversationsPage() {
           {mailboxes.data
             ?.filter((m) => m.receiveError !== null)
             .map((m) => (
-              <p key={m.id} className="mt-2 text-sm wrap-anywhere text-warning">
-                {m.address}收信失败：{m.receiveError}
-                <Link to="/settings/mailboxes" className="ml-1 underline">
-                  邮箱设置
-                </Link>
-              </p>
+              <div key={m.id} className="mt-2 text-sm wrap-anywhere text-warning">
+                <p>
+                  {m.address}收信失败：{m.receiveError?.message}
+                  <Link to="/settings/mailboxes" className="ml-1 underline">
+                    邮箱设置
+                  </Link>
+                </p>
+                {m.receiveError && <FailureDetails failure={m.receiveError} />}
+              </div>
             ))}
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-2">

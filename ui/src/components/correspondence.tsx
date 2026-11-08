@@ -3,8 +3,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Check, RotateCcw, Send, Undo2 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { call, errorMessage } from "@/api/call";
-import type { Email, Entry, MentorDetail, Message, FollowUpEntry, ReplyOutcome, Todo } from "@/api/types";
+import type { Email, Entry, Failure, MentorDetail, Message, FollowUpEntry, ReplyOutcome, Todo } from "@/api/types";
 import { Attachments } from "@/components/attachments";
+import { FailureDetails } from "@/components/failure";
 import { Confirm } from "@/components/batch-bar";
 import { WithdrawFromCloud } from "@/components/cloud-send";
 import { FollowUpLetter, ReplyLetter } from "@/components/reply-letter";
@@ -312,6 +313,9 @@ function Sent({
         )}
       </div>
       <p className={`max-w-[min(42rem,88%)] text-right text-sm ${tone}`}>{text}</p>
+      {(e.state === "maybe_sent" || e.state === "failed" || e.state === "bounced") && (
+        <FailureDetails failure={e.error} className="flex max-w-[min(42rem,88%)] flex-col items-end" />
+      )}
       {e.tracking && <TrackingNote tracking={e.tracking} />}
       {actions && (
         <div className="flex flex-wrap justify-end gap-1">
@@ -411,11 +415,11 @@ function status(e: Email, several: boolean): [string, string] {
       e.cancelReason === null
         ? "确认导师未收到时，可重新发送。"
         : `已取消：${e.cancelReason}。确认未发出后，不再发送。`;
-    return [`可能已发出${to}：${sentence(e.error)}${next}`, "text-warning"];
+    return [`可能已发出${to}：${sentence(e.error.message)}${next}`, "text-warning"];
   }
   if (e.state === "canceled") return [`已取消：${e.cancelReason}`, "text-muted-foreground"];
-  if (e.state === "failed") return [`发送失败：${e.error}`, "text-destructive"];
-  return [`退信（发到 ${e.toAddress}）：${e.error}`, "text-warning"];
+  if (e.state === "failed") return [`发送失败：${e.error.message}`, "text-destructive"];
+  return [`退信（发到 ${e.toAddress}）：${e.error.message}`, "text-warning"];
 }
 
 type Shown = Exclude<Entry, { todo: Todo }> | { todos: Todo[]; key: string };
@@ -550,7 +554,12 @@ function Seen({
         <p className="text-sm text-muted-foreground">这封信缺少邮件编号，无法在原线程里回复，请到邮箱里回复</p>
       )}
       {add.error && <p className="text-sm text-destructive">未能加为导师的邮箱：{errorMessage(add.error)}</p>}
-      {m.kind === "sent" && m.bounce && <p className="text-sm text-warning">退信：{m.bounce}</p>}
+      {m.kind === "sent" && m.bounce && (
+        <div className="text-sm text-warning">
+          <p>退信：{m.bounce.message}</p>
+          <FailureDetails failure={m.bounce} />
+        </div>
+      )}
     </article>
   );
 }
@@ -619,7 +628,7 @@ function AiFailed({
   label,
 }: {
   messageId: number;
-  reason: string;
+  reason: Failure;
   retry: "retryReplyOutcome" | "retryReplyTodos";
   label: string;
 }) {
@@ -629,13 +638,16 @@ function AiFailed({
     onSettled: () => refreshReplyOutcomes(queryClient),
   });
   return (
-    <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-      {label}：{reason}
-      <Button variant="quiet" size="sm" disabled={again.isPending} onClick={() => again.mutate()}>
-        重试
-      </Button>
-      {again.error && <span className="text-destructive">{errorMessage(again.error)}</span>}
-    </p>
+    <div className="text-sm text-muted-foreground">
+      <p className="flex flex-wrap items-center gap-x-2">
+        {label}：{reason.message}
+        <Button variant="quiet" size="sm" disabled={again.isPending} onClick={() => again.mutate()}>
+          重试
+        </Button>
+        {again.error && <span className="text-destructive">{errorMessage(again.error)}</span>}
+      </p>
+      <FailureDetails failure={reason} />
+    </div>
   );
 }
 

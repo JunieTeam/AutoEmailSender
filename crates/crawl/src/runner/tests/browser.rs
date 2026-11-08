@@ -195,9 +195,9 @@ async fn browser_failures_preserve_http_text_and_preview_still_needs_browser(db:
         ),
         (Err(BrowserError::TimedOut), "20 秒"),
         (
-            Err(BrowserError::Failed(
-                "网站的证书有问题，浏览器无法打开".into(),
-            )),
+            Err(BrowserError::Failed(Failure::new(
+                "网站的证书有问题，浏览器无法打开",
+            ))),
             "证书",
         ),
         (
@@ -243,7 +243,7 @@ async fn browser_failures_preserve_http_text_and_preview_still_needs_browser(db:
         else {
             panic!("browser should fail");
         };
-        assert!(error.contains(reason), "{error}");
+        assert!(error.message.contains(reason), "{error:?}");
         assert!(save(&db, &claim, &Outcome::Failed(error)).await.unwrap());
         let row: (String, String, String) =
             sqlx::query_as("SELECT status,mode,text FROM crawl_page WHERE id=?")
@@ -304,9 +304,13 @@ async fn pause_and_cancel_drop_browser_and_reject_late_results(db: SqlitePool) {
                 .await
                 .unwrap();
         assert!(
-            !save(&db, &claim, &Outcome::Failed("迟到的浏览器结果".into()))
-                .await
-                .unwrap()
+            !save(
+                &db,
+                &claim,
+                &Outcome::Failed(Failure::new("迟到的浏览器结果"))
+            )
+            .await
+            .unwrap()
         );
         let after: (String, Option<String>, String) =
             sqlx::query_as("SELECT status,error,text FROM crawl_page WHERE id=?")

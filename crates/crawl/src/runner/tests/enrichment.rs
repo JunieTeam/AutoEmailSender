@@ -436,6 +436,7 @@ async fn enrichment_failure_reasons_and_single_page_retry(db: SqlitePool) {
             .enrichment
             .enrich_error
             .unwrap()
+            .message
             .contains("读取失败")
     );
     site.page("/missing", "<p>张三 a@example.edu</p>");
@@ -490,6 +491,7 @@ async fn enrichment_failure_reasons_and_single_page_retry(db: SqlitePool) {
                 .enrichment
                 .enrich_error
                 .unwrap()
+                .message
                 .contains(expected)
         );
     }
@@ -845,6 +847,7 @@ async fn enrichment_redirect_checks_identity_and_merged_candidate_discards_resul
                     .enrichment
                     .enrich_error
                     .unwrap()
+                    .message
                     .contains("张三")
             );
             // Neither the link nor where it ends up is a profile or homepage of theirs any more.
@@ -1078,7 +1081,7 @@ async fn enrichment_child_checks_identity_before_filling_any_field(db: SqlitePoo
             .unwrap();
         assert_eq!(child.status == PageStatus::Success, success);
         if !success {
-            assert!(child.error.as_ref().unwrap().contains("未补入"));
+            assert!(child.error.as_ref().unwrap().0.message.contains("未补入"));
             assert_eq!(d.evidence.len(), 1);
             assert!(d.candidate.enrichment.enrich_changes.is_empty());
         }
@@ -1364,7 +1367,7 @@ async fn enrichment_deleting_crawl_clears_queued_and_running_candidates(db: Sqli
         assert_eq!(d.candidate.enrichment.enrich_changes.len(), 1);
         if let Some(c) = claim {
             assert!(
-                !save(&db, &c, &Outcome::Failed("迟到结果".into()))
+                !save(&db, &c, &Outcome::Failed(Failure::new("迟到结果")))
                     .await
                     .unwrap()
             );
@@ -1616,11 +1619,7 @@ async fn enrichment_completion_counts_unreported_candidates_and_distinguishes_cr
                 .bind(format!("https://example.edu{path}/{kind}"))
                 .bind(kind)
                 .bind(status)
-                .bind(if status == "success" {
-                    None
-                } else {
-                    Some("页面读取失败")
-                })
+                .bind((status != "success").then(|| Json(Failure::new("页面读取失败"))))
                 .execute(&db)
                 .await
                 .unwrap();
@@ -1630,7 +1629,7 @@ async fn enrichment_completion_counts_unreported_candidates_and_distinguishes_cr
             r#"INSERT INTO crawl_page (crawl_id, url, scope_url, kind, mode, status,
                 error, work_state, fetched_at)
             VALUES (?, 'https://example.edu/list', 'https://example.edu/list', 'list',
-                'http', 'failed', '读取失败', 'done', ?)
+                'http', 'failed', json_object('message', '读取失败'), 'done', ?)
             RETURNING id"#,
         )
         .bind(crawl)
@@ -1653,7 +1652,7 @@ async fn enrichment_completion_counts_unreported_candidates_and_distinguishes_cr
         assert_eq!(queue::retry(&db, crawl, Some(page), 200).await.unwrap(), 1);
         let c = queue::next(&db).await.unwrap().unwrap();
         assert_eq!(c.id, page);
-        save(&db, &c, &Outcome::Failed("读取失败".into()))
+        save(&db, &c, &Outcome::Failed(Failure::new("读取失败")))
             .await
             .unwrap();
         sqlx::query("UPDATE crawl_page SET fetched_at=210 WHERE id=?")

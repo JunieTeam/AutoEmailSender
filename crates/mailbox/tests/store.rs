@@ -62,7 +62,7 @@ async fn pauses_expire_extend_and_clear_on_resume_or_edit(db: SqlitePool) {
     let id = mailbox::create(&db, &fields, "secret", 0).await.unwrap();
     let apply = |until, reason: &str| Pause {
         until,
-        reason: reason.into(),
+        reason: failure::Failure::new(reason),
     };
     let mut tx = db.begin().await.unwrap();
     pause::apply(&mut tx, id, &apply(2000, "限流"))
@@ -78,7 +78,10 @@ async fn pauses_expire_extend_and_clear_on_resume_or_edit(db: SqlitePool) {
         .remove(0)
         .pause
         .unwrap();
-    assert_eq!((active.until, active.reason.as_str()), (2000, "限流"));
+    assert_eq!(
+        (active.until, active.reason.message.as_str()),
+        (2000, "限流")
+    );
     assert!(mailbox::list(&db, 2000).await.unwrap()[0].pause.is_none());
     assert!(mailbox::resume(&db, id).await.unwrap());
     assert!(mailbox::list(&db, 0).await.unwrap()[0].pause.is_none());
@@ -110,7 +113,7 @@ async fn a_request_failure_only_pauses_the_configuration_it_used(db: SqlitePool)
     let account = mailbox::account(&db, id).await.unwrap().unwrap();
     let pause = Pause {
         until: 2000,
-        reason: "登录被拒绝".into(),
+        reason: failure::Failure::new("登录被拒绝"),
     };
     for field in 0..8 {
         let mut edited = form("me@qq.com");

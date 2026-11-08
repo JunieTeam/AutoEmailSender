@@ -1,6 +1,8 @@
 //! Reply results and the persisted work that has not produced a result yet.
 
+use failure::Failure;
 use serde::{Deserialize, Serialize};
+use sqlx::types::Json;
 use sqlx::{SqliteConnection, SqlitePool};
 use ts_rs::TS;
 
@@ -18,7 +20,7 @@ pub enum ReplyOutcome {
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum OutcomeMarking {
     Marking,
-    Failed { reason: String },
+    Failed { reason: Failure },
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -31,7 +33,7 @@ pub struct ReplyProcessing {
 #[derive(Debug, Serialize, TS)]
 pub struct ReplyProcessingPause {
     pub at: i64,
-    pub reason: String,
+    pub reason: Failure,
 }
 
 pub async fn enabled(db: &SqlitePool) -> Result<bool, sqlx::Error> {
@@ -136,13 +138,17 @@ pub async fn progress(db: &SqlitePool) -> Result<ReplyProcessing, sqlx::Error> {
     )
     .fetch_one(&mut *tx)
     .await?;
-    let pause = sqlx::query_as!(
-        ReplyProcessingPause,
-        r#"SELECT reply_processing_paused_at AS "at!", reply_processing_pause_reason AS "reason!"
-           FROM profile WHERE reply_processing_paused_at IS NOT NULL"#
+    let pause = sqlx::query!(
+        r#"SELECT reply_processing_paused_at AS "at!",
+            reply_processing_pause_reason AS "reason!: Json<Failure>"
+        FROM profile WHERE reply_processing_paused_at IS NOT NULL"#
     )
     .fetch_optional(&mut *tx)
-    .await?;
+    .await?
+    .map(|r| ReplyProcessingPause {
+        at: r.at,
+        reason: r.reason.0,
+    });
     Ok(ReplyProcessing {
         remaining: counts.remaining,
         failed: counts.failed,
@@ -242,13 +248,13 @@ pub async fn requeue(db: &mut SqliteConnection, claim: Claim) -> Result<bool, sq
 pub async fn pause_if_unpaused(
     db: &mut SqliteConnection,
     now: i64,
-    reason: &str,
+    reason: &Failure,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "UPDATE profile SET reply_processing_paused_at = ?, reply_processing_pause_reason = ?
         WHERE reply_processing_paused_at IS NULL",
         now,
-        reason
+        Json(reason)
     )
     .execute(db)
     .await?;
@@ -288,14 +294,14 @@ pub async fn complete(
     Ok(true)
 }
 
-pub async fn fail(db: &SqlitePool, claim: Claim, reason: &str) -> Result<bool, sqlx::Error> {
+pub async fn fail(db: &SqlitePool, claim: Claim, reason: &Failure) -> Result<bool, sqlx::Error> {
     let mut tx = db.begin().await?;
     let updated = sqlx::query!(
         "UPDATE reply_processing SET state = 'failed', error = ?
         WHERE message_id = ? AND action = ? AND claim = ? AND state = 'running'
           AND EXISTS (SELECT 1 FROM message_mentor mm JOIN mentor m ON m.id = mm.mentor_id
             WHERE mm.message_id = reply_processing.message_id AND m.trashed_at IS NULL)",
-        reason,
+        Json(reason),
         claim.id,
         claim.action,
         claim.claim

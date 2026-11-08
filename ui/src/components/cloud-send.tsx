@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { fileSize, sentence } from "@/format";
+import { FailureDetails } from "@/components/failure";
 
 // docs/ui.md#任务: handing scheduled first emails to the official server, which sends them while the
 // computer is off.
@@ -227,13 +228,16 @@ function HandedOff({ result }: { result: CloudHandedOff }) {
     <DialogBody className="flex flex-col gap-2 text-sm">
       <p>{result.handed.length > 0 ? `已交给云端 ${result.handed.length} 封` : "未交出任何邮件"}</p>
       {result.loginFailed.map((m) => (
-        <p key={m.mailboxId} className="text-destructive">
-          云端登录 {m.address} 失败：{sentence(m.error)}这个邮箱的邮件留在本地发送。
-        </p>
+        <div key={m.mailboxId} className="text-destructive">
+          <p>
+            云端登录 {m.address} 失败：{sentence(m.error.message)}这个邮箱的邮件留在本地发送。
+          </p>
+          <FailureDetails failure={m.error} />
+        </div>
       ))}
       {result.kept.length > 0 && (
         <p className="text-warning">
-          {result.kept.length} 封留在本地：{[...new Set(result.kept.map((k) => k.reason))].join(" ")}
+          {result.kept.length} 封留在本地：{[...new Set(result.kept.map((k) => k.reason.message))].join(" ")}
         </p>
       )}
     </DialogBody>

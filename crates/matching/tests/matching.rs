@@ -236,7 +236,7 @@ async fn invalid_output_retries_once_then_succeeds_or_fails(db: SqlitePool) {
     assert!(matches!(
         m.analysis.state,
         Some(MatchState::Failed { error })
-            if error == "模型未按要求回答，可重试或更换模型"
+            if error.message == "模型未按要求回答，可重试或更换模型"
     ));
     let calls: i64 = sqlx::query_scalar("SELECT count(*) FROM usage")
         .fetch_one(&db)
@@ -274,7 +274,15 @@ async fn unauthorized_still_pauses_after_name_and_price_edits_then_resumes(db: S
     runner.progress(&db, |p| p.pause.is_some()).await;
     let progress = queue::progress(&db).await.unwrap();
     assert_eq!((progress.remaining, progress.failed), (1, 0));
-    assert!(progress.pause.unwrap().reason.unwrap().contains("API Key"));
+    assert!(
+        progress
+            .pause
+            .unwrap()
+            .reason
+            .unwrap()
+            .message
+            .contains("API Key")
+    );
     assert!(matches!(
         mentor::get(&db, ids[0])
             .await
@@ -357,14 +365,12 @@ async fn a_rate_limit_lasting_past_ten_minutes_pauses_with_the_providers_words(d
     runner.progress(&db, |p| p.pause.is_some()).await;
     let progress = queue::progress(&db).await.unwrap();
     assert_eq!((progress.remaining, progress.failed), (1, 0));
+    let reason = progress.pause.unwrap().reason.unwrap();
     assert!(
-        progress
-            .pause
-            .unwrap()
-            .reason
-            .unwrap()
-            .contains("coding plan expired")
+        reason.message.starts_with("模型服务商限流超过"),
+        "{reason:?}"
     );
+    assert!(reason.details.unwrap().contains("coding plan expired"));
     // Going on starts afresh: an ordinary limit right after waits instead of pausing again.
     queue::resume(&db).await.unwrap();
     runner.matcher.restart();
@@ -654,7 +660,9 @@ async fn research_removed_while_waiting_is_not_sent_to_the_model(db: SqlitePool)
         .unwrap()
         .analysis
         .state;
-    assert!(matches!(state, Some(MatchState::Failed { error }) if error.contains("资料不足")));
+    assert!(
+        matches!(state, Some(MatchState::Failed { error }) if error.message.contains("资料不足"))
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -994,5 +1002,13 @@ async fn restored_key_pauses_matching_without_failing_each_mentor(db: SqlitePool
     runner.progress(&db, |p| p.pause.is_some()).await;
     let progress = queue::progress(&db).await.unwrap();
     assert_eq!((progress.remaining, progress.failed), (4, 0));
-    assert!(progress.pause.unwrap().reason.unwrap().contains("重新填写"));
+    assert!(
+        progress
+            .pause
+            .unwrap()
+            .reason
+            .unwrap()
+            .message
+            .contains("重新填写")
+    );
 }

@@ -124,7 +124,7 @@ pub struct TodoPage {
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum TodoExtraction {
     Extracting,
-    Failed { reason: String },
+    Failed { reason: failure::Failure },
 }
 
 pub async fn enabled(db: &SqlitePool) -> Result<bool, sqlx::Error> {

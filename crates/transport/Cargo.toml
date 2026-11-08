@@ -10,10 +10,11 @@ workspace = true
 
 [features]
 sqlx = ["dep:sqlx"]
-ts-rs = ["dep:ts-rs"]
+ts-rs = ["dep:ts-rs", "failure/ts-rs"]
 
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+failure.workspace = true
 futures-util = "0.3"
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls", "ring", "rustls-platform-verifier"] }
 net.workspace = true

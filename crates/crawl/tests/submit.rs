@@ -387,7 +387,7 @@ async fn append_checks_kind_and_serializes_concurrent_submissions(db: SqlitePool
         ("failed", Some(5)),
         ("done", Some(5)),
     ] {
-        sqlx::query("UPDATE crawl SET state = ?, finished_at = ?, error = 'fixture' WHERE id = ?")
+        sqlx::query("UPDATE crawl SET state = ?, finished_at = ?, error = json_object('message', 'fixture') WHERE id = ?")
             .bind(state)
             .bind(finished)
             .bind(crawl)

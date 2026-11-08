@@ -1,6 +1,8 @@
 //! Shared model capacity and failure policy for persisted background queues.
 
+use crate::error::{Cause, NO_BALANCE};
 use crate::{Access, Chosen, ModelError};
+use failure::Failure;
 use std::{
     collections::HashMap,
     hash::Hash,
@@ -44,17 +46,19 @@ pub fn same_config(current: &Chosen, expected: &Chosen) -> bool {
         && current.access.api_key == expected.access.api_key
 }
 
-pub enum Failure {
-    Pause(String),
+/// What a failure means for background work: pause all of it, wait out a rate limit, or fail
+/// only this item.
+pub enum Effect {
+    Pause(Failure),
     RateLimit(RateLimit),
-    Failed(String),
+    Failed(Failure),
 }
 
 #[derive(Debug)]
 pub struct RateLimit {
     pub wait: Duration,
     /// The reason to pause with when the limits last.
-    pub lasting: String,
+    pub lasting: Failure,
 }
 
 /// How many times the user has started or resumed each piece of background work (`K`): rate
@@ -199,98 +203,48 @@ impl Limited {
 }
 
 /// How background work goes on after `error` from calling through `access`.
-pub fn classify(error: ModelError, access: &Access) -> Failure {
-    let message = error.message();
-    let (status, words, code, retry_after) = match error {
+pub fn classify(error: ModelError, access: &Access) -> Effect {
+    let failure = error.failure();
+    let (cause, status, retry_after, words) = match &error {
         ModelError::MissingKey | ModelError::Unreachable { .. } | ModelError::TimedOut { .. } => {
-            return Failure::Pause(message);
+            return Effect::Pause(failure);
         }
         ModelError::Refused {
             status,
             reply,
             retry_after,
             code,
-        } => (Some(status), reply, code, retry_after),
-        ModelError::Failed(reply) => (None, reply, None, None),
-        _ => return Failure::Failed(message),
+        } => (
+            Cause::of(*status, code.as_deref(), reply),
+            Some(*status),
+            *retry_after,
+            reply,
+        ),
+        ModelError::Failed(reply) => (Cause::of(0, None, reply), None, None, reply),
+        ModelError::NoAnswer { .. } | ModelError::Broken(_) => return Effect::Failed(failure),
     };
-    let reply = format!("{} {words}", code.unwrap_or_default()).to_lowercase();
-    if [
-        "context_length",
-        "context length",
-        "maximum context",
-        "too many tokens",
-        "上下文长度",
-    ]
-    .iter()
-    .any(|s| reply.contains(s))
-    {
-        return Failure::Failed(
-            "资料超出了模型能读取的长度。减少参考材料，或换一个支持更长上下文的模型后重试。".into(),
-        );
-    }
-    let balance = [
-        "insufficient balance",
-        "insufficient credits",
-        "credit balance",
-        "余额不足",
-        "额度用完",
-        "insufficient funds",
-        "insufficient account balance",
-        "余额已耗尽",
-        "欠费",
-        "arrearage",
-        "account is in good standing",
-        "overdue",
-        "free trial quota",
-    ];
-    // What OpenAI says when the balance is used up, and some providers when a limit is hit.
-    let quota = [
-        "insufficient_quota",
-        "quota exceeded",
-        "exceeded your current quota",
-        "exceeded_current_quota",
-    ];
     let rate_limited = status == Some(429) && access.quota_is_rate_limit;
-    if balance.iter().any(|s| reply.contains(s))
-        || (!rate_limited && quota.iter().any(|s| reply.contains(s)))
-    {
-        Failure::Pause("模型服务商的账户余额或额度不足。到服务商网站充值或补充额度后继续。".into())
-    } else if [
-        "model_not_found",
-        "model not found",
-        "model does not exist",
-        "模型不存在",
-    ]
-    .iter()
-    .any(|s| reply.contains(s))
-    {
-        Failure::Pause(
-            "服务商找不到这个模型。请在“设置 › AI › 模型”里检查模型名或更换模型后继续。".into(),
-        )
-    } else if status.is_some_and(|s| matches!(s, 401..=404))
-        // Bailian and Ark answer 429 when the service was never ordered or a limit the user set
-        // there is reached.
-        || ["commoditynotpurchased", "budgetlimitexceeded", "setlimitexceeded"]
-            .iter()
-            .any(|s| reply.contains(s))
-    {
-        Failure::Pause(message)
-    } else if status == Some(429) {
-        Failure::RateLimit(RateLimit {
+    match cause {
+        Cause::TooLong | Cause::ServerError | Cause::Other => Effect::Failed(failure),
+        Cause::Quota if !rate_limited => Effect::Pause(Failure::new(NO_BALANCE)),
+        Cause::NoBalance | Cause::NoModel | Cause::NotOrdered | Cause::BadKey | Cause::NotFound => {
+            Effect::Pause(failure)
+        }
+        Cause::Quota | Cause::RateLimited => Effect::RateLimit(RateLimit {
             // A provider asking for no wait at all is still limiting; a second keeps retries from
             // running back to back.
             wait: retry_after
                 .unwrap_or(Duration::from_secs(30))
                 .max(Duration::from_secs(1)),
-            lasting: format!(
-                "模型服务商限流超过 {} 分钟（服务商回复：{words}）。可能是套餐到期或用量到了上限，\
-                到服务商网站查看，处理好后继续。",
-                LASTING.as_secs() / 60
+            lasting: Failure::unrecognized(
+                format!(
+                    "模型服务商限流超过 {} 分钟。可能是套餐到期或用量到了上限，到服务商网站查看，\
+                    处理好后继续。",
+                    LASTING.as_secs() / 60
+                ),
+                words,
             ),
-        })
-    } else {
-        Failure::Failed(message)
+        }),
     }
 }
 
@@ -508,9 +462,9 @@ mod tests {
             ),
         ] {
             let got = match classify(error, &access(provider)) {
-                Failure::Pause(_) => "pause",
-                Failure::RateLimit(_) => "wait",
-                Failure::Failed(_) => "fail",
+                Effect::Pause(_) => "pause",
+                Effect::RateLimit(_) => "wait",
+                Effect::Failed(_) => "fail",
             };
             assert_eq!(got, expected, "{provider}");
         }

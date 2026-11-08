@@ -2,6 +2,7 @@
 use std::{future::Future, pin::Pin};
 
 use crate::{PageTarget, store::PageStep};
+use failure::Failure;
 
 pub struct RenderedPage {
     pub url: String,
@@ -20,14 +21,14 @@ pub trait Browser: Send + Sync {
 #[derive(Debug)]
 pub enum BrowserError {
     TimedOut,
-    Failed(String),
+    Failed(Failure),
 }
 
 impl BrowserError {
-    pub fn message(&self) -> String {
+    pub fn failure(self) -> Failure {
         match self {
-            Self::TimedOut => "网页在浏览器里 20 秒内未加载完成".into(),
-            Self::Failed(reason) => reason.clone(),
+            Self::TimedOut => Failure::new("网页在浏览器里 20 秒内未加载完成"),
+            Self::Failed(reason) => reason,
         }
     }
 }

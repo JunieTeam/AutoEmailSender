@@ -926,7 +926,7 @@ async fn resuming_without_approved_emails_needs_no_confirmation(db: SqlitePool) 
     test_fixtures::mail::mailbox(&mut ctx.db.acquire().await.unwrap())
         .await
         .unwrap();
-    sqlx::query("UPDATE mailbox SET paused_until = ?, pause_reason = 'fixture' WHERE id = 1")
+    sqlx::query("UPDATE mailbox SET paused_until = ?, pause_reason = json_object('message', 'fixture') WHERE id = 1")
         .bind(i64::MAX)
         .execute(&ctx.db)
         .await
@@ -1121,7 +1121,7 @@ async fn retry_targets_tell_an_automatic_sender_from_a_reply_without_one(db: Sql
             .await
             .unwrap();
         sqlx::query(
-            "UPDATE email SET kind = ?, reply_to = ?, state = 'failed', error = 'fixture'
+            "UPDATE email SET kind = ?, reply_to = ?, state = 'failed', error = json_object('message', 'fixture')
             WHERE id = ?",
         )
         .bind(kind)
@@ -1184,7 +1184,7 @@ async fn retry_rechecks_the_task_arrangement_that_will_assign_its_new_time(db: S
     let email = test_fixtures::mail::first_email(&ctx.db, mentor, "approved", 0)
         .await
         .unwrap();
-    sqlx::query("UPDATE email SET task_id = ?, state = 'failed', error = 'fixture' WHERE id = ?")
+    sqlx::query("UPDATE email SET task_id = ?, state = 'failed', error = json_object('message', 'fixture') WHERE id = ?")
         .bind(task)
         .bind(email)
         .execute(&ctx.db)
@@ -1229,7 +1229,7 @@ async fn mailbox_change_is_confirmed(db: SqlitePool, automatic: bool) {
     .await
     .unwrap()["id"]
         .clone();
-    sqlx::query("UPDATE mailbox SET paused_until = ?, pause_reason = 'fixture' WHERE id = 1")
+    sqlx::query("UPDATE mailbox SET paused_until = ?, pause_reason = json_object('message', 'fixture') WHERE id = 1")
         .bind(i64::MAX)
         .execute(&ctx.db)
         .await
@@ -1300,7 +1300,7 @@ async fn resuming_a_mailbox_is_not_invalidated_by_an_imap_port_change(db: Sqlite
     test_fixtures::mail::first_email(&ctx.db, mentor, "approved", 0)
         .await
         .unwrap();
-    sqlx::query("UPDATE mailbox SET paused_until = ?, pause_reason = 'fixture' WHERE id = 1")
+    sqlx::query("UPDATE mailbox SET paused_until = ?, pause_reason = json_object('message', 'fixture') WHERE id = 1")
         .bind(i64::MAX)
         .execute(&ctx.db)
         .await
@@ -1735,7 +1735,7 @@ async fn resume_mailbox_rechecks_recipients_and_deleting_a_task_rechecks_its_ema
     test_fixtures::mail::first_email(&ctx.db, mentor, "approved", 0)
         .await
         .unwrap();
-    sqlx::query("UPDATE mailbox SET paused_until = ?, pause_reason = 'fixture' WHERE id = 1")
+    sqlx::query("UPDATE mailbox SET paused_until = ?, pause_reason = json_object('message', 'fixture') WHERE id = 1")
         .bind(i64::MAX)
         .execute(&ctx.db)
         .await
@@ -1814,7 +1814,7 @@ async fn editing_a_mailbox_requires_confirmation_only_while_its_pause_is_active(
     for until in [Some(i64::MAX), Some(0), None] {
         sqlx::query("UPDATE mailbox SET paused_until = ?, pause_reason = ?")
             .bind(until)
-            .bind(until.map(|_| "fixture"))
+            .bind(until.map(|_| r#"{"message":"fixture"}"#))
             .execute(&ctx.db)
             .await
             .unwrap();

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE crawl_page\n            SET work_state = 'done',\n                status = CASE WHEN status = 'success' THEN 'failed'\n            ELSE status END, error = CASE WHEN status = 'success' THEN ? ELSE error END\n            WHERE crawl_id = ? AND work_state != 'done'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "1d098c71dfe9d95bfe499615f4524accfa8cfc237f4bf580b6ba0628303c60a9"
+}

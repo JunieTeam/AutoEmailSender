@@ -12,7 +12,7 @@ use cloud_api::backup::{self as wire, LIMIT, OBJECTS, RETENTION};
 use cloud_api::{ApiError, Empty, ErrorCode, path};
 use reqwest::{Method, header};
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
+use sqlx::{SqlitePool, types::Json};
 use ts_rs::TS;
 
 use super::{APPLICATION, Manifest as Archive, RestoreInfo, Snapshot};
@@ -130,7 +130,8 @@ impl Error {
             Self::Account(e) => e.message(),
             Self::Local(e) => e.message(),
             Self::Database(_) | Self::Io(_) => {
-                "云端备份未能完成，请重试；仍然失败时导出日志发给开发者".into()
+                "云端备份未能完成，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题"
+                    .into()
             }
             Self::NeedsPassword => "请先输入账号密码，算出这台电脑的备份钥匙".into(),
             Self::AccountChanged => "登录的账号已变更，请重试".into(),
@@ -166,15 +167,17 @@ pub struct Status {
     pub last_backup_at: Option<i64>,
     /// The `committedAt` of the cloud's backup the user agreed to replace, until it is replaced.
     pub replace: Option<i64>,
-    pub failure: Option<Failure>,
+    pub failure: Option<Failing>,
 }
 
 #[derive(Debug, Serialize, TS)]
 #[ts(rename = "CloudBackupFailure")]
-pub struct Failure {
+pub struct Failing {
     /// Failing since then.
     pub since: i64,
-    pub message: String,
+    #[serde(flatten)]
+    #[ts(flatten)]
+    pub reason: failure::Failure,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -253,7 +256,8 @@ struct Contents {
 pub async fn status(ctx: &Context) -> Result<Status> {
     let profile = sqlx::query!(
         r#"SELECT cloud_backup AS "enabled: bool", last_backup_at, cloud_backup_replace,
-            cloud_backup_failed_at, cloud_backup_error,
+            cloud_backup_failed_at,
+            cloud_backup_error AS "cloud_backup_error: Json<failure::Failure>",
             (SELECT backup_key IS NULL FROM account WHERE token IS NOT NULL)
                 AS "needs_password: bool"
         FROM profile"#
@@ -269,7 +273,7 @@ pub async fn status(ctx: &Context) -> Result<Status> {
         failure: profile
             .cloud_backup_failed_at
             .zip(profile.cloud_backup_error)
-            .map(|(since, message)| Failure { since, message }),
+            .map(|(since, Json(reason))| Failing { since, reason }),
     })
 }
 
@@ -428,13 +432,12 @@ pub async fn back_up(ctx: &Context, now: i64) -> Result<()> {
             .await?;
         }
         Err(error) => {
-            let message = error.message();
             sqlx::query!(
                 r#"UPDATE profile SET cloud_backup_failed_at = coalesce(cloud_backup_failed_at, ?),
                     cloud_backup_error = ?
                 WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
                 now,
-                message,
+                Json(failure::Failure::new(error.message())),
                 key
             )
             .execute(&ctx.db)

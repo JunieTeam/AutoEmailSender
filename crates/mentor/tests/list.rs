@@ -85,7 +85,7 @@ async fn unanswered_filter_uses_latest_sent_time_and_ignores_automatic_replies(d
         .await
         .unwrap();
     }
-    sqlx::query("UPDATE email SET state='bounced',error='地址不存在' WHERE mentor_id=?")
+    sqlx::query("UPDATE email SET state='bounced',error=json_object('message', '地址不存在') WHERE mentor_id=?")
         .bind(ids[4])
         .execute(&db)
         .await

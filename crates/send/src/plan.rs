@@ -48,7 +48,7 @@ pub struct PlanEmail {
     pub latest_at: Option<i64>,
     pub sent_at: Option<i64>,
     pub from_address: Option<String>,
-    pub error: Option<String>,
+    pub error: Option<Failure>,
     pub cancel_reason: Option<String>,
     pub waiting: Option<Waiting>,
     /// With the official server, which sends it from `from_address`.
@@ -169,11 +169,12 @@ pub async fn list(db: &SqlitePool, query: &PlanQuery, now: i64) -> Result<PlanPa
         r#"SELECT e.id, e.kind AS "kind: email::DraftKind", e.mentor_id, m.name,
             e.subject, e.task_id, t.name AS task_name,
             e.state AS "state: DraftState", e.planned_at, e.latest_at, e.sent_at,
-            e.from_address, e.error, e.cancel_reason, e.resend_of,
+            e.from_address, e.error AS "error: Json<Failure>", e.cancel_reason, e.resend_of,
             t.state AS task_state, t.generation_paused_at, own.mailbox_id AS own,
             e.kind IN ('reply', 'follow_up') AS "reply!: bool",
             e.cloud_at, e.cloud_uploading AS "cloud_uploading: bool",
-            e.by_cloud AS "by_cloud: bool", b.cloud_paused_until, b.cloud_pause_reason
+            e.by_cloud AS "by_cloud: bool", b.cloud_paused_until,
+            b.cloud_pause_reason AS "cloud_pause_reason: Json<Failure>"
         FROM json_each(?1) j
         JOIN email e ON e.id = j.value
         JOIN mentor m ON m.id = e.mentor_id
@@ -202,7 +203,10 @@ pub async fn list(db: &SqlitePool, query: &PlanQuery, now: i64) -> Result<PlanPa
                     .cloud_paused_until
                     .zip(r.cloud_pause_reason.clone())
                     .filter(|(until, _)| *until > now)
-                    .map(|(until, reason)| pause::Pause { until, reason }),
+                    .map(|(until, reason)| pause::Pause {
+                        until,
+                        reason: reason.0,
+                    }),
             });
             let waiting = if !matches!(query.column, PlanColumn::Upcoming) || cloud.is_some() {
                 None
@@ -250,7 +254,7 @@ pub async fn list(db: &SqlitePool, query: &PlanQuery, now: i64) -> Result<PlanPa
                 latest_at: r.latest_at,
                 sent_at: r.sent_at,
                 from_address: r.from_address,
-                error: r.error,
+                error: r.error.map(|e| e.0),
                 cancel_reason: r.cancel_reason,
                 waiting,
                 cloud,

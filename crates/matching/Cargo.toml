@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 material.workspace = true
 mentor.workspace = true
+failure.workspace = true
 model.workspace = true
 net.workspace = true
 profile.workspace = true

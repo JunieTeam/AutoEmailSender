@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { ChevronLeft, ListChecks, Mail, MoreHorizontal, SearchX } from "lucide-react";
 import { call, errorMessage } from "@/api/call";
 import { refreshTasks } from "@/components/task-cache";
+import { FailureNote } from "@/components/failure";
 import type { DraftFilter, DraftState, PlanColumn, Progress, TaskState, TaskSummary, NewTask } from "@/api/types";
 import { cn } from "cn";
 import { ModelAction } from "@/components/ai-writing";
@@ -463,11 +464,12 @@ export function TaskReviewPage() {
         </div>
         <p className="text-sm text-muted-foreground">{scheduleText(t.schedule)}</p>
         <ProgressBar progress={t.progress} labels />
-        {t.state === "paused" && (
-          <p className="text-sm text-warning">
-            {t.pauseReason ?? "你已暂停任务。可以继续审核和批准，继续任务后才会发出。"}
-          </p>
-        )}
+        {t.state === "paused" &&
+          (t.pauseReason ? (
+            <FailureNote failure={t.pauseReason} className="text-sm text-warning" />
+          ) : (
+            <p className="text-sm text-warning">你已暂停任务。可以继续审核和批准，继续任务后才会发出。</p>
+          ))}
         {(error || action.error || withdrawCloud.error) && (
           <p role="alert" className="text-sm text-destructive">
             {error ?? errorMessage(action.error ?? withdrawCloud.error)}
@@ -658,7 +660,7 @@ function DraftDetail({
           />
         ) : d.state === "generation_failed" ? (
           <div className="space-y-3 p-5">
-            <p className="text-warning">生成失败：{d.error}</p>
+            {d.error && <FailureNote failure={d.error} lead="生成失败：" className="text-warning" />}
             <Button
               disabled={action.isPending || task.state === "stopped"}
               onClick={() => action.mutate("retryTaskGeneration")}
@@ -739,7 +741,9 @@ function DraftDetail({
               )}
             </p>
           )}
-          {d.error && d.state !== "generation_failed" && <p className="w-full text-sm text-warning">{d.error}</p>}
+          {d.error && d.state !== "generation_failed" && (
+            <FailureNote failure={d.error} className="w-full text-sm text-warning" />
+          )}
           {action.error && <p className="w-full text-sm text-destructive">{errorMessage(action.error)}</p>}
         </div>
       </section>

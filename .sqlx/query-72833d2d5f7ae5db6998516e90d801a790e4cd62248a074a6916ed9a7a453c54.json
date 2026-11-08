@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT json_array_length(enrich_changes) > 0 AS \"changed!: bool\"\n        FROM candidate\n        WHERE id = ?1 AND review = 'pending' AND enrich IN ('queued', 'running')\n        AND NOT EXISTS (\n            SELECT 1\n            FROM crawl_page\n            WHERE candidate_id = ?1 AND work_state != 'done'\n        )",
+  "describe": {
+    "columns": [
+      {
+        "name": "changed!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "72833d2d5f7ae5db6998516e90d801a790e4cd62248a074a6916ed9a7a453c54"
+}

@@ -13,6 +13,7 @@ account.workspace = true
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 db.workspace = true
 email.workspace = true
+failure = { workspace = true, features = ["ts-rs"] }
 fastrand = "2.5.0"
 mailbox.workspace = true
 transport.workspace = true

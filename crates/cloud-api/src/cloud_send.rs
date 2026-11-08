@@ -2,6 +2,7 @@
 //! user's own mailbox at the time the app planned, with the mailbox the app chose. The app puts
 //! the whole message together; the server dates it as it goes out.
 
+use failure::Failure;
 use serde::{Deserialize, Serialize};
 
 pub const MAILBOXES: &str = "/v1/cloud/mailboxes";
@@ -62,7 +63,7 @@ pub struct MailboxUpload {
 #[serde(rename_all = "camelCase")]
 pub struct MailboxSaved {
     /// Why the server could not log in, so it did not keep the mailbox.
-    pub login_error: Option<String>,
+    pub login_error: Option<Failure>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -91,9 +92,9 @@ pub enum Outcome {
     /// Handed to the mailbox's server at `at`.
     Sent { at: i64 },
     /// The mail server turned this email down.
-    Failed { at: i64, reason: String },
+    Failed { at: i64, reason: Failure },
     /// The connection broke off while it was being handed over.
-    MaybeSent { at: i64, reason: String },
+    MaybeSent { at: i64, reason: Failure },
     /// Given back unsent: past its latest time, or Plus was taken back.
     Returned { at: i64 },
 }

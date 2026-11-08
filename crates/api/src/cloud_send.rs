@@ -10,6 +10,7 @@ use cloud_api::cloud_send::{
     MailboxSaved, Mailboxes, Outcome, RESULTS, RESULTS_ACK, Results, Withdrawal,
 };
 use cloud_api::{ApiError, Empty, ErrorCode};
+use failure::Failure;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use sqlx::{Connection, SqliteConnection};
@@ -92,7 +93,8 @@ pub async fn sync(ctx: &Context, now: i64, changed: &mut bool) -> Result<(), acc
                 // The server keeps what it had: emails still go with that, or pause there.
                 tracing::warn!(
                     mailbox = id,
-                    error,
+                    error = error.message,
+                    details = error.details,
                     "the official server could not log in to a changed mailbox"
                 );
             }
@@ -230,9 +232,9 @@ async fn upload_mailbox(
     ctx: &Context,
     login: &account::Login,
     id: i64,
-) -> Result<Option<String>, account::Error> {
+) -> Result<Option<Failure>, account::Error> {
     let Some(copy) = mailbox::cloud::for_cloud(&mut *ctx.db.acquire().await?, id).await? else {
-        return Ok(Some(NO_SECRET.into()));
+        return Ok(Some(Failure::new(NO_SECRET)));
     };
     let saved: MailboxSaved = ctx
         .account
@@ -597,7 +599,7 @@ pub struct HandedOff {
 #[ts(rename = "CloudKept")]
 pub struct Kept {
     pub id: i64,
-    pub reason: String,
+    pub reason: Failure,
 }
 
 #[derive(Serialize, TS)]
@@ -606,7 +608,7 @@ pub struct Kept {
 pub struct LoginFailed {
     pub mailbox_id: i64,
     pub address: String,
-    pub error: String,
+    pub error: Failure,
 }
 
 /// Hands the emails over as planned (docs/development.md#云端定时发送): marked first, then their
@@ -760,17 +762,17 @@ async fn upload_email(
     ctx: &Context,
     login: &account::Login,
     cloud_id: &str,
-) -> Result<Result<(), String>, CallError> {
+) -> Result<Result<(), Failure>, CallError> {
     let (letter, message) = match send::cloud_message(&ctx.db, &ctx.materials, cloud_id).await? {
         Ok(composed) => composed,
         Err(reason) => return Ok(Err(reason)),
     };
     let compressed = zstd::encode_all(&message[..], LEVEL).map_err(CallError::internal)?;
     if compressed.len() > MAX_SIZE {
-        return Ok(Err(format!(
+        return Ok(Err(Failure::new(format!(
             "这封邮件压缩后超过 {} MB，不能交给云端",
             MAX_SIZE / 1024 / 1024
-        )));
+        ))));
     }
     let upload = EmailUpload {
         mailbox: letter.from,
@@ -800,9 +802,9 @@ async fn upload_email(
         Err(error @ account::Error::Server(ApiError { code, .. }))
             if code != ErrorCode::Internal =>
         {
-            Ok(Err(error.message()))
+            Ok(Err(Failure::new(error.message())))
         }
-        Err(error @ account::Error::SignedOut) => Ok(Err(error.message())),
+        Err(error @ account::Error::SignedOut) => Ok(Err(Failure::new(error.message()))),
         Err(error) => Err(error.into()),
     }
 }

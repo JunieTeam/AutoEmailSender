@@ -90,7 +90,7 @@ fn reason(error: &sqlx::Error) -> &'static str {
         Some(SQLITE_IOERR | SQLITE_CANTOPEN | SQLITE_READONLY | SQLITE_PERM) => {
             "数据文件读写出错，请确认数据所在的磁盘还连着"
         }
-        _ => "数据暂时无法保存，请导出日志发给开发者",
+        _ => "数据暂时无法保存，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题",
     }
 }
 
@@ -151,7 +151,10 @@ mod tests {
             .execute(&mut conn)
             .await
             .expect_err("a duplicate violates the unique constraint");
-        assert_eq!(reason(&error), "数据暂时无法保存，请导出日志发给开发者");
+        assert_eq!(
+            reason(&error),
+            "数据暂时无法保存，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题"
+        );
         sqlx::query("PRAGMA query_only = ON")
             .execute(&mut conn)
             .await

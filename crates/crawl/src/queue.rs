@@ -3,6 +3,7 @@ use crate::{
     PageUrl, Scope, now,
     store::{PageKind, PageMethod, PageStatus, PageStep},
 };
+use failure::Failure;
 use serde::Serialize;
 use sqlx::{SqliteConnection, SqlitePool, types::Json};
 use ts_rs::TS;
@@ -46,10 +47,10 @@ pub enum PageState {
 pub fn starts(input: &str) -> Result<Vec<PageUrl>, String> {
     let mut urls = Vec::new();
     for line in input.lines().map(str::trim).filter(|s| !s.is_empty()) {
-        let url = PageUrl::parse(line).map_err(|e| e.message())?;
+        let url = PageUrl::parse(line).map_err(|e| e.failure().message)?;
         Scope::new(&url)
             .page(url.clone())
-            .map_err(|e| e.message())?;
+            .map_err(|e| e.failure().message)?;
         if !urls.contains(&url) {
             urls.push(url);
         }
@@ -153,7 +154,7 @@ pub(crate) async fn enqueue_steps(
     sqlx::query!(
         r#"INSERT INTO crawl_page (crawl_id, url, scope_url, depth, kind, steps, mode,
             status, error, fetched_at, work_state)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '尚未读取', NULL, ?)"#,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)"#,
         crawl,
         url,
         scope,
@@ -162,12 +163,16 @@ pub(crate) async fn enqueue_steps(
         steps,
         PageMethod::Http,
         PageStatus::Failed,
+        Json(Failure::new(NOT_READ)),
         PageState::Queued
     )
     .execute(conn)
     .await?;
     Ok(())
 }
+/// What a page waiting its turn says.
+pub(crate) const NOT_READ: &str = "尚未读取";
+
 pub(crate) async fn limit(
     conn: &mut SqliteConnection,
     id: i64,
@@ -355,9 +360,9 @@ pub async fn control(db: &SqlitePool, id: i64, action: &str, at: i64) -> Result<
             r#"UPDATE crawl_page
             SET work_state = 'done',
                 status = CASE WHEN status = 'success' THEN 'failed'
-            ELSE status END, error = CASE WHEN status = 'success' THEN
-                '已取消，页面资料尚未整理完成' ELSE error END
+            ELSE status END, error = CASE WHEN status = 'success' THEN ? ELSE error END
             WHERE crawl_id = ? AND work_state != 'done'"#,
+            Json(Failure::new("已取消，页面资料尚未整理完成")),
             id
         )
         .execute(&mut *tx)
@@ -468,7 +473,8 @@ pub struct CrawlSummary {
     pub school: Option<String>,
     pub model_config_id: Option<i64>,
     pub state: CrawlState,
-    pub error: Option<String>,
+    #[ts(as = "Option<Failure>")]
+    pub error: Option<Json<Failure>>,
     pub created_at: i64,
     pub finished_at: Option<i64>,
     pub pages: i64,
@@ -552,7 +558,7 @@ pub(crate) async fn summaries(
         CrawlSummary,
         r#"SELECT c.id, json_extract(c.start_urls, '$[0]') AS "url: String",
             c.university, c.school, c.model_config_id, c.state AS "state: CrawlState",
-            c.error, c.created_at, c.finished_at, (
+            c.error AS "error: Json<Failure>", c.created_at, c.finished_at, (
             SELECT count(*)
             FROM crawl_page
             WHERE crawl_id = c.id AND work_state = 'done'
@@ -633,7 +639,8 @@ pub struct CrawlPage {
     pub kind: PageKind,
     pub state: PageState,
     pub status: PageStatus,
-    pub error: Option<String>,
+    #[ts(as = "Option<Failure>")]
+    pub error: Option<Json<Failure>>,
 }
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -664,7 +671,7 @@ pub async fn detail(
     let pages = sqlx::query_as!(
         CrawlPage,
         r#"SELECT id, url, kind AS "kind: PageKind", work_state AS "state: PageState",
-            status AS "status: PageStatus", error
+            status AS "status: PageStatus", error AS "error: Json<Failure>"
         FROM crawl_page
         WHERE crawl_id = ?
         ORDER BY status = 'success', id

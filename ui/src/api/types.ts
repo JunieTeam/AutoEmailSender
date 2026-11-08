@@ -52,7 +52,7 @@ export type AiReplyOutcome = { enabled: boolean, };
 
 export type AiReplyTodos = { enabled: boolean, };
 
-export type ApprovalCandidate = { problems: number, factCheck: FactCheck | null, id: number, mentorId: number, subject: string, bodyMd: string, attachments: Array<number>, state: DraftState, error: string | null, cancelReason: string | null, plannedAt: number | null, latestAt: number | null, previous: PreviousPreview | null, };
+export type ApprovalCandidate = { problems: number, factCheck: FactCheck | null, id: number, mentorId: number, subject: string, bodyMd: string, attachments: Array<number>, state: DraftState, error: Failure | null, cancelReason: string | null, plannedAt: number | null, latestAt: number | null, previous: PreviousPreview | null, };
 
 export type ApprovalPreview = { taskId: number, ids: Array<number>, };
 
@@ -62,7 +62,7 @@ export type CallError = { code: ErrorCode, message: string, };
 
 export type Candidate = { id: number, name: string, reason: string | null, contactCount: number, lastContactAt: number | null, libraryStatus: LibraryStatus | null, previous: PreviousLetter | null, };
 
-export type CandidateDetail = { evidence: Array<Evidence>, id: number, crawlId: number | null, review: string, mentorId: number | null, fields: MentorFields, papers: Array<string>, sourceUrl: string | null, note: string | null, enrich: EnrichState, enrichChanges: Array<EnrichChange>, enrichError: string | null, };
+export type CandidateDetail = { evidence: Array<Evidence>, id: number, crawlId: number | null, review: string, mentorId: number | null, fields: MentorFields, papers: Array<string>, sourceUrl: string | null, note: string | null, enrich: EnrichState, enrichChanges: Array<EnrichChange>, enrichError: Failure | null, };
 
 export type CandidateFilter = "all" | "new" | "supplement" | "maybe" | "missing_email";
 
@@ -72,7 +72,7 @@ export type CandidatePage = { candidates: Array<CandidateRow>, total: number, };
 
 export type CandidateQuery = { crawlId: number | null, processed: boolean, filter: CandidateFilter, page: number, };
 
-export type CandidateRow = { id: number, crawlId: number | null, name: string, emails: Array<string>, affiliation: Affiliation | null, research: string | null, sourceUrl: string | null, review: string, mentorId: number | null, category: CandidateFilter, issue: string | null, enrich: EnrichState, enrichChanges: Array<EnrichChange>, enrichError: string | null, };
+export type CandidateRow = { id: number, crawlId: number | null, name: string, emails: Array<string>, affiliation: Affiliation | null, research: string | null, sourceUrl: string | null, review: string, mentorId: number | null, category: CandidateFilter, issue: string | null, enrich: EnrichState, enrichChanges: Array<EnrichChange>, enrichError: Failure | null, };
 
 export type Capacity = { windows: number, emails: number, nextChangeAt: number | null, };
 
@@ -102,7 +102,7 @@ export type CloudBackupFailure = {
 /**
  * Failing since then.
  */
-since: number, message: string, };
+since: number, message: string, details: string | null, };
 
 export type CloudBackupServer = { plusUntil: number | null,
 /**
@@ -136,9 +136,9 @@ kept: Array<CloudKept>,
  */
 loginFailed: Array<CloudLoginFailed>, };
 
-export type CloudKept = { id: number, reason: string, };
+export type CloudKept = { id: number, reason: Failure, };
 
-export type CloudLoginFailed = { mailboxId: number, address: string, error: string, };
+export type CloudLoginFailed = { mailboxId: number, address: string, error: Failure, };
 
 export type CloudSendBlocked = "signed_out" | "terms_outdated" | "no_plus";
 
@@ -234,7 +234,7 @@ export type CrawlList = { crawls: Array<CrawlSummary>, total: number, };
 
 export type CrawlOption = { id: number, url: string | null, university: string | null, school: string | null, createdAt: number, };
 
-export type CrawlPage = { id: number, url: string, kind: PageKind, state: PageState, status: PageStatus, error: string | null, };
+export type CrawlPage = { id: number, url: string, kind: PageKind, state: PageState, status: PageStatus, error: Failure | null, };
 
 export type CrawlQuery = { page: number, };
 
@@ -248,7 +248,7 @@ export type CrawlStart = { urls: string, modelId: number, };
 
 export type CrawlState = "running" | "paused" | "done" | "failed" | "canceled";
 
-export type CrawlSummary = { id: number, url: string | null, university: string | null, school: string | null, modelConfigId: number | null, state: CrawlState, error: string | null, createdAt: number, finishedAt: number | null, pages: number, remaining: number, enrichRemaining: number, modelIds: Array<number>, profiles: number, candidates: number, failed: number, tokens: number | null, stage: CrawlStage, };
+export type CrawlSummary = { id: number, url: string | null, university: string | null, school: string | null, modelConfigId: number | null, state: CrawlState, error: Failure | null, createdAt: number, finishedAt: number | null, pages: number, remaining: number, enrichRemaining: number, modelIds: Array<number>, profiles: number, candidates: number, failed: number, tokens: number | null, stage: CrawlStage, };
 
 export type CrawlUrls = { urls: string, };
 
@@ -306,7 +306,7 @@ resent: boolean,
 /**
  * For one that went with a tracking image.
  */
-tracking: EmailTracking | null, } & ({ "state": "approved" } | { "state": "cloud", fromAddress: string, at: number, uploading: boolean, cancelReason: string | null, } | { "state": "sending", cancelReason: string | null, } | { "state": "maybe_sent", fromAddress: string, toAddress: string, sentAt: number, error: string, cancelReason: string | null, } | { "state": "sent", fromAddress: string, toAddress: string, sentAt: number, } | { "state": "bounced", fromAddress: string, toAddress: string, sentAt: number, error: string, } | { "state": "failed", error: string, } | { "state": "canceled", cancelReason: string, });
+tracking: EmailTracking | null, } & ({ "state": "approved" } | { "state": "cloud", fromAddress: string, at: number, uploading: boolean, cancelReason: string | null, } | { "state": "sending", cancelReason: string | null, } | { "state": "maybe_sent", fromAddress: string, toAddress: string, sentAt: number, error: Failure, cancelReason: string | null, } | { "state": "sent", fromAddress: string, toAddress: string, sentAt: number, } | { "state": "bounced", fromAddress: string, toAddress: string, sentAt: number, error: Failure, } | { "state": "failed", error: Failure, } | { "state": "canceled", cancelReason: string, });
 
 export type EmailId = { id: number, };
 
@@ -346,7 +346,9 @@ recognized: Array<string>, research: string | null, };
 
 export type ExportMentors = { scope: Scope, format: TableFormat, note: boolean, };
 
-export type FactCheck = { "state": "completed", findings: Array<Finding>, } | { "state": "failed", reason: string, };
+export type FactCheck = { "state": "completed", findings: Array<Finding>, } | { "state": "failed", reason: Failure, };
+
+export type Failure = { message: string, details: string | null, };
 
 export type Field = "name" | "email" | "university" | "school" | "department" | "title" | "homepage" | "alias" | "research" | "papers" | "sourceUrl" | "tags" | "note";
 
@@ -492,7 +494,7 @@ minIntervalS: number,
 /**
  * Why the last round of receiving failed.
  */
-receiveError: string | null, pause: Pause | null, needsSecret: boolean,
+receiveError: Failure | null, pause: Pause | null, needsSecret: boolean,
 /**
  * Emails the official server is to send from it.
  */
@@ -527,7 +529,7 @@ export type MatchFilter = { "kind": "atLeast", score: number, } | { "kind": "una
 
 export type MatchFinished = { analyzed: number, failed: number, };
 
-export type MatchPause = { at: number, reason: string | null, };
+export type MatchPause = { at: number, reason: Failure | null, };
 
 export type MatchPlan = { analyze: number, existing: number, changed: number, insufficient: number, queued: number, };
 
@@ -537,7 +539,7 @@ export type MatchResult = { score: number, matchedAt: number, model: string, rea
 
 export type MatchScore = { score: number, basisChanged: boolean, };
 
-export type MatchState = { "state": "queued" } | { "state": "running" } | { "state": "failed", error: string, };
+export type MatchState = { "state": "queued" } | { "state": "running" } | { "state": "failed", error: Failure, };
 
 export type MatchSummary = { result: MatchScore | null, state: MatchState | null, };
 
@@ -691,7 +693,7 @@ quote: string | null,
 /**
  * Only its start was read, which may leave out some of the text.
  */
-truncated: boolean, } & ({ "kind": "reply", unread: boolean, canReply: boolean, outcome: ReplyOutcome | null, marking: OutcomeMarking | null, todoExtraction: TodoExtraction | null, } | { "kind": "auto_reply" } | { "kind": "sent", bounce: string | null, });
+truncated: boolean, } & ({ "kind": "reply", unread: boolean, canReply: boolean, outcome: ReplyOutcome | null, marking: OutcomeMarking | null, todoExtraction: TodoExtraction | null, } | { "kind": "auto_reply" } | { "kind": "sent", bounce: Failure | null, });
 
 export type MessageIds = { ids: Array<number>, };
 
@@ -805,7 +807,7 @@ export type OperationSummary = { name: string, summary: string, group: string, c
 
 export type OrderState = { "state": "pending" } | { "state": "applied", plusUntil: number | null, tracking: Quota, } | { "state": "refunded" };
 
-export type OutcomeMarking = { "state": "marking" } | { "state": "failed", reason: string, };
+export type OutcomeMarking = { "state": "marking" } | { "state": "failed", reason: Failure, };
 
 export type Pack = { item: string, count: number,
 /**
@@ -825,7 +827,7 @@ export type PageStatus = "success" | "failed" | "needs_browser";
 
 export type PairedPhone = { id: string, name: string, pairedAt: number, seenAt: number | null, online: boolean, };
 
-export type Pause = { until: number, reason: string, };
+export type Pause = { until: number, reason: Failure, };
 
 export type PhoneAccess = { enabled: boolean, status: RelayStatus, };
 
@@ -853,7 +855,7 @@ pause: Pause | null, };
 
 export type PlanColumn = "pending" | "upcoming" | "history";
 
-export type PlanEmail = { id: number, kind: DraftKind, mentorId: number, name: string, subject: string | null, taskId: number | null, taskName: string | null, state: DraftState, resendOf: number | null, plannedAt: number | null, latestAt: number | null, sentAt: number | null, fromAddress: string | null, error: string | null, cancelReason: string | null, waiting: Waiting | null,
+export type PlanEmail = { id: number, kind: DraftKind, mentorId: number, name: string, subject: string | null, taskId: number | null, taskName: string | null, state: DraftState, resendOf: number | null, plannedAt: number | null, latestAt: number | null, sentAt: number | null, fromAddress: string | null, error: Failure | null, cancelReason: string | null, waiting: Waiting | null,
 /**
  * With the official server, which sends it from `from_address`.
  */
@@ -967,7 +969,7 @@ export type ReplyOutcomeFilter = "interested" | "no_slot" | "declined" | "unclea
 
 export type ReplyProcessing = { remaining: number, failed: number, pause: ReplyProcessingPause | null, };
 
-export type ReplyProcessingPause = { at: number, reason: string, };
+export type ReplyProcessingPause = { at: number, reason: Failure, };
 
 export type ReplyTarget = { id: number, messageId: string | null, fromAddress: string, fromName: string | null, subject: string | null, sentAt: number, };
 
@@ -1061,7 +1063,7 @@ export type TagName = { id: number, name: string, };
 
 export type TaskApprovals = { taskId: number, emails: Array<RenderedApproval>, };
 
-export type TaskDraft = { factCheck: FactCheck | null, id: number, mentorId: number, subject: string, bodyMd: string, attachments: Array<number>, state: DraftState, error: string | null, cancelReason: string | null, plannedAt: number | null, latestAt: number | null, previous: PreviousPreview | null, };
+export type TaskDraft = { factCheck: FactCheck | null, id: number, mentorId: number, subject: string, bodyMd: string, attachments: Array<number>, state: DraftState, error: Failure | null, cancelReason: string | null, plannedAt: number | null, latestAt: number | null, previous: PreviousPreview | null, };
 
 export type TaskEmail = { taskId: number, id: number, };
 
@@ -1079,9 +1081,9 @@ export type TaskRetry = { taskId: number, id: number | null, };
 
 export type TaskState = "active" | "paused" | "stopped" | "completed";
 
-export type TaskSummary = { id: number, name: string, writer: Writer, kind: Kind, state: TaskState, createdAt: number, pauseReason: string | null, modelConfigId: number | null, progress: Progress, schedule: Schedule, };
+export type TaskSummary = { id: number, name: string, writer: Writer, kind: Kind, state: TaskState, createdAt: number, pauseReason: Failure | null, modelConfigId: number | null, progress: Progress, schedule: Schedule, };
 
-export type TaskWork = { id: number, name: string, state: TaskState, pauseReason: string | null, generating: number, };
+export type TaskWork = { id: number, name: string, state: TaskState, pauseReason: Failure | null, generating: number, };
 
 export type Template = { id: number, name: string, subject: string, bodyMd: string, };
 
@@ -1131,7 +1133,7 @@ export type TodoDone = { id: number, done: boolean, };
 
 export type TodoEdit = { id: number, text: string, dueDate: string | null, dueTime: string | null, };
 
-export type TodoExtraction = { "state": "extracting" } | { "state": "failed", reason: string, };
+export type TodoExtraction = { "state": "extracting" } | { "state": "failed", reason: Failure, };
 
 export type TodoId = { id: number, };
 

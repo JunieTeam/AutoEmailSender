@@ -14,6 +14,7 @@ pub mod thread;
 pub mod tracking;
 pub use reply::*;
 
+use failure::Failure;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Json;
 use sqlx::{Connection, SqliteConnection, SqlitePool};
@@ -410,7 +411,7 @@ pub enum Delivery {
         from_address: String,
         to_address: String,
         sent_at: i64,
-        error: String,
+        error: Failure,
         cancel_reason: Option<String>,
     },
     Sent {
@@ -422,10 +423,10 @@ pub enum Delivery {
         from_address: String,
         to_address: String,
         sent_at: i64,
-        error: String,
+        error: Failure,
     },
     Failed {
-        error: String,
+        error: Failure,
     },
     Canceled {
         cancel_reason: String,
@@ -471,7 +472,8 @@ pub async fn list_in(db: &mut SqliteConnection, mentor_id: i64) -> Result<Vec<Em
             coalesce(subject, '') AS "subject!: String",
             coalesce(body_md, '') AS "body_md!: String", resend_of, EXISTS (SELECT 1
             FROM email r WHERE r.resend_of = email.id) AS "resent!: bool", planned_at,
-            latest_at, from_address, to_address, sent_at, error, cancel_reason, cloud_at,
+            latest_at, from_address, to_address, sent_at, error AS "error: Json<Failure>",
+            cancel_reason, cloud_at,
             cloud_uploading AS "cloud_uploading: bool",
             tracking_state AS "tracking_state: tracking::State",
             open_count AS "open_count: u32", first_opened_at, last_opened_at
@@ -487,7 +489,8 @@ pub async fn list_in(db: &mut SqliteConnection, mentor_id: i64) -> Result<Vec<Em
     .into_iter()
     .map(|r| {
         use DeliveryColumn as C;
-        let delivery = match (r.state, r.from_address, r.to_address, r.sent_at, r.error) {
+        let error = r.error.map(|e| e.0);
+        let delivery = match (r.state, r.from_address, r.to_address, r.sent_at, error) {
             (C::Canceled, ..) => Delivery::Canceled {
                 cancel_reason: r
                     .cancel_reason
@@ -752,13 +755,13 @@ pub async fn interrupted(
     .fetch_all(&mut *conn)
     .await?;
     for id in unsent {
-        failed(conn, id, NO_ADDRESS, now).await?;
+        failed(conn, id, &Failure::new(NO_ADDRESS), now).await?;
     }
     sqlx::query_as!(
         Handed,
         "UPDATE email SET state = 'maybe_sent', error = ?, updated_at = ? WHERE state = 'sending'
          RETURNING mentor_id, mailbox_id",
-        INTERRUPTED,
+        Json(Failure::new(INTERRUPTED)),
         now,
     )
     .fetch_all(conn)
@@ -874,13 +877,13 @@ pub async fn sent(conn: &mut SqliteConnection, id: i64, now: i64) -> Result<(), 
 pub async fn maybe_sent(
     conn: &mut SqliteConnection,
     id: i64,
-    error: &str,
+    error: &Failure,
     now: i64,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "UPDATE email SET state = 'maybe_sent', error = ?, updated_at = ?
          WHERE id = ? AND state = 'sending'",
-        error,
+        Json(error),
         now,
         id,
     )
@@ -893,7 +896,7 @@ pub async fn maybe_sent(
 pub async fn failed(
     conn: &mut SqliteConnection,
     id: i64,
-    error: &str,
+    error: &Failure,
     now: i64,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
@@ -903,7 +906,7 @@ pub async fn failed(
              latest_at = NULL, error = CASE WHEN cancel_reason IS NULL THEN ? END,
              sent_at = CASE WHEN to_address IS NOT NULL THEN sent_at END, updated_at = ?
            WHERE id = ? AND state IN ('approved', 'sending')"#,
-        error,
+        Json(error),
         now,
         id,
     )
@@ -1068,7 +1071,7 @@ pub async fn bounced(
     conn: &mut SqliteConnection,
     message_id: &str,
     recipients: &[String],
-    reason: &str,
+    reason: &Failure,
     at: i64,
     now: i64,
 ) -> Result<Option<Bounced>, sqlx::Error> {
@@ -1101,8 +1104,8 @@ pub async fn bounced(
              )))
            AND to_address IS NOT NULL
            AND (json_array_length(?4) = 0 OR to_address IN (SELECT value FROM json_each(?4)))
-         RETURNING mentor_id, mailbox_id"#,
-        reason,
+         RETURNING id AS "id!", mentor_id, mailbox_id"#,
+        Json(reason),
         now,
         message_id,
         recipients,
@@ -1110,6 +1113,7 @@ pub async fn bounced(
     .fetch_optional(conn)
     .await?;
     Ok(done.map(|r| Bounced {
+        id: r.id,
         mentor_id: r.mentor_id,
         mailbox_id: r.mailbox_id,
         from_cloud,
@@ -1118,6 +1122,7 @@ pub async fn bounced(
 
 /// An email marked bounced.
 pub struct Bounced {
+    pub id: i64,
     pub mentor_id: i64,
     /// The mailbox it went from; None once deleted.
     pub mailbox_id: Option<i64>,

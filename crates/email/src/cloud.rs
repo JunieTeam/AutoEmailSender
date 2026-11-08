@@ -2,6 +2,7 @@
 //! chose (docs/design.md#云端定时发送, docs/data-model.md#联系).
 
 use cloud_api::cloud_send::Outcome;
+use failure::Failure;
 use sqlx::SqliteConnection;
 use sqlx::types::Json;
 
@@ -304,7 +305,7 @@ pub async fn unknown(
     else {
         return Ok(None);
     };
-    let reason = GONE.into();
+    let reason = Failure::new(GONE);
     finished(conn, cloud_id, &Outcome::MaybeSent { at, reason }, now).await
 }
 
@@ -330,7 +331,7 @@ pub async fn left_by_deleted_account(
     .await?;
     let mut settled = Vec::new();
     for r in left {
-        let reason = ACCOUNT_GONE.into();
+        let reason = Failure::new(ACCOUNT_GONE);
         let outcome = Outcome::MaybeSent { at: r.at, reason };
         let handed = finished(conn, &r.cloud_id, &outcome, now).await?;
         settled.push((r.cloud_id, handed));
@@ -353,7 +354,7 @@ pub async fn finished(
         }
         Outcome::Sent { at } => (*at, None),
         Outcome::Failed { at, reason } | Outcome::MaybeSent { at, reason } => {
-            (*at, Some(reason.as_str()))
+            (*at, Some(Json(reason)))
         }
     };
     let state = match outcome {

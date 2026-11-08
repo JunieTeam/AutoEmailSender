@@ -6,6 +6,7 @@ import { call, errorMessage } from "@/api/call";
 import type { MentorDetail } from "@/api/types";
 import { useChangedElsewhere } from "@/changed-elsewhere";
 import { Confirm } from "@/components/batch-bar";
+import { FailureNote } from "@/components/failure";
 import { Correspondence } from "@/components/correspondence";
 import { fieldsOf, formOf, MentorDialog } from "@/components/mentor-dialog";
 import {
@@ -394,10 +395,11 @@ function Analysis({ mentor: m }: { mentor: MentorDetail }) {
         ) : (
           <Missing>未分析</Missing>
         )}
-        {state && (
-          <p className={`mt-2 wrap-anywhere ${state.state === "failed" ? "text-warning" : "text-muted-foreground"}`}>
-            {state.state === "failed" ? `分析失败：${state.error}` : state.state === "queued" ? "排队中" : "分析中"}
-          </p>
+        {state?.state === "failed" && (
+          <FailureNote failure={state.error} lead="分析失败：" className="mt-2 text-warning" />
+        )}
+        {(state?.state === "queued" || state?.state === "running") && (
+          <p className="mt-2 text-muted-foreground">{state.state === "queued" ? "排队中" : "分析中"}</p>
         )}
         {!m.trashed && (
           <div className="mt-3">

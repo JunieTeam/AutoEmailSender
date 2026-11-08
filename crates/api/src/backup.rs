@@ -86,10 +86,13 @@ impl Error {
                 "备份文件无法读写。请检查文件是否存在、磁盘空间和目录权限后重试。".into()
             }
             Self::Database(_) => "备份数据库无法读取或处理，文件可能已损坏。请换一份备份重试；\
-                仍然失败时导出日志发给开发者。"
+                仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题。"
                 .into(),
             Self::Migration(_) => "这份备份的数据库与本应用不匹配，无法恢复".into(),
-            Self::Worker(_) => "备份处理未能完成，请重试；仍然失败时导出日志发给开发者".into(),
+            Self::Worker(_) => {
+                "备份处理未能完成，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题"
+                    .into()
+            }
         }
     }
 }
@@ -496,7 +499,8 @@ pub fn apply_pending(dir: &Path) -> Result<bool> {
             rename(&stage.join(name), &dir.join(name))?;
         } else if !dir.join(name).try_exists()? {
             return Err(Error::Invalid(
-                "恢复暂存文件不完整，现有数据已保留，请导出日志联系开发者".into(),
+                "恢复暂存文件不完整，现有数据已保留。请在电脑上的 设置 › 关于和日志 里反馈问题。"
+                    .into(),
             ));
         }
     }

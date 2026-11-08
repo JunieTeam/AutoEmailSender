@@ -11,7 +11,8 @@ import {
 import { Link } from "@tanstack/react-router";
 import { TriangleAlert } from "lucide-react";
 import { call, errorMessage } from "@/api/call";
-import type { FactCheck, FirstDraftEdit, Letter, ModelConfig, ModelProvider, ReplyTarget } from "@/api/types";
+import type { FactCheck, Failure, FirstDraftEdit, Letter, ModelConfig, ModelProvider, ReplyTarget } from "@/api/types";
+import { FailureDetails } from "@/components/failure";
 import { Confirm } from "@/components/batch-bar";
 import { useModelProviders } from "@/components/model-dialog";
 import { Button } from "@/components/ui/button";
@@ -265,20 +266,23 @@ export function FactCheckStatus({
   // A failure kept from before the setting was turned off is of no more use.
   const on = useQuery(aiFactCheck);
   if (check.latest?.status === "pending") return <p className="text-sm text-muted-foreground">AI 正在核对…</p>;
-  const reason =
+  const reason: Failure | null =
     check.latest?.status === "error"
-      ? errorMessage(check.latest.error)
+      ? { message: errorMessage(check.latest.error), details: null }
       : on.data && stored?.state === "failed"
         ? stored.reason
         : null;
   return (
     reason !== null && (
-      <p className="text-sm text-destructive">
-        AI 核对未能完成：{reason}
-        <Button variant="quiet" size="sm" onClick={check.start}>
-          重试
-        </Button>
-      </p>
+      <div className="text-sm text-destructive">
+        <p>
+          AI 核对未能完成：{reason.message}
+          <Button variant="quiet" size="sm" onClick={check.start}>
+            重试
+          </Button>
+        </p>
+        <FailureDetails failure={reason} />
+      </div>
     )
   );
 }

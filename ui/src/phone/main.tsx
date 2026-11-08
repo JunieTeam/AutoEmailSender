@@ -119,7 +119,7 @@ class Link {
       case CLOSE.BROKEN:
         return this.set({
           kind: "ended",
-          message: "和电脑的连接出错，请刷新页面再试；仍然出错时，在电脑上导出日志发给开发者",
+          message: "和电脑的连接出错，请刷新页面再试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题",
         });
     }
     const offline = status.code === CLOSE.OFFLINE;

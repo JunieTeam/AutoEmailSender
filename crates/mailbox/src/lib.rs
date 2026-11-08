@@ -3,8 +3,10 @@
 
 use std::borrow::Cow;
 
+use failure::Failure;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use sqlx::types::Json;
 use ts_rs::TS;
 
 pub mod cloud;
@@ -30,7 +32,7 @@ pub struct Mailbox {
     /// The shortest wait between two emails, in seconds.
     pub min_interval_s: u32,
     /// Why the last round of receiving failed.
-    pub receive_error: Option<String>,
+    pub receive_error: Option<Failure>,
     pub pause: Option<transport::pause::Pause>,
     pub needs_secret: bool,
     /// Emails the official server is to send from it.
@@ -166,11 +168,12 @@ pub async fn list(db: &SqlitePool, now: i64) -> Result<Vec<Mailbox>, sqlx::Error
             imap_host, imap_port AS "imap_port: u16",
             imap_security AS "imap_security: Security",
             daily_limit AS "daily_limit: u32", min_interval_s AS "min_interval_s: u32",
-            receive_error, paused_until, pause_reason,
+            receive_error AS "receive_error: Json<Failure>", paused_until,
+            pause_reason AS "pause_reason: Json<Failure>",
             secret IS NULL AS "needs_secret!: bool",
             (SELECT count(*) FROM email WHERE mailbox_id = mailbox.id AND state = 'cloud')
               AS "cloud_emails!: u32",
-            cloud_paused_until, cloud_pause_reason
+            cloud_paused_until, cloud_pause_reason AS "cloud_pause_reason: Json<Failure>"
         FROM mailbox
         ORDER BY rotation_order, id"#
     )
@@ -195,19 +198,25 @@ pub async fn list(db: &SqlitePool, now: i64) -> Result<Vec<Mailbox>, sqlx::Error
             },
             daily_limit: r.daily_limit,
             min_interval_s: r.min_interval_s,
-            receive_error: r.receive_error,
+            receive_error: r.receive_error.map(|e| e.0),
             pause: r
                 .paused_until
                 .zip(r.pause_reason)
                 .filter(|(until, _)| *until > now)
-                .map(|(until, reason)| transport::pause::Pause { until, reason }),
+                .map(|(until, reason)| transport::pause::Pause {
+                    until,
+                    reason: reason.0,
+                }),
             needs_secret: r.needs_secret,
             cloud_emails: r.cloud_emails,
             cloud_pause: r
                 .cloud_paused_until
                 .zip(r.cloud_pause_reason)
                 .filter(|(until, _)| *until > now)
-                .map(|(until, reason)| transport::pause::Pause { until, reason }),
+                .map(|(until, reason)| transport::pause::Pause {
+                    until,
+                    reason: reason.0,
+                }),
         })
         .collect())
 }
@@ -407,12 +416,12 @@ pub async fn received(db: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
 pub async fn receive_failed(
     db: &SqlitePool,
     id: i64,
-    error: &str,
+    error: &Failure,
     retry_at: Option<i64>,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "UPDATE mailbox SET receive_error = ?, receive_retry_at = ? WHERE id = ?",
-        error,
+        Json(error),
         retry_at,
         id
     )

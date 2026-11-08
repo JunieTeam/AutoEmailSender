@@ -1,5 +1,11 @@
 //! Candidate enrichment uses the crawl page queue without candidate identity merging.
-use crate::{PageUrl, extract::Person, queue, review, store::PageKind};
+use crate::{
+    PageUrl,
+    extract::Person,
+    queue, review,
+    store::{PageKind, PageStatus},
+};
+use failure::Failure;
 use mentor::{Affiliation, intake::comparable};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -40,7 +46,7 @@ pub struct EnrichChange {
 pub struct Enrichment {
     pub enrich: EnrichState,
     pub enrich_changes: Vec<EnrichChange>,
-    pub enrich_error: Option<String>,
+    pub enrich_error: Option<Failure>,
 }
 #[derive(Debug, Serialize, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -182,12 +188,13 @@ pub(crate) async fn enqueue(
     sqlx::query!(
         r#"INSERT OR IGNORE INTO crawl_page (crawl_id, candidate_id, url, scope_url, kind,
             mode, status, error, work_state)
-        VALUES (?, ?, ?, ?, ?, 'http', 'failed', '尚未读取', 'queued')"#,
+        VALUES (?, ?, ?, ?, ?, 'http', 'failed', ?, 'queued')"#,
         crawl,
         candidate,
         url,
         scope,
-        kind
+        kind,
+        Json(Failure::new(queue::NOT_READ))
     )
     .execute(conn)
     .await?;
@@ -348,24 +355,54 @@ pub(crate) async fn apply(
     .await?;
     Ok(())
 }
+/// Ends the candidate's enrichment once its pages are all read: with what the first failed page
+/// says, the profile's first, when nothing was found to add.
 pub(crate) async fn complete(conn: &mut SqliteConnection, id: i64) -> Result<(), sqlx::Error> {
-    sqlx::query!(
-        r#"UPDATE candidate
-        SET enrich = 'done', enrich_error = CASE WHEN json_array_length(enrich_changes)
-            > 0 THEN NULL ELSE coalesce((
-            SELECT CASE WHEN status = 'needs_browser' THEN '需要浏览器：' || error
-            ELSE '页面读取失败：' || error END
-            FROM crawl_page
-            WHERE candidate_id = ?1 AND status != 'success'
-            ORDER BY status = 'needs_browser' DESC, kind = 'enrich_profile' DESC, id
-            LIMIT 1
-        ), '页面上无可补充的资料') END
+    let Some(changed) = sqlx::query_scalar!(
+        r#"SELECT json_array_length(enrich_changes) > 0 AS "changed!: bool"
+        FROM candidate
         WHERE id = ?1 AND review = 'pending' AND enrich IN ('queued', 'running')
         AND NOT EXISTS (
             SELECT 1
             FROM crawl_page
             WHERE candidate_id = ?1 AND work_state != 'done'
         )"#,
+        id
+    )
+    .fetch_optional(&mut *conn)
+    .await?
+    else {
+        return Ok(());
+    };
+    let error = if changed {
+        None
+    } else {
+        let page = sqlx::query!(
+            r#"SELECT status AS "status: PageStatus", error AS "error: Json<Failure>"
+            FROM crawl_page
+            WHERE candidate_id = ? AND status != 'success'
+            ORDER BY status = 'needs_browser' DESC, kind = 'enrich_profile' DESC, id
+            LIMIT 1"#,
+            id
+        )
+        .fetch_optional(&mut *conn)
+        .await?;
+        Some(match page.and_then(|p| Some((p.status, p.error?.0))) {
+            Some((status, mut failure)) => {
+                let read = if status == PageStatus::NeedsBrowser {
+                    "需要浏览器"
+                } else {
+                    "页面读取失败"
+                };
+                failure.message = format!("{read}：{}", failure.message);
+                failure
+            }
+            None => Failure::new("页面上无可补充的资料"),
+        })
+    };
+    sqlx::query!(
+        "UPDATE candidate SET enrich = 'done', enrich_error = ? WHERE id = ?",
+        error.map(Json),
         id
     )
     .execute(conn)

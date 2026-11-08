@@ -100,3 +100,57 @@ async fn rebuilding_the_email_table_keeps_emails_and_what_refers_to_them() {
     .await;
     assert!(orphan.is_err());
 }
+
+#[tokio::test]
+async fn reasons_kept_as_text_become_failures_without_details() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("failure-reasons");
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("app.db");
+    let options = SqliteConnectOptions::new()
+        .filename(&path)
+        .create_if_missing(true)
+        .foreign_keys(true);
+    let old = SqlitePoolOptions::new()
+        .connect_with(options)
+        .await
+        .unwrap();
+    db::MIGRATOR.run_to(20, &old).await.unwrap();
+    sqlx::raw_sql(
+        r#"INSERT INTO mentor (id, name, created_at, updated_at) VALUES (1, '王伟', 0, 0);
+        INSERT INTO email (id, mentor_id, kind, state, planned_at, from_address, to_address,
+            message_id, sent_at, error, subject, body_md, html, text, created_at, updated_at)
+          VALUES (1, 1, 'first', 'bounced', 5, 'me@example.com', 'wang@example.edu',
+            '<1@example.com>', 5, '收件地址不存在', '申请', '您好', '<p>您好</p>', '您好', 0, 0);
+        INSERT INTO email (id, mentor_id, kind, state, subject, body_md, fact_check, created_at,
+            updated_at)
+          VALUES (2, 1, 'first', 'review', '申请', '您好',
+            '{"state":"failed","reason":"模型未返回完整的核对结果"}', 0, 0);
+        UPDATE profile SET match_paused_at = 1, match_pause_reason = '尚未添加模型';"#,
+    )
+    .execute(&old)
+    .await
+    .unwrap();
+    old.close().await;
+
+    let db = db::open(&path).await.unwrap();
+    let reasons: (String, String, String) = sqlx::query_as(
+        r#"SELECT (SELECT error FROM email WHERE id = 1),
+            (SELECT fact_check FROM email WHERE id = 2), match_pause_reason
+        FROM profile"#,
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        reasons,
+        (
+            r#"{"message":"收件地址不存在","details":null}"#.into(),
+            r#"{"state":"failed","reason":{"message":"模型未返回完整的核对结果","details":null}}"#
+                .into(),
+            r#"{"message":"尚未添加模型","details":null}"#.into(),
+        )
+    );
+}

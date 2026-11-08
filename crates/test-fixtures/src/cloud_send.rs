@@ -143,7 +143,7 @@ fn respond(state: &mut State, method: &str, path: &str, body: Vec<u8>) -> Reply 
             let upload: MailboxUpload = serde_json::from_slice(&body).unwrap();
             if let Some(why) = state.refused.get(&upload.address) {
                 return ok(serde_json::to_value(MailboxSaved {
-                    login_error: Some(why.clone()),
+                    login_error: Some(failure::Failure::new(why.clone())),
                 })
                 .unwrap());
             }

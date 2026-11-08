@@ -1,5 +1,6 @@
 use super::*;
 use emails::DraftState;
+use failure::Failure;
 use std::{collections::HashMap, num::NonZeroU32};
 
 #[derive(Debug, Default, Serialize, TS)]
@@ -39,7 +40,7 @@ pub struct TaskSummary {
     pub kind: Kind,
     pub state: TaskState,
     pub created_at: i64,
-    pub pause_reason: Option<String>,
+    pub pause_reason: Option<Failure>,
     pub model_config_id: Option<i64>,
     pub progress: Progress,
     pub schedule: email::schedule::Schedule,
@@ -120,14 +121,15 @@ pub struct TaskWork {
     pub id: i64,
     pub name: String,
     pub state: TaskState,
-    pub pause_reason: Option<String>,
+    pub pause_reason: Option<Failure>,
     pub generating: i64,
 }
 
 pub async fn work(db: &SqlitePool) -> std::result::Result<Vec<TaskWork>, sqlx::Error> {
     let mut tx = db.begin().await?;
     let rows = sqlx::query!(
-        r#"SELECT t.id, t.name, t.state, t.generation_paused_at, t.generation_pause_reason
+        r#"SELECT t.id, t.name, t.state, t.generation_paused_at,
+            t.generation_pause_reason AS "generation_pause_reason: Json<Failure>"
         FROM task t
         WHERE t.state = 'paused'
             OR (t.state <> 'stopped' AND t.generation_paused_at IS NOT NULL)
@@ -151,7 +153,7 @@ pub async fn work(db: &SqlitePool) -> std::result::Result<Vec<TaskWork>, sqlx::E
                     r.generation_paused_at.is_some(),
                     progress.unfinished(),
                 ),
-                pause_reason: r.generation_pause_reason,
+                pause_reason: r.generation_pause_reason.map(|r| r.0),
                 generating: progress.generating,
             }
         })
@@ -169,7 +171,8 @@ pub async fn list(
     let offset = i64::from(query.page.get() - 1) * 20;
     let rows = sqlx::query!(
         r#"SELECT id, name, kind AS "kind: Kind", writer AS "writer: Writer", state,
-            created_at, generation_paused_at, generation_pause_reason, model_config_id
+            created_at, generation_paused_at,
+            generation_pause_reason AS "generation_pause_reason: Json<Failure>", model_config_id
         FROM task
         ORDER BY id DESC
         LIMIT 20
@@ -195,7 +198,7 @@ pub async fn list(
             kind: r.kind,
             state,
             created_at: r.created_at,
-            pause_reason: r.generation_pause_reason,
+            pause_reason: r.generation_pause_reason.map(|r| r.0),
             model_config_id: r.model_config_id,
             progress,
             schedule: email::schedule::get(&mut tx, r.id).await?.form(),
@@ -254,7 +257,8 @@ pub async fn get(
     let mut tx = db.begin().await?;
     let Some(r) = sqlx::query!(
         r#"SELECT id, name, kind AS "kind: Kind", writer AS "writer: Writer", state,
-            created_at, generation_paused_at, generation_pause_reason, model_config_id
+            created_at, generation_paused_at,
+            generation_pause_reason AS "generation_pause_reason: Json<Failure>", model_config_id
         FROM task
         WHERE id = ?"#,
         id
@@ -279,7 +283,7 @@ pub async fn get(
             progress.unfinished(),
         ),
         created_at: r.created_at,
-        pause_reason: r.generation_pause_reason,
+        pause_reason: r.generation_pause_reason.map(|r| r.0),
         model_config_id: r.model_config_id,
         progress,
         schedule: email::schedule::get(&mut tx, id).await?.form(),
@@ -527,7 +531,7 @@ pub struct TaskDraft {
     pub body_md: String,
     pub attachments: Vec<i64>,
     pub state: DraftState,
-    pub error: Option<String>,
+    pub error: Option<Failure>,
     pub cancel_reason: Option<String>,
     pub planned_at: Option<i64>,
     pub latest_at: Option<i64>,
@@ -550,7 +554,8 @@ pub async fn draft(
     let Some(r) = sqlx::query!(
         r#"SELECT id, mentor_id, coalesce(subject, '') AS "subject!: String",
             coalesce(body_md, '') AS "body_md!: String", state AS "state: DraftState",
-            error, cancel_reason, planned_at, latest_at, kind AS "kind: Kind",
+            error AS "error: Json<Failure>", cancel_reason, planned_at, latest_at,
+            kind AS "kind: Kind",
             reply_to, fact_check AS "fact_check: Json<email::fact_check::FactCheck>"
         FROM email
         WHERE id = ? AND task_id = ?"#,
@@ -585,7 +590,7 @@ pub async fn draft(
         subject: r.subject,
         body_md: r.body_md,
         state: r.state,
-        error: r.error,
+        error: r.error.map(|e| e.0),
         cancel_reason: r.cancel_reason,
         planned_at: r.planned_at,
         latest_at: r.latest_at,

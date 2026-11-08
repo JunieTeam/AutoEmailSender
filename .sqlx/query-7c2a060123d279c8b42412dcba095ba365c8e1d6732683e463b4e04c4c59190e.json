@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT t.id, t.name, t.state, t.generation_paused_at, t.generation_pause_reason\n        FROM task t\n        WHERE t.state = 'paused'\n            OR (t.state <> 'stopped' AND t.generation_paused_at IS NOT NULL)\n            OR t.id IN (SELECT task_id FROM email\n                WHERE state IN ('generating', 'generation_failed', 'failed'))\n        ORDER BY t.id DESC",
+  "query": "SELECT t.id, t.name, t.state, t.generation_paused_at,\n            t.generation_pause_reason AS \"generation_pause_reason: Json<Failure>\"\n        FROM task t\n        WHERE t.state = 'paused'\n            OR (t.state <> 'stopped' AND t.generation_paused_at IS NOT NULL)\n            OR t.id IN (SELECT task_id FROM email\n                WHERE state IN ('generating', 'generation_failed', 'failed'))\n        ORDER BY t.id DESC",
   "describe": {
     "columns": [
       {
@@ -48,7 +48,7 @@
         }
       },
       {
-        "name": "generation_pause_reason",
+        "name": "generation_pause_reason: Json<Failure>",
         "ordinal": 4,
         "type_info": "Text",
         "origin": {
@@ -70,5 +70,5 @@
       true
     ]
   },
-  "hash": "f7ae788ac7c17274b38320005844548c4870dc65eec61f8988408167f3755745"
+  "hash": "7c2a060123d279c8b42412dcba095ba365c8e1d6732683e463b4e04c4c59190e"
 }

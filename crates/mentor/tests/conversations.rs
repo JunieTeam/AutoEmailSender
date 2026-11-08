@@ -132,12 +132,14 @@ async fn subject_is_from_the_latest_nonautomatic_mail(db: SqlitePool) {
         Some("申请")
     );
     for state in ["maybe_sent", "bounced"] {
-        sqlx::query("UPDATE email SET state = ?, error = '连接中断' WHERE id = ?")
-            .bind(state)
-            .bind(email)
-            .execute(&db)
-            .await
-            .unwrap();
+        sqlx::query(
+            "UPDATE email SET state = ?, error = json_object('message', '连接中断') WHERE id = ?",
+        )
+        .bind(state)
+        .bind(email)
+        .execute(&db)
+        .await
+        .unwrap();
         assert_eq!(
             list(&db, false, 1).await.conversations[0]
                 .subject

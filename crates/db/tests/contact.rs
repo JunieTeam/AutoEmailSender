@@ -107,7 +107,7 @@ async fn summary_follows_mail(pool: SqlitePool) {
     let first_b = sent(conn, b, "first", 100).await;
     exec(
         conn,
-        "UPDATE email SET state = 'bounced', error = '地址不存在' WHERE id = ?",
+        "UPDATE email SET state = 'bounced', error = json_object('message', '地址不存在') WHERE id = ?",
         first_b,
     )
     .await;

@@ -15,6 +15,7 @@ sqlx.workspace = true
 ts-rs.workspace = true
 email.workspace = true
 cloud-api = { workspace = true, features = ["ts-rs"] }
+failure = { workspace = true, features = ["ts-rs"] }
 
 [dev-dependencies]
 db = { workspace = true, features = ["testing"] }

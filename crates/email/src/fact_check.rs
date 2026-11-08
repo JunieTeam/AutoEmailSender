@@ -14,7 +14,7 @@ pub struct Finding {
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum FactCheck {
     Completed { findings: Vec<Finding> },
-    Failed { reason: String },
+    Failed { reason: failure::Failure },
 }
 
 /// Whether `save` still accepts an answer for this draft generation.

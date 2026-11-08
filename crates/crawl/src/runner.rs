@@ -10,12 +10,13 @@ use crate::{
     review,
     store::{PageKind, PageMethod, PageStatus, PageStep},
 };
+use failure::Failure;
 use model::{
     Chosen,
-    background::{CONCURRENCY, Failure, LASTING, Limit, Limited, RateLimit, Rounds},
+    background::{CONCURRENCY, Effect, LASTING, Limit, Limited, RateLimit, Rounds},
 };
 use serde::Serialize;
-use sqlx::{SqliteConnection, SqlitePool};
+use sqlx::{SqliteConnection, SqlitePool, types::Json};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{sync::Notify, task::JoinSet, time::Instant};
 use tracing::Instrument;
@@ -69,7 +70,7 @@ async fn save_material(
     method: PageMethod,
 ) -> Result<(), ReadError> {
     let text = m.text();
-    let reason = m.needs_browser.as_ref().map(browser);
+    let reason = (m.needs_browser.as_ref()).map(|r| Json(Failure::new(browser(r))));
     let status = if reason.is_some() {
         PageStatus::NeedsBrowser
     } else {
@@ -126,16 +127,16 @@ impl Pages {
                     ReadError::RateLimit(
                         RateLimit {
                             wait,
-                            lasting: format!(
+                            lasting: Failure::new(format!(
                                 "网站要求放慢访问已超过 {} 分钟，页面一直未能打开。\
-                            可能是网站限制了你的网络，可稍后再继续，或更换网络后继续。",
+                                可能是网站限制了你的网络，可稍后再继续，或更换网络后继续。",
                                 LASTING.as_secs() / 60
-                            ),
+                            )),
                         },
                         round,
                     )
                 }
-                e => ReadError::Failed(e.message()),
+                e => ReadError::Failed(e.failure()),
             })?;
         let mut m = fetched.material;
         if !c.steps.is_empty() && m.needs_browser.is_none() {
@@ -194,9 +195,9 @@ impl Pages {
                 tracing::info!(url = c.url.as_str(), category, "browser read failed");
                 ReadError::Failed(match e {
                     BrowserError::TimedOut if relaxed_certificate => {
-                        "网站的证书有问题，浏览器无法打开".into()
+                        Failure::new("网站的证书有问题，浏览器无法打开")
                     }
-                    e => e.message(),
+                    e => e.failure(),
                 })
             })?,
             error = invalidated(db, c) => return Err(error),
@@ -206,11 +207,11 @@ impl Pages {
                 error = %e,
                 "browser result URL rejected"
             );
-            ReadError::Failed(e.message())
+            ReadError::Failed(e.failure())
         })?;
         if rendered.html.len() > crate::fetch::MAX_PAGE_BYTES {
             tracing::info!(reason = "too_large", "browser content rejected");
-            return Err(ReadError::Failed(crate::CrawlError::TooLarge.message()));
+            return Err(ReadError::Failed(crate::CrawlError::TooLarge.failure()));
         }
         let span = tracing::Span::current();
         let mut material = tokio::task::spawn_blocking(move || {
@@ -219,7 +220,7 @@ impl Pages {
         .await
         .map_err(|e| {
             tracing::info!(reason = "parse_worker_failed", "browser content rejected");
-            ReadError::Failed(crate::CrawlError::Worker(e).message())
+            ReadError::Failed(crate::CrawlError::Worker(e).failure())
         })?;
         // Interactive pagination remains present after rendering, and is now replayable.
         if material.needs_browser == Some(crate::BrowserReason::Pagination)
@@ -229,18 +230,18 @@ impl Pages {
         }
         if let Some(reason) = &material.needs_browser {
             tracing::info!(?reason, "browser content still unavailable");
-            return Err(ReadError::Failed(format!(
+            return Err(ReadError::Failed(Failure::new(format!(
                 "浏览器读取后仍未取得页面内容：{}",
                 self::browser(reason)
-            )));
+            ))));
         }
         let attached = material.images.as_ref().is_some_and(|i| !i.list.is_empty())
             || !material.documents.is_empty();
         if material.units.is_empty() && !(targeted(c.kind) && attached) {
             tracing::info!(reason = "empty_page", "browser content still unavailable");
-            return Err(ReadError::Failed(
-                "浏览器读取后仍未取得页面内容，网站可能尚未通过验证".into(),
-            ));
+            return Err(ReadError::Failed(Failure::new(
+                "浏览器读取后仍未取得页面内容，网站可能尚未通过验证",
+            )));
         }
         save_material(db, c, &material, PageMethod::Webview).await?;
         Ok(material)
@@ -257,12 +258,12 @@ struct Page {
 }
 enum Outcome {
     Done(Page),
-    Failed(String),
+    Failed(Failure),
     Mismatched {
-        reason: String,
+        reason: Failure,
         reached: PageUrl,
     },
-    Pause(String, Option<Chosen>),
+    Pause(Failure, Option<Chosen>),
     /// With the round of the limited request.
     RateLimit(RateLimit, Chosen, u64),
     /// A rate limit began while the page was being claimed.
@@ -272,12 +273,13 @@ enum Outcome {
 
 #[derive(Debug)]
 enum ReadError {
-    Failed(String),
+    Failed(Failure),
     Mismatched {
-        reason: String,
-        reached: PageUrl,
+        reason: Failure,
+        /// Boxed so that every read's result stays small.
+        reached: Box<PageUrl>,
     },
-    Pause(String),
+    Pause(Failure),
     Database {
         source: sqlx::Error,
         operation: &'static str,
@@ -371,9 +373,9 @@ impl Reader<'_> {
                 };
                 let failure = model::background::classify(e, &self.chosen.access);
                 let action = match &failure {
-                    Failure::Pause(_) => "pause",
-                    Failure::RateLimit(_) => "cooldown",
-                    Failure::Failed(_) => "fail_page",
+                    Effect::Pause(_) => "pause",
+                    Effect::RateLimit(_) => "cooldown",
+                    Effect::Failed(_) => "fail_page",
                 };
                 tracing::info!(
                     url = self.claim.url.as_str(),
@@ -386,12 +388,12 @@ impl Reader<'_> {
                     "model call failed"
                 );
                 match failure {
-                    Failure::Pause(r) => ReadError::Pause(r),
-                    Failure::RateLimit(limit) => {
+                    Effect::Pause(r) => ReadError::Pause(r),
+                    Effect::RateLimit(limit) => {
                         tracing::info!(wait_ms = limit.wait.as_millis(), "model rate limited");
                         ReadError::RateLimit(limit, round)
                     }
-                    Failure::Failed(r) => ReadError::Failed(r),
+                    Effect::Failed(r) => ReadError::Failed(r),
                 }
             })?;
             tracing::info!(
@@ -421,9 +423,9 @@ impl Reader<'_> {
             }
             if answer.finish_reason == Some(model::Finish::Length) {
                 tracing::info!(step, reason = "output_truncated", "model output rejected");
-                return Err(ReadError::Failed(
-                    "模型的回答被截断，请换用支持更长输出的模型后重试".into(),
-                ));
+                return Err(ReadError::Failed(Failure::new(
+                    "模型的回答被截断，请换用支持更长输出的模型后重试",
+                )));
             }
             match extract::parse(&answer.text) {
                 Ok(v) => return Ok(v),
@@ -434,9 +436,9 @@ impl Reader<'_> {
                 }
                 Err(reason) => {
                     tracing::info!(step, reason = "invalid_fields", "model output rejected");
-                    return Err(ReadError::Failed(format!(
+                    return Err(ReadError::Failed(Failure::new(format!(
                         "模型返回的资料不合格：{reason}。请重试或换一个模型。"
-                    )));
+                    ))));
                 }
             }
         }
@@ -460,14 +462,14 @@ async fn process(
     let Some(chosen) = model::selected(db, c.model_id).await? else {
         tracing::info!(reason = "missing_model", "crawl cannot continue");
         return Ok(Outcome::Pause(
-            "尚未添加模型，请在“设置 › AI › 模型”中添加后继续".into(),
+            Failure::new("尚未添加模型，请在“设置 › AI › 模型”中添加后继续"),
             None,
         ));
     };
     if !chosen.agreed {
         tracing::info!(reason = "model_consent_required", "crawl cannot continue");
         return Ok(Outcome::Pause(
-            "模型配置需要确认，请确认网页内容将发往的服务商后继续".into(),
+            Failure::new("模型配置需要确认，请确认网页内容将发往的服务商后继续"),
             Some(chosen),
         ));
     }
@@ -485,12 +487,13 @@ async fn process(
                     error = %source,
                     "crawl database"
                 );
-                Outcome::Pause(reason.into(), Some(chosen))
+                Outcome::Pause(Failure::new(reason), Some(chosen))
             }
             Err(ReadError::Failed(reason)) => Outcome::Failed(reason),
-            Err(ReadError::Mismatched { reason, reached }) => {
-                Outcome::Mismatched { reason, reached }
-            }
+            Err(ReadError::Mismatched { reason, reached }) => Outcome::Mismatched {
+                reason,
+                reached: *reached,
+            },
             Err(ReadError::RateLimit(limit, round)) => Outcome::RateLimit(limit, chosen, round),
             Err(ReadError::Wait) => Outcome::Wait,
             Err(ReadError::Gone) => Outcome::Gone,
@@ -514,7 +517,7 @@ async fn read(
     } else {
         scope
             .page(c.url.clone())
-            .map_err(|e| ReadError::Failed(e.message()))?
+            .map_err(|e| ReadError::Failed(e.failure()))?
     };
     let m = fetcher.fetch(db, c, &target, cooldown).await?;
     let reader = Reader {
@@ -578,7 +581,7 @@ async fn read(
             }
             extract::listed(&m, all, &scope).map_err(|reason| {
                 tracing::info!(reason = "invalid_people", "page extraction failed");
-                ReadError::Failed(reason)
+                ReadError::Failed(Failure::new(reason))
             })?
         }
         Kind::Profile => {
@@ -591,7 +594,7 @@ async fn read(
                 .await?;
             let mut p = extract::profile(&m, p.name, p.details).map_err(|reason| {
                 tracing::info!(reason = "invalid_profile", "page extraction failed");
-                ReadError::Failed(reason)
+                ReadError::Failed(Failure::new(reason))
             })?;
             p.profile = Some(c.url.clone());
             vec![p]
@@ -680,7 +683,7 @@ async fn read_for_candidate(
     );
     // Its images and PDFs can take minutes, which a pause or cancellation does not wait out.
     let m = tokio::select! {
-        m = read => m.map_err(|e| ReadError::Failed(e.message()))?,
+        m = read => m.map_err(|e| ReadError::Failed(e.failure()))?,
         error = invalidated(reader.db, c) => return Err(error),
     };
     if m.units.is_empty() {
@@ -711,17 +714,17 @@ async fn read_for_candidate(
             reason = "identity_mismatch",
             "page rejected"
         );
-        let reason = format!(
+        let reason = Failure::new(format!(
             "模型判断这页是别人的或多人的页面，页面上也未出现“{}”，未补入",
             target.name
-        );
+        ));
         // A subpage is only one the profile links to, never the candidate's own link.
         return Err(if c.kind == PageKind::EnrichChild {
             ReadError::Failed(reason)
         } else {
             ReadError::Mismatched {
                 reason,
-                reached: m.url.clone(),
+                reached: Box::new(m.url.clone()),
             }
         });
     }
@@ -745,7 +748,7 @@ async fn read_for_candidate(
     let mut person =
         extract::profile(&m, target.name.clone(), result.details).map_err(|reason| {
             tracing::info!(reason = "invalid_profile", "page extraction failed");
-            ReadError::Failed(reason)
+            ReadError::Failed(Failure::new(reason))
         })?;
     if c.kind == PageKind::Profile {
         person.profile = Some(c.url.clone());
@@ -820,7 +823,8 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
     match outcome {
         Outcome::Done(p) => {
             let text = p.material.text();
-            let reason = p.material.needs_browser.as_ref().map(browser);
+            let reason =
+                (p.material.needs_browser.as_ref()).map(|r| Json(Failure::new(browser(r))));
             let status = if reason.is_some() {
                 PageStatus::NeedsBrowser
             } else {
@@ -969,7 +973,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                 r#"UPDATE crawl_page
                 SET work_state = 'done', status = 'failed', error = ?, fetched_at = ?
                 WHERE id = ?"#,
-                reason,
+                Json(reason),
                 now(),
                 c.id
             )
@@ -1003,7 +1007,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                     r#"UPDATE crawl
                     SET state = 'paused', error = ?
                     WHERE id = ? AND state = 'running'"#,
-                    reason,
+                    Json(reason),
                     c.crawl
                 )
                 .execute(&mut *tx)
@@ -1095,13 +1099,15 @@ async fn finish(db: &SqlitePool, at: i64) -> Result<Vec<CrawlFinished>, sqlx::Er
         if candidates == 0 && failed > 0 {
             sqlx::query!(
                 r#"UPDATE crawl
-                SET state = 'failed',
-                    error = '本次整理未能处理任何页面，请查看页面原因后重试'
+                SET state = 'failed', error = ?
                 WHERE id = ? AND NOT EXISTS (
                     SELECT 1
                     FROM crawl_page
                     WHERE crawl_id = ? AND status = 'success'
                 )"#,
+                Json(Failure::new(
+                    "本次整理未能处理任何页面。请查看各页面的原因后重试。"
+                )),
                 id,
                 id
             )
@@ -1256,7 +1262,10 @@ async fn run_with_pages(
                             Err(e) => {
                                 crate::span(c.crawl).in_scope(|| tracing::error!("crawl database: {e}"));
                                 Outcome::Pause(
-                                    "整理数据暂时无法保存，请继续或重启应用".into(),
+                                    Failure::new(
+                                        "整理数据暂时无法保存，请继续或重启应用；仍然出错的，\
+                                        可在电脑上的 设置 › 关于和日志 里反馈问题",
+                                    ),
                                     None,
                                 )
                             }
@@ -1278,7 +1287,13 @@ async fn run_with_pages(
                         crate::span(c.crawl).in_scope(|| tracing::error!("crawl worker: {e}"));
                         (
                             c,
-                            Outcome::Pause("整理意外中断，请继续或重启应用".into(), None),
+                            Outcome::Pause(
+                                Failure::new(
+                                    "整理意外中断，请继续或重启应用；仍然出错的，\
+                                    可在电脑上的 设置 › 关于和日志 里反馈问题",
+                                ),
+                                None,
+                            ),
                         )
                     }
                 };

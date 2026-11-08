@@ -15,6 +15,7 @@ use crawl::{
     browser::{Browser as Render, BrowserError, RenderedPage},
     store::PageStep,
 };
+use failure::Failure;
 use serde_json::{Value, json};
 use tauri::{
     AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
@@ -82,10 +83,10 @@ struct State {
     close_requested: AtomicBool,
     registered: AtomicBool,
     loaded: AtomicBool,
-    error: Mutex<Option<String>>,
+    error: Mutex<Option<Failure>>,
 }
 impl State {
-    fn fail(&self, message: String) {
+    fn fail(&self, message: Failure) {
         let mut error = self
             .error
             .lock()
@@ -183,7 +184,7 @@ impl Render for Browser {
 }
 
 fn failed(message: &str) -> BrowserError {
-    BrowserError::Failed(message.into())
+    BrowserError::Failed(Failure::new(message))
 }
 
 fn navigation_url(
@@ -271,7 +272,7 @@ fn render(
                         %error,
                         "browser navigation blocked"
                     );
-                    nav_state.fail(error.message());
+                    nav_state.fail(error.failure());
                     false
                 }
             }
@@ -284,7 +285,9 @@ fn render(
                     "browser popup blocked"
                 );
             });
-            popup_state.fail("网页尝试打开新窗口，已阻止，请改用具体的名单网址".into());
+            popup_state.fail(Failure::new(
+                "网页尝试打开新窗口，已阻止。请改用具体的名单网址。",
+            ));
             NewWindowResponse::Deny
         })
         .on_download(move |_, event| {
@@ -298,7 +301,7 @@ fn render(
                     );
                 }
             });
-            download_state.fail("网页尝试下载文件，已阻止，请改用网页地址".into());
+            download_state.fail(Failure::new("网页尝试下载文件，已阻止。请改用网页地址。"));
             false
         })
         .on_page_load(move |_, payload| {
@@ -376,7 +379,7 @@ fn render(
     )?;
     if value["tooLarge"] == true {
         tracing::info!(category = "too_large", "browser read failed");
-        return Err(BrowserError::Failed(crawl::CrawlError::TooLarge.message()));
+        return Err(BrowserError::Failed(crawl::CrawlError::TooLarge.failure()));
     }
     let url = value["url"]
         .as_str()

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE crawl\n                SET state = 'failed', error = ?\n                WHERE id = ? AND NOT EXISTS (\n                    SELECT 1\n                    FROM crawl_page\n                    WHERE crawl_id = ? AND status = 'success'\n                )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "384fcd1fca3ba4f2ba1d890b6c2a6782b82a7f8de1525cd63282ebd0340ada99"
+}

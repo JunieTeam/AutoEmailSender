@@ -1,5 +1,6 @@
 //! Candidate review uses the very same intake calculation and writes as table imports.
 use crate::{PageUrl, extract::Person, queue, store::PageKind};
+use failure::Failure;
 use mentor::{
     MentorFields,
     export::Profile,
@@ -108,7 +109,7 @@ pub(crate) async fn read(
             research, papers AS "papers: Json<Vec<String>>",
             source_url, note, enrich AS "enrich: crate::enrich::EnrichState",
             enrich_changes AS "changes: Json<Vec<crate::enrich::EnrichChange>>",
-            enrich_error
+            enrich_error AS "enrich_error: Json<Failure>"
         FROM candidate
         WHERE id IN (SELECT value FROM json_each(?))
         ORDER BY id"#,
@@ -136,7 +137,7 @@ pub(crate) async fn read(
         enrichment: crate::enrich::Enrichment {
             enrich: r.enrich,
             enrich_changes: r.changes.map(|Json(v)| v).unwrap_or_default(),
-            enrich_error: r.enrich_error,
+            enrich_error: r.enrich_error.map(|e| e.0),
         },
     })
     .collect())

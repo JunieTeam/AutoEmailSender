@@ -1,5 +1,6 @@
 //! The persisted match queue and results (docs/data-model.md#导师).
 
+use failure::Failure;
 use serde::Serialize;
 use sqlx::{SqliteConnection, SqlitePool, types::Json};
 use ts_rs::TS;
@@ -101,12 +102,12 @@ pub struct MatchProgress {
 #[derive(Debug, Serialize, TS)]
 pub struct MatchPause {
     pub at: i64,
-    pub reason: Option<String>,
+    pub reason: Option<Failure>,
 }
 
 pub async fn progress(db: &SqlitePool) -> Result<MatchProgress, sqlx::Error> {
     let r = sqlx::query!(
-        r#"SELECT match_paused_at, match_pause_reason, (
+        r#"SELECT match_paused_at, match_pause_reason AS "match_pause_reason: Json<Failure>", (
             SELECT count(*)
             FROM mentor
             WHERE match_state IN ('queued', 'running') AND trashed_at IS NULL
@@ -124,16 +125,16 @@ pub async fn progress(db: &SqlitePool) -> Result<MatchProgress, sqlx::Error> {
         failed: r.failed,
         pause: r.match_paused_at.map(|at| MatchPause {
             at,
-            reason: r.match_pause_reason,
+            reason: r.match_pause_reason.map(|r| r.0),
         }),
     })
 }
 
-pub async fn pause(db: &SqlitePool, now: i64, reason: Option<&str>) -> Result<(), sqlx::Error> {
+pub async fn pause(db: &SqlitePool, now: i64, reason: Option<&Failure>) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "UPDATE profile SET match_paused_at = ?, match_pause_reason = ?",
         now,
-        reason
+        reason.map(Json)
     )
     .execute(db)
     .await?;
@@ -249,13 +250,13 @@ pub async fn requeue(db: &mut SqliteConnection, claim: Claim) -> Result<bool, sq
 pub async fn pause_if_unpaused(
     db: &mut SqliteConnection,
     now: i64,
-    reason: &str,
+    reason: &Failure,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "UPDATE profile SET match_paused_at = ?, match_pause_reason = ?
          WHERE match_paused_at IS NULL",
         now,
-        reason,
+        Json(reason),
     )
     .execute(db)
     .await?;
@@ -315,14 +316,14 @@ pub async fn complete(
     Ok(true)
 }
 
-pub async fn fail(db: &SqlitePool, claim: Claim, reason: &str) -> Result<bool, sqlx::Error> {
+pub async fn fail(db: &SqlitePool, claim: Claim, reason: &Failure) -> Result<bool, sqlx::Error> {
     let r = sqlx::query!(
         r#"UPDATE mentor
         SET match_state = 'failed', match_error = ?, match_queued_at = NULL,
             match_priority = NULL
         WHERE id = ? AND match_claim = ? AND match_state = 'running'
         AND trashed_at IS NULL"#,
-        reason,
+        Json(reason),
         claim.id,
         claim.claim
     )

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, crawl_id, review, mentor_id,\n            name, aliases AS \"aliases: Json<Vec<String>>\",\n            emails AS \"emails: Json<Vec<String>>\",\n            affiliations AS \"affiliations: Json<Vec<mentor::Affiliation>>\",\n            homepages AS \"homepages: Json<Vec<String>>\",\n            research, papers AS \"papers: Json<Vec<String>>\",\n            source_url, note, enrich AS \"enrich: crate::enrich::EnrichState\",\n            enrich_changes AS \"changes: Json<Vec<crate::enrich::EnrichChange>>\",\n            enrich_error\n        FROM candidate\n        WHERE id IN (SELECT value FROM json_each(?))\n        ORDER BY id",
+  "query": "SELECT id, crawl_id, review, mentor_id,\n            name, aliases AS \"aliases: Json<Vec<String>>\",\n            emails AS \"emails: Json<Vec<String>>\",\n            affiliations AS \"affiliations: Json<Vec<mentor::Affiliation>>\",\n            homepages AS \"homepages: Json<Vec<String>>\",\n            research, papers AS \"papers: Json<Vec<String>>\",\n            source_url, note, enrich AS \"enrich: crate::enrich::EnrichState\",\n            enrich_changes AS \"changes: Json<Vec<crate::enrich::EnrichChange>>\",\n            enrich_error AS \"enrich_error: Json<Failure>\"\n        FROM candidate\n        WHERE id IN (SELECT value FROM json_each(?))\n        ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -169,7 +169,7 @@
         }
       },
       {
-        "name": "enrich_error",
+        "name": "enrich_error: Json<Failure>",
         "ordinal": 15,
         "type_info": "Text",
         "origin": {
@@ -202,5 +202,5 @@
       true
     ]
   },
-  "hash": "81f1dbe0d6720ce92ada792cc756148f548de79ea0a6297e1c5ca8dc8d252005"
+  "hash": "4cff122ab410bb83eac465a90cbe14ed535dfeb5ab090f400fcc490449deed0f"
 }

@@ -302,7 +302,7 @@ pub async fn complete(
 pub async fn fail(
     conn: &mut SqliteConnection,
     c: Claim,
-    reason: &str,
+    reason: &failure::Failure,
     now: i64,
 ) -> Result<bool, sqlx::Error> {
     Ok(sqlx::query!(
@@ -310,7 +310,7 @@ pub async fn fail(
         SET state = 'generation_failed', error = ?, generation_queued_at = NULL,
             updated_at = ?
         WHERE id = ? AND generation_claim = ? AND state = 'generating'"#,
-        reason,
+        sqlx::types::Json(reason),
         now,
         c.id,
         c.version

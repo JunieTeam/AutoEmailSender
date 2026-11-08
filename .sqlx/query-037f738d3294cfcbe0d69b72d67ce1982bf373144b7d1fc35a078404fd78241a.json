@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT m.id, m.name, a.university, a.school, a.department, a.title, (\n            SELECT count(*)\n            FROM mentor_affiliation\n            WHERE mentor_id = m.id\n        ) AS \"affiliation_count!: i64\",\n            substr(d.research, 1, 120) AS \"research?: String\",\n            m.match_state AS \"match_state: MatchColumn\", m.match_score,\n            m.match_error, coalesce(m.matched_at < (SELECT match_basis_changed_at FROM\n            profile), 0) AS \"basis_changed!: bool\",\n            c.status AS \"status?: ContactStatus\",\n            c.contact_count AS \"contact_count?\", c.last_out_at, c.last_reply_at,\n            c.unread AS \"unread?: bool\", c.outcome AS \"outcome?: ReplyOutcome\",\n            c.opened AS \"opened?: bool\"\n        FROM json_each(?) page\n        JOIN mentor m ON m.id = page.value\n        LEFT JOIN mentor_affiliation a ON a.mentor_id = m.id\n        AND a.position = (\n            SELECT min(position)\n            FROM mentor_affiliation\n            WHERE mentor_id = m.id\n        )\n        LEFT JOIN mentor_detail d ON d.mentor_id = m.id\n        LEFT JOIN mentor_contact c ON c.mentor_id = m.id\n        ORDER BY page.key",
+  "query": "SELECT m.id, m.name, a.university, a.school, a.department, a.title, (\n            SELECT count(*)\n            FROM mentor_affiliation\n            WHERE mentor_id = m.id\n        ) AS \"affiliation_count!: i64\",\n            substr(d.research, 1, 120) AS \"research?: String\",\n            m.match_state AS \"match_state: MatchColumn\", m.match_score,\n            m.match_error AS \"match_error: Json<failure::Failure>\",\n            coalesce(m.matched_at < (SELECT match_basis_changed_at FROM\n            profile), 0) AS \"basis_changed!: bool\",\n            c.status AS \"status?: ContactStatus\",\n            c.contact_count AS \"contact_count?\", c.last_out_at, c.last_reply_at,\n            c.unread AS \"unread?: bool\", c.outcome AS \"outcome?: ReplyOutcome\",\n            c.opened AS \"opened?: bool\"\n        FROM json_each(?) page\n        JOIN mentor m ON m.id = page.value\n        LEFT JOIN mentor_affiliation a ON a.mentor_id = m.id\n        AND a.position = (\n            SELECT min(position)\n            FROM mentor_affiliation\n            WHERE mentor_id = m.id\n        )\n        LEFT JOIN mentor_detail d ON d.mentor_id = m.id\n        LEFT JOIN mentor_contact c ON c.mentor_id = m.id\n        ORDER BY page.key",
   "describe": {
     "columns": [
       {
@@ -104,7 +104,7 @@
         }
       },
       {
-        "name": "match_error",
+        "name": "match_error: Json<failure::Failure>",
         "ordinal": 10,
         "type_info": "Text",
         "origin": {
@@ -223,5 +223,5 @@
       true
     ]
   },
-  "hash": "02236b2a16d9b5b93c4367fd5e3478ca6b5950f8bdedf338e68bc5e4dd7f7132"
+  "hash": "037f738d3294cfcbe0d69b72d67ce1982bf373144b7d1fc35a078404fd78241a"
 }

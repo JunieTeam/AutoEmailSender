@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
+import { FailureDetails } from "@/components/failure";
 import appIcon from "../../../docs/icon.svg";
 import { call, errorMessage } from "@/api/call";
 import { startupFailure } from "@/api/app";
@@ -476,70 +477,97 @@ function Background({ className }: { className?: string }) {
               </Link>
             )}
             {work.mailboxes.map((m) => (
-              <div key={m.id} className="flex items-center gap-2">
-                <Link to="/settings/mailboxes" className={ITEM}>
-                  <Entry title={m.address} detail={`发信暂停到 ${scheduledAt(m.pause.until)}：${m.pause.reason}`} />
-                </Link>
-                <Button variant="quiet" size="sm" disabled={resume.isPending} onClick={() => resume.mutate(m.id)}>
-                  恢复
-                </Button>
+              <div key={m.id}>
+                <div className="flex items-center gap-2">
+                  <Link to="/settings/mailboxes" className={ITEM}>
+                    <Entry
+                      title={m.address}
+                      detail={`发信暂停到 ${scheduledAt(m.pause.until)}：${m.pause.reason.message}`}
+                    />
+                  </Link>
+                  <Button variant="quiet" size="sm" disabled={resume.isPending} onClick={() => resume.mutate(m.id)}>
+                    恢复
+                  </Button>
+                </div>
+                <FailureDetails failure={m.pause.reason} />
               </div>
             ))}
             {work.cloudPaused.map((m) => (
-              <Link key={m.id} to="/settings/mailboxes" className={ITEM}>
-                <Entry
-                  title={m.address}
-                  detail={`云端发信暂停到 ${scheduledAt(m.pause.until)}，${m.count} 封在等：${m.pause.reason}`}
-                />
-              </Link>
-            ))}
-            {work.unreceived.map((m) => (
-              <Link key={m.id} to="/settings/mailboxes" className={ITEM}>
-                <Entry title={m.address} detail={`收信失败：${m.receiveError}`} />
-              </Link>
-            ))}
-            {work.paused.map((t) => (
-              <Link key={t.id} to="/tasks/$id" params={{ id: t.id }} className={ITEM}>
-                <Entry title={t.name} detail={t.pauseReason ?? "已暂停"} />
-              </Link>
-            ))}
-            {work.crawlsPending.map((c) => (
-              <div key={c.id} className="flex items-center gap-2">
-                <Link to="/find" search={findSearch({ tab: "crawl", detail: c.id })} className={ITEM}>
+              <div key={m.id}>
+                <Link to="/settings/mailboxes" className={ITEM}>
                   <Entry
-                    title={crawlName(c)}
-                    detail={c.error ?? (c.state === "paused" ? "已暂停" : `${c.failed} 个页面未能打开`)}
+                    title={m.address}
+                    detail={`云端发信暂停到 ${scheduledAt(m.pause.until)}，${m.count} 封在等：${m.pause.reason.message}`}
                   />
                 </Link>
-                {c.state === "paused" && (
-                  <ModelAction
-                    disabled={crawl.isPending}
-                    modelIds={c.modelIds}
-                    onWrite={() => crawl.mutate({ op: "resumeCrawl", id: c.id })}
-                  >
-                    继续
-                  </ModelAction>
-                )}
+                <FailureDetails failure={m.pause.reason} />
+              </div>
+            ))}
+            {work.unreceived.map((m) => (
+              <div key={m.id}>
+                <Link to="/settings/mailboxes" className={ITEM}>
+                  <Entry title={m.address} detail={`收信失败：${m.receiveError.message}`} />
+                </Link>
+                <FailureDetails failure={m.receiveError} />
+              </div>
+            ))}
+            {work.paused.map((t) => (
+              <div key={t.id}>
+                <Link to="/tasks/$id" params={{ id: t.id }} className={ITEM}>
+                  <Entry title={t.name} detail={t.pauseReason?.message ?? "已暂停"} />
+                </Link>
+                {t.pauseReason && <FailureDetails failure={t.pauseReason} />}
+              </div>
+            ))}
+            {work.crawlsPending.map((c) => (
+              <div key={c.id}>
+                <div className="flex items-center gap-2">
+                  <Link to="/find" search={findSearch({ tab: "crawl", detail: c.id })} className={ITEM}>
+                    <Entry
+                      title={crawlName(c)}
+                      detail={c.error?.message ?? (c.state === "paused" ? "已暂停" : `${c.failed} 个页面未能打开`)}
+                    />
+                  </Link>
+                  {c.state === "paused" && (
+                    <ModelAction
+                      disabled={crawl.isPending}
+                      modelIds={c.modelIds}
+                      onWrite={() => crawl.mutate({ op: "resumeCrawl", id: c.id })}
+                    >
+                      继续
+                    </ModelAction>
+                  )}
+                </div>
+                {c.error && <FailureDetails failure={c.error} />}
               </div>
             ))}
             {work.matching > 0 && work.matchingPause && (
-              <div className="flex items-center gap-2">
-                <Link to="/mentors" className={ITEM}>
-                  <Entry title="匹配度分析已暂停" detail={work.matchingPause.reason ?? `还剩 ${work.matching} 位`} />
-                </Link>
-                <ModelAction disabled={matching.isPending} onWrite={() => matching.mutate("resumeMatching")}>
-                  继续
-                </ModelAction>
+              <div>
+                <div className="flex items-center gap-2">
+                  <Link to="/mentors" className={ITEM}>
+                    <Entry
+                      title="匹配度分析已暂停"
+                      detail={work.matchingPause.reason?.message ?? `还剩 ${work.matching} 位`}
+                    />
+                  </Link>
+                  <ModelAction disabled={matching.isPending} onWrite={() => matching.mutate("resumeMatching")}>
+                    继续
+                  </ModelAction>
+                </div>
+                {work.matchingPause.reason && <FailureDetails failure={work.matchingPause.reason} />}
               </div>
             )}
             {work.repliesPaused && (
-              <div className="flex items-center gap-2">
-                <Link to="/conversations" className={ITEM}>
-                  <Entry title="回信处理已暂停" detail={work.repliesPaused.reason} />
-                </Link>
-                <ModelAction disabled={resumeReplies.isPending} onWrite={() => resumeReplies.mutate()}>
-                  继续
-                </ModelAction>
+              <div>
+                <div className="flex items-center gap-2">
+                  <Link to="/conversations" className={ITEM}>
+                    <Entry title="回信处理已暂停" detail={work.repliesPaused.reason.message} />
+                  </Link>
+                  <ModelAction disabled={resumeReplies.isPending} onWrite={() => resumeReplies.mutate()}>
+                    继续
+                  </ModelAction>
+                </div>
+                <FailureDetails failure={work.repliesPaused.reason} />
               </div>
             )}
             {work.libraryUpdates > 0 && (

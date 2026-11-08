@@ -56,6 +56,9 @@ pub async fn list_models(net: &Net, access: &Access) -> Result<Vec<String>, Mode
 /// takes: a model may think for minutes, streaming its thoughts as it goes.
 const IDLE: Duration = Duration::from_secs(60);
 
+/// The most of an error response read, in bytes.
+const ERROR_BODY: usize = 64 * 1024;
+
 /// What a model answered.
 #[derive(Debug)]
 pub struct Answer {
@@ -247,7 +250,7 @@ async fn send(
     request: reqwest::RequestBuilder,
     access: &Access,
 ) -> Result<reqwest::Response, ModelError> {
-    let response = timeout(IDLE, request.send())
+    let mut response = timeout(IDLE, request.send())
         .await
         .map_err(|_| timed_out(access))?
         .map_err(|e| unreachable(access, e))?;
@@ -256,7 +259,11 @@ async fn send(
         return Ok(response);
     }
     let retry_after = net::retry_after(&response);
-    let body = read(response, access).await?;
+    // A provider explains an error in a few hundred bytes; more is not worth holding.
+    let mut body = Vec::new();
+    while body.len() < ERROR_BODY && more(&mut response, &mut body, access).await? {}
+    body.truncate(ERROR_BODY);
+    let body = String::from_utf8_lossy(&body);
     // OpenAI-compatible APIs explain errors in `error.message`.
     let parsed = serde_json::from_str::<Value>(&body).ok();
     let words = parsed
@@ -318,12 +325,11 @@ fn unreachable(access: &Access, source: reqwest::Error) -> ModelError {
     }
 }
 
-/// Up to 200 characters of what the provider said, for the user and the log. Without the key, in
-/// case the provider quotes it back.
+/// What the provider said, shortened for the user and the log. Without the key, in case the
+/// provider quotes it back.
 fn quote(text: &str, access: &Access) -> String {
-    let text = match access.api_key.as_deref() {
+    failure::diagnostic(&match access.api_key.as_deref() {
         None | Some("") => text.to_owned(),
         Some(key) => text.replace(key, "***"),
-    };
-    text.chars().take(200).collect()
+    })
 }

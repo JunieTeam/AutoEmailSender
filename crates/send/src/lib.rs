@@ -6,12 +6,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use failure::Failure;
 use mailbox::pause::apply_for_account;
 use net::Net;
 use profile::Rotation;
-use sqlx::{Connection, SqlitePool};
+use sqlx::{Connection, SqlitePool, types::Json};
 use tokio::sync::Notify;
-use transport::pause::{self, Failure};
+use transport::pause::{self, Effect};
 use transport::{Letter, SendError, SendStatus};
 
 const MINUTE: i64 = 60_000;
@@ -196,7 +197,9 @@ pub async fn step_in_zone<T: chrono::TimeZone>(
                 email::failed(
                     &mut *db.acquire().await?,
                     e.id,
-                    "无可发信的邮箱，请在设置里添加，或在导师资料里指定负责邮箱后重试",
+                    &Failure::new(
+                        "无可发信的邮箱，请在设置里添加，或在导师资料里指定负责邮箱后重试",
+                    ),
                     at,
                 )
                 .await?;
@@ -463,15 +466,16 @@ async fn send<T: chrono::TimeZone>(
             let failure = pause::classify(&err);
             tracing::warn!(
                 ?failure,
+                diagnostic = err.diagnostic(),
                 "email {id} not sent from mailbox {mailbox_id}: {err}"
             );
             return match failure {
-                Failure::Pause(kind) => {
+                Effect::Pause(kind) => {
                     let pause = kind.in_zone(now(), zone);
                     apply_for_account(&mut *db.acquire().await?, mailbox_id, &account, &pause).await
                 }
-                Failure::Email => {
-                    email::failed(&mut *db.acquire().await?, id, &err.message(), now()).await
+                Effect::Email => {
+                    email::failed(&mut *db.acquire().await?, id, &err.failure(), now()).await
                 }
             };
         }
@@ -508,15 +512,22 @@ async fn send<T: chrono::TimeZone>(
         Err(err) => match err {
             SendError::NotSent(ref error) => {
                 let failure = pause::classify(error);
-                tracing::warn!(?failure, "email {id} from mailbox {mailbox_id}: {err}");
+                tracing::warn!(
+                    ?failure,
+                    diagnostic = err.diagnostic(),
+                    "email {id} from mailbox {mailbox_id}: {err}"
+                );
                 match failure {
-                    Failure::Pause(kind) => Outcome::Paused(kind.in_zone(now(), zone)),
-                    Failure::Email => Outcome::Failed(err.message()),
+                    Effect::Pause(kind) => Outcome::Paused(kind.in_zone(now(), zone)),
+                    Effect::Email => Outcome::Failed(err.failure()),
                 }
             }
             SendError::Unknown(_) => {
-                tracing::warn!("email {id} from mailbox {mailbox_id}: {err}");
-                Outcome::MaybeSent(err.message())
+                tracing::warn!(
+                    diagnostic = err.diagnostic(),
+                    "email {id} from mailbox {mailbox_id}: {err}"
+                );
+                Outcome::MaybeSent(err.failure())
             }
         },
     };
@@ -546,16 +557,16 @@ pub async fn cloud_message(
     db: &SqlitePool,
     materials: &Path,
     cloud_id: &str,
-) -> Result<Result<(email::cloud::Letter, Vec<u8>), String>, sqlx::Error> {
+) -> Result<Result<(email::cloud::Letter, Vec<u8>), Failure>, sqlx::Error> {
     let letter = email::cloud::letter(&mut *db.acquire().await?, cloud_id).await?;
     let Some(account) = mailbox::account(db, letter.mailbox_id).await? else {
-        return Ok(Err(
-            "这台电脑上已无发件邮箱的授权码，请在邮箱设置里重新填写".into(),
-        ));
+        return Ok(Err(Failure::new(
+            "这台电脑上已无发件邮箱的授权码，请在邮箱设置里重新填写",
+        )));
     };
     let files = match files(materials, &letter.attachments).await {
         Ok(files) => files,
-        Err(error) => return Ok(Err(error)),
+        Err(error) => return Ok(Err(Failure::new(error))),
     };
     let html = match &letter.tracking_id {
         Some(id) => tracked(&letter.html, id),
@@ -575,7 +586,7 @@ pub async fn cloud_message(
             attachments: &files,
         },
     );
-    Ok(message.map(|m| (letter, m)).map_err(|e| e.message()))
+    Ok(message.map(|m| (letter, m)).map_err(|e| e.failure()))
 }
 
 /// The files to attach, read now: a material may be attached to emails for days before they go.
@@ -630,7 +641,7 @@ impl BeforeHandover {
         &self,
         conn: &mut sqlx::SqliteConnection,
         id: i64,
-        error: &str,
+        error: &Failure,
         now: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
@@ -642,7 +653,7 @@ impl BeforeHandover {
                  from_address = ?3, to_address = ?4, message_id = coalesce(?5, message_id),
                  copy_message_id = ?6, sent_at = ?7, by_cloud = ?8, updated_at = ?9
                WHERE id = ?10 AND state = 'sending'"#,
-            error,
+            Json(error),
             self.mailbox_id,
             self.from_address,
             self.to_address,
@@ -746,8 +757,8 @@ async fn mark_sending(
         Some(tracking) => tracked(&handover.html, &tracking),
         None => handover.html,
     };
-    let outgoing = files.and_then(|files| {
-        let to = handover.to_address.as_deref().ok_or(email::NO_ADDRESS)?;
+    let outgoing = files.map_err(Failure::new).and_then(|files| {
+        let to = (handover.to_address.as_deref()).ok_or_else(|| Failure::new(email::NO_ADDRESS))?;
         transport::compose(
             &account.sender,
             &Letter {
@@ -762,7 +773,7 @@ async fn mark_sending(
                 attachments: &files,
             },
         )
-        .map_err(|e| e.message())
+        .map_err(|e| e.failure())
     });
     if before.latest_at.is_some_and(|latest| now() >= latest) {
         return Ok(None);
@@ -787,8 +798,8 @@ async fn mark_sending(
 /// How SMTP answered.
 enum Outcome {
     Sent,
-    MaybeSent(String),
-    Failed(String),
+    MaybeSent(Failure),
+    Failed(Failure),
     Paused(pause::Pause),
 }
 

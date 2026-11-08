@@ -62,7 +62,7 @@ async fn message(db: &SqlitePool, mentors: &[i64], time: i64, kind: &str, bounce
         sqlx::query("INSERT INTO message_mentor(mentor_id,message_id,bounce_reason) VALUES(?,?,?)")
             .bind(n)
             .bind(id)
-            .bind(bounced.then_some("退信"))
+            .bind(bounced.then_some(r#"{"message":"退信"}"#))
             .execute(db)
             .await
             .unwrap();

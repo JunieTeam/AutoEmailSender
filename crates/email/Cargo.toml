@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 cloud-api.workspace = true
+failure = { workspace = true, features = ["ts-rs"] }
 fastrand = "2.5.0"
 serde.workspace = true
 sqlx.workspace = true

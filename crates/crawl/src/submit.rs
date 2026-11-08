@@ -101,11 +101,11 @@ fn check(candidates: Vec<SubmittedCandidate>) -> Result<Vec<Checked>, SubmitErro
         }
         let source = PageUrl::parse(&c.source_url);
         if let Err(e) = &source {
-            error(format!("来源页（sourceUrl）：{}", e.message()));
+            error(format!("来源页（sourceUrl）：{}", e.failure().message));
         }
         let profile = c.profile_url.as_deref().map(PageUrl::parse).transpose();
         if let Err(e) = &profile {
-            error(format!("个人页（profileUrl）：{}", e.message()));
+            error(format!("个人页（profileUrl）：{}", e.failure().message));
         }
         if c.papers.len() > 20 {
             error("代表论文（papers）最多 20 篇".into());

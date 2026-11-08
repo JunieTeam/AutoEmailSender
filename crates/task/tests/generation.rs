@@ -429,7 +429,7 @@ async fn account_errors_pause_only_the_task_and_old_configuration_errors_do_not(
     run.until(&db, id, |t| t.state == task::TaskState::Paused)
         .await;
     let t = task::get(&db, id).await.unwrap().unwrap();
-    assert!(t.pause_reason.unwrap().contains("额度"));
+    assert!(t.pause_reason.unwrap().message.contains("额度"));
     assert_eq!(t.progress.generation_failed, 0);
     assert_eq!(t.progress.generating, 1);
     task::resume(&db, id).await.unwrap();
@@ -814,7 +814,7 @@ async fn failed_fact_check_enters_review_and_stale_check_cannot_replace_a_new_cl
     assert_eq!(draft.state, email::tasks::DraftState::Review);
     assert!(matches!(
         draft.fact_check,
-        Some(email::fact_check::FactCheck::Failed { reason }) if !reason.is_empty()
+        Some(email::fact_check::FactCheck::Failed { reason }) if !reason.message.is_empty()
     ));
     assert_eq!(
         task::get(&db, id).await.unwrap().unwrap().state,
@@ -1141,7 +1141,7 @@ async fn fact_check_rate_limit_cools_the_queue_without_regenerating_the_letter(d
     let drafts = task::pending(&db, id, 1, |_| None).await.unwrap();
     assert_eq!(drafts[0].draft.body_md, "王老师：您好，我希望申请读研。");
     assert!(matches!(&drafts[0].draft.fact_check,
-        Some(email::fact_check::FactCheck::Failed { reason }) if !reason.is_empty()));
+        Some(email::fact_check::FactCheck::Failed { reason }) if !reason.message.is_empty()));
     profile::set_ai_fact_check(&db, false).await.unwrap();
     second.respond.send(Response::answer(LETTER)).ok().unwrap();
     third.respond.send(Response::answer(LETTER)).ok().unwrap();
@@ -1198,7 +1198,7 @@ async fn fact_check_account_errors_pause_remaining_work_and_keep_the_draft(db: S
     run.until(&db, id, |t| t.progress.review == 1).await;
     let t = task::get(&db, id).await.unwrap().unwrap();
     assert_eq!(t.state, task::TaskState::Paused);
-    assert!(t.pause_reason.unwrap().contains("额度"));
+    assert!(t.pause_reason.unwrap().message.contains("额度"));
     assert_eq!(
         (
             t.progress.review,
@@ -1210,7 +1210,7 @@ async fn fact_check_account_errors_pause_remaining_work_and_keep_the_draft(db: S
     let drafts = task::pending(&db, id, 1, |_| None).await.unwrap();
     assert_eq!(drafts[0].draft.body_md, "王老师：您好，我希望申请读研。");
     assert!(matches!(&drafts[0].draft.fact_check,
-        Some(email::fact_check::FactCheck::Failed { reason }) if !reason.is_empty()));
+        Some(email::fact_check::FactCheck::Failed { reason }) if !reason.message.is_empty()));
     assert!(p.requests.try_recv().is_err());
 }
 
@@ -1237,7 +1237,12 @@ async fn a_fact_check_asked_to_wait_past_ten_minutes_pauses_and_keeps_the_draft(
     run.until(&db, id, |t| t.progress.review == 1).await;
     let t = task::get(&db, id).await.unwrap().unwrap();
     assert_eq!(t.state, task::TaskState::Paused);
-    assert!(t.pause_reason.unwrap().contains("coding plan expired"));
+    let reason = t.pause_reason.unwrap();
+    assert!(
+        reason.message.starts_with("模型服务商限流超过"),
+        "{reason:?}"
+    );
+    assert!(reason.details.unwrap().contains("coding plan expired"));
     let drafts = task::pending(&db, id, 1, |_| None).await.unwrap();
     assert_eq!(drafts[0].draft.body_md, "王老师：您好，我希望申请读研。");
 }
@@ -1363,7 +1368,7 @@ async fn restored_key_pauses_generation_without_failing_each_letter(db: SqlitePo
         .until(&db, id, |t| t.state == task::TaskState::Paused)
         .await;
     let task = task::get(&db, id).await.unwrap().unwrap();
-    assert!(task.pause_reason.unwrap().contains("重新填写"));
+    assert!(task.pause_reason.unwrap().message.contains("重新填写"));
     assert_eq!(
         (task.progress.generating, task.progress.generation_failed),
         (4, 0)

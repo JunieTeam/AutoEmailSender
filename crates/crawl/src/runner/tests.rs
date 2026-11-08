@@ -483,7 +483,7 @@ async fn claims_pause_resume_cancel_restart_and_limits(db: SqlitePool) {
     let old = queue::next(&db).await.unwrap().unwrap();
     queue::control(&db, id, "pause", 2).await.unwrap();
     assert!(
-        !save(&db, &old, &Outcome::Failed("旧错误".into()))
+        !save(&db, &old, &Outcome::Failed(Failure::new("旧错误")))
             .await
             .unwrap()
     );
@@ -491,14 +491,14 @@ async fn claims_pause_resume_cancel_restart_and_limits(db: SqlitePool) {
     let interrupted = queue::next(&db).await.unwrap().unwrap();
     queue::recover(&db).await.unwrap();
     assert!(
-        !save(&db, &interrupted, &Outcome::Failed("旧错误".into()))
+        !save(&db, &interrupted, &Outcome::Failed(Failure::new("旧错误")))
             .await
             .unwrap()
     );
     let next = queue::next(&db).await.unwrap().unwrap();
     queue::control(&db, id, "cancel", 4).await.unwrap();
     assert!(
-        !save(&db, &next, &Outcome::Failed("旧错误".into()))
+        !save(&db, &next, &Outcome::Failed(Failure::new("旧错误")))
             .await
             .unwrap()
     );
@@ -1276,9 +1276,13 @@ async fn a_run_with_only_failed_pages_can_retry_without_losing_its_page(db: Sqli
         .await
         .unwrap();
     let claim = queue::next(&db).await.unwrap().unwrap();
-    save(&db, &claim, &Outcome::Failed("读取网页超时，请重试".into()))
-        .await
-        .unwrap();
+    save(
+        &db,
+        &claim,
+        &Outcome::Failed(Failure::new("读取网页超时，请重试")),
+    )
+    .await
+    .unwrap();
     assert!(
         finish(&db, now()).await.unwrap()[0]
             .message
@@ -1510,14 +1514,14 @@ async fn retrying_one_failed_page_after_cancel_does_not_restart_other_planned_pa
     let model = config(&db, "http://127.0.0.1:1").await;
     let id = queue::start(&db, &[first, second], model, 1).await.unwrap();
     let failed = queue::next(&db).await.unwrap().unwrap();
-    save(&db, &failed, &Outcome::Failed("读取超时".into()))
+    save(&db, &failed, &Outcome::Failed(Failure::new("读取超时")))
         .await
         .unwrap();
     queue::control(&db, id, "cancel", 2).await.unwrap();
     assert_eq!(queue::retry(&db, id, Some(failed.id), 3).await.unwrap(), 1);
     let retry = queue::next(&db).await.unwrap().unwrap();
     assert_eq!(retry.id, failed.id);
-    save(&db, &retry, &Outcome::Failed("仍然超时".into()))
+    save(&db, &retry, &Outcome::Failed(Failure::new("仍然超时")))
         .await
         .unwrap();
     assert!(queue::next(&db).await.unwrap().is_none());
@@ -1608,7 +1612,7 @@ async fn profile_fixture(db: &SqlitePool, site: &Site) -> (Claim, tokio::task::J
     let model = config(db, &provider.address).await;
     queue::start(db, &[site.url("/")], model, 1).await.unwrap();
     let root = queue::next(db).await.unwrap().unwrap();
-    save(db, &root, &Outcome::Failed("fixture root".into()))
+    save(db, &root, &Outcome::Failed(Failure::new("fixture root")))
         .await
         .unwrap();
     // The model knows a person's page by its title, and finds their line in a directory.
@@ -1724,7 +1728,7 @@ async fn b3_redirect_to_another_person_must_not_merge(db: SqlitePool) {
     let detail = queue::detail(&db, root.crawl, 1).await.unwrap().unwrap();
     let page = detail.pages.iter().find(|p| p.id == claim.id).unwrap();
     assert_eq!(page.status, PageStatus::Failed);
-    assert!(page.error.as_deref().unwrap().contains("张三"));
+    assert!(page.error.as_deref().unwrap().message.contains("张三"));
     let li = queue::next(&db).await.unwrap().unwrap();
     assert_eq!(li.url, site.url("/li"));
     process_claim(&db, &site, &li).await;
@@ -2227,7 +2231,7 @@ async fn b3_same_request_changed_destination_must_not_merge(db: SqlitePool) {
     let detail = queue::detail(&db, root.crawl, 1).await.unwrap().unwrap();
     let page = detail.pages.iter().find(|p| p.id == retry.id).unwrap();
     assert_eq!(page.status, PageStatus::Failed);
-    assert!(page.error.as_deref().unwrap().contains("张三"));
+    assert!(page.error.as_deref().unwrap().message.contains("张三"));
     server.abort();
 }
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -2283,7 +2287,7 @@ async fn b3_redirect_external_is_rejected(db: SqlitePool) {
     let model = config(&db, &provider.address).await;
     queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
     let root = queue::next(&db).await.unwrap().unwrap();
-    save(&db, &root, &Outcome::Failed("fixture root".into()))
+    save(&db, &root, &Outcome::Failed(Failure::new("fixture root")))
         .await
         .unwrap();
     observation(
@@ -2299,7 +2303,7 @@ async fn b3_redirect_external_is_rejected(db: SqlitePool) {
     let Outcome::Failed(reason) = process_claim(&db, &site, &claim).await else {
         panic!("external redirect was not rejected")
     };
-    assert_eq!(reason, "页面超出了这次整理允许访问的网站");
+    assert_eq!(reason, Failure::new("页面超出了这次整理允许访问的网站"));
     assert_eq!(*site.visits.lock().unwrap(), vec!["/old"]);
     assert!(provider.requests.try_recv().is_err());
     let identities: Vec<String> = sqlx::query_scalar("SELECT url FROM candidate_profile")
@@ -2424,7 +2428,7 @@ async fn a_listed_profile_link_to_another_teacher_fills_nothing(db: SqlitePool) 
     let detail = queue::detail(&db, root.crawl, 1).await.unwrap().unwrap();
     let page = detail.pages.iter().find(|p| p.id == claim.id).unwrap();
     assert_eq!(page.status, PageStatus::Failed);
-    assert!(page.error.as_deref().unwrap().contains("张三"));
+    assert!(page.error.as_deref().unwrap().message.contains("张三"));
     server.abort();
 }
 
@@ -2687,7 +2691,7 @@ async fn redirected_profiles(db: &SqlitePool, paths: &[&str], in_flight: bool) {
     let model = config(db, &provider.address).await;
     queue::start(db, &[site.url("/")], model, 1).await.unwrap();
     let root = queue::next(db).await.unwrap().unwrap();
-    save(db, &root, &Outcome::Failed("fixture root".into()))
+    save(db, &root, &Outcome::Failed(Failure::new("fixture root")))
         .await
         .unwrap();
     for path in paths {
@@ -3187,7 +3191,9 @@ async fn regression_invalid_name_is_corrected_or_fails_with_page_reason(db: Sqli
         if correct {
             assert!(matches!(outcome, Outcome::Done(ref page) if page.people.len()==1));
         } else {
-            assert!(matches!(outcome, Outcome::Failed(ref reason) if reason.contains("姓名")));
+            assert!(
+                matches!(outcome, Outcome::Failed(ref reason) if reason.message.contains("姓名"))
+            );
         }
         save(&db, &c, &outcome).await.unwrap();
         finish(&db, now()).await.unwrap();
@@ -3551,7 +3557,7 @@ async fn regression_background_includes_old_running_paused_and_failed_crawls(db:
     queue::control(&db, paused, "pause", 3).await.unwrap();
     let failed: i64 = sqlx::query_scalar(
         r#"INSERT INTO crawl (kind, state, error, created_at, finished_at)
-        VALUES ('agent', 'failed', '打不开', 3, 4)
+        VALUES ('agent', 'failed', json_object('message', '打不开'), 3, 4)
         RETURNING id"#,
     )
     .fetch_one(&db)

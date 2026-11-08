@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT m.id, m.kind AS \"kind: Kind\", m.from_address, m.subject, m.sent_at,\n            m.read_at, mm.bounce_reason, m.body_text, m.message_id,\n            m.truncated AS \"truncated: bool\",\n            m.outcome AS \"outcome: email::outcome::ReplyOutcome\", q.state, q.error,\n            t.state AS todo_state, t.error AS todo_error\n        FROM message m\n        JOIN message_mentor mm ON mm.message_id = m.id\n        LEFT JOIN reply_processing q ON q.message_id = m.id\n        AND q.action = 'outcome'\n        LEFT JOIN reply_processing t ON t.message_id = m.id\n        AND t.action = 'todos'\n        WHERE mm.mentor_id = ?\n        ORDER BY m.sent_at, m.id",
+  "query": "SELECT m.id, m.kind AS \"kind: Kind\", m.from_address, m.subject, m.sent_at,\n            m.read_at, mm.bounce_reason AS \"bounce_reason: Json<Failure>\", m.body_text,\n            m.message_id, m.truncated AS \"truncated: bool\",\n            m.outcome AS \"outcome: email::outcome::ReplyOutcome\", q.state,\n            q.error AS \"error: Json<Failure>\", t.state AS todo_state,\n            t.error AS \"todo_error: Json<Failure>\"\n        FROM message m\n        JOIN message_mentor mm ON mm.message_id = m.id\n        LEFT JOIN reply_processing q ON q.message_id = m.id\n        AND q.action = 'outcome'\n        LEFT JOIN reply_processing t ON t.message_id = m.id\n        AND t.action = 'todos'\n        WHERE mm.mentor_id = ?\n        ORDER BY m.sent_at, m.id",
   "describe": {
     "columns": [
       {
@@ -70,7 +70,7 @@
         }
       },
       {
-        "name": "bounce_reason",
+        "name": "bounce_reason: Json<Failure>",
         "ordinal": 6,
         "type_info": "Text",
         "origin": {
@@ -136,7 +136,7 @@
         }
       },
       {
-        "name": "error",
+        "name": "error: Json<Failure>",
         "ordinal": 12,
         "type_info": "Text",
         "origin": {
@@ -158,7 +158,7 @@
         }
       },
       {
-        "name": "todo_error",
+        "name": "todo_error: Json<Failure>",
         "ordinal": 14,
         "type_info": "Text",
         "origin": {
@@ -190,5 +190,5 @@
       true
     ]
   },
-  "hash": "1eb4d2e188adafd784ef3a050ba0f04ee9f1e416401eab08d47a358257df6e96"
+  "hash": "47a6fa1b8044c6f34e3bd1d23b094c9d0ff420c1385549c60e7fd167f72eaf83"
 }

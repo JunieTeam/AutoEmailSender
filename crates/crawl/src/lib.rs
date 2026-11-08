@@ -1,6 +1,8 @@
 //! Public school pages, structured evidence, ownership checks, and the page ledger.
 
 pub mod browser;
+use failure::Failure;
+
 mod email;
 mod embedded;
 mod extract;
@@ -73,23 +75,65 @@ impl std::error::Error for CrawlError {
 }
 
 impl CrawlError {
-    pub fn message(&self) -> String {
+    /// What happened and what to do about it; the library's words only when no case fits them.
+    pub fn failure(&self) -> Failure {
         match self {
-            Self::Url => "网址无法使用。请填写公开的 http 或 https 网页地址。".into(),
-            Self::OutsideSite => "页面超出了这次整理允许访问的网站".into(),
-            Self::Redirect => "网页的跳转地址无效，或跳转次数过多。请检查原网址。".into(),
-            Self::TooLarge => "网页过大，无法读取。请改用具体的名单页或导师个人页。".into(),
-            Self::TimedOut => "读取网页超时。请检查网络，稍后重试。".into(),
-            Self::Status(code) => {
-                format!("网站返回了 HTTP {code}，请稍后重试或在浏览器中检查网址")
+            Self::Url => Failure::new("网址无法使用。请填写公开的 http 或 https 网页地址。"),
+            Self::OutsideSite => Failure::new("页面超出了这次整理允许访问的网站"),
+            Self::Redirect => Failure::new("网页的跳转地址无效，或跳转次数过多。请检查原网址。"),
+            Self::TooLarge => Failure::new("网页过大，无法读取。请改用具体的名单页或导师个人页。"),
+            Self::TimedOut => Failure::new("读取网页超时。请检查网络，稍后重试。"),
+            Self::Status(code @ (404 | 410)) => Failure::new(format!(
+                "网页不存在（HTTP {code}）。请在浏览器中打开网址检查，或改用别的页面。"
+            )),
+            Self::Status(code @ (401 | 403)) => Failure::new(format!(
+                "网站拒绝访问（HTTP {code}），可能要登录或只对校内网络开放。请改用公开的页面。"
+            )),
+            Self::Status(code @ 500..=599) => {
+                Failure::new(format!("网站出错（HTTP {code}）。请稍后重试。"))
             }
-            Self::SlowDown(_) => "网站要求放慢访问，请稍后重试".into(),
-            Self::ContentType => "这个地址返回的不是网页，请改用名单页或导师个人页".into(),
-            Self::Document(_) => "这个 PDF 文件读不出文字，可能已损坏或加密".into(),
-            Self::Http(_) => "无法打开网页。请检查网络和系统代理，稍后重试。".into(),
-            Self::Worker(_) => "读取网页内容失败，请重试；一直失败时请导出日志".into(),
+            Self::Status(code) => Failure::new(format!(
+                "网站返回了 HTTP {code}。请稍后重试，或在浏览器中检查网址。"
+            )),
+            Self::SlowDown(_) => Failure::new("网站要求放慢访问。请稍后重试。"),
+            Self::ContentType => Failure::new("这个地址返回的不是网页。请改用名单页或导师个人页。"),
+            Self::Document(reason) => {
+                Failure::unrecognized("这个 PDF 文件读不出文字，可能已损坏或加密", reason)
+            }
+            Self::Http(e) if net::untrusted(e) => {
+                Failure::new("网站的证书不受信任，连接可能被拦截。请更换网络后重试。")
+            }
+            Self::Http(e) if e.is_connect() => {
+                Failure::new("无法连接网站。请检查网址、网络和系统代理，稍后重试。")
+            }
+            Self::Http(e) => {
+                Failure::unrecognized("无法打开网页。请检查网络和系统代理，稍后重试。", &chain(e))
+            }
+            Self::Worker(_) => Failure::new(
+                "读取网页内容失败，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题",
+            ),
         }
     }
+
+    /// The library's words, for the log.
+    pub fn diagnostic(&self) -> Option<String> {
+        match self {
+            Self::Document(reason) => Some(failure::diagnostic(reason)),
+            Self::Http(e) => Some(failure::diagnostic(&chain(e))),
+            _ => None,
+        }
+    }
+}
+
+/// An error with its causes: reqwest's own words are only "error sending request".
+fn chain(e: &(dyn std::error::Error + 'static)) -> String {
+    let mut words = e.to_string();
+    let mut next = e.source();
+    while let Some(e) = next {
+        words += &format!(": {e}");
+        next = e.source();
+    }
+    words
 }
 
 pub(crate) fn now() -> i64 {

@@ -3,10 +3,12 @@
 
 use std::borrow::Cow;
 
+use failure::Failure;
 use html2text::render::RichAnnotation;
 use mail_parser::{
     AddressList, Message, MessageParser, MessagePart, MessageRef, PartKind, PartRole,
 };
+use transport::refusal::Refusal;
 
 /// The header fields `headers` reads, fetched instead of whole messages.
 pub(crate) const FIELDS: [&str; 13] = [
@@ -276,15 +278,16 @@ fn end_link(text: &mut String, link: Option<String>) {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Bounce {
     pub original: String,
-    pub failures: Vec<Failure>,
+    pub failures: Vec<Undelivered>,
 }
 
 /// Recipients mail did not reach, in lowercase, and why; no recipients when the bounce does not say
-/// who.
+/// who. `words` are the server's, for the log.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Failure {
+pub(crate) struct Undelivered {
     pub recipients: Vec<String>,
-    pub reason: String,
+    pub reason: Failure,
+    pub words: Option<String>,
     pub throttle: Option<transport::pause::Throttle>,
 }
 
@@ -381,18 +384,24 @@ pub(crate) fn bounce(raw: &[u8]) -> Option<Bounce> {
         message.body_text(0).unwrap_or(Cow::Borrowed(""))
     );
     let failures = if failed.is_empty() {
-        vec![Failure {
+        vec![Undelivered {
             recipients: Vec::new(),
             reason: reason(None, None, &told),
+            words: None,
             throttle: transport::pause::throttle(&told),
         }]
     } else {
         failed
             .iter()
-            .map(|s| Failure {
-                recipients: s.recipients.clone(),
-                reason: reason(s.diagnostic.as_deref(), s.status.as_deref(), &told),
-                throttle: transport::pause::throttle(s.diagnostic.as_deref().unwrap_or(&told)),
+            .map(|s| {
+                let (diagnostic, status) =
+                    (diagnostic(s.diagnostic.as_deref()), s.status.as_deref());
+                Undelivered {
+                    recipients: s.recipients.clone(),
+                    reason: reason(diagnostic, status, &told),
+                    words: diagnostic.or(status).map(str::to_owned),
+                    throttle: transport::pause::throttle(s.diagnostic.as_deref().unwrap_or(&told)),
+                }
             })
             .collect()
     };
@@ -425,84 +434,96 @@ fn content_type_is(part: &MessagePart, ctype: &str, subtype: &str) -> bool {
     })
 }
 
-/// Why mail did not reach a recipient: the cause the server's words fit, else what the bounce
-/// tells, and the words.
-fn reason(diagnostic: Option<&str>, status: Option<&str>, told: &str) -> String {
-    // smtp; 550 5.1.1 User unknown
-    let diagnostic = diagnostic.map(|d| match d.split_once(';') {
+/// A diagnostic code without its type: `smtp; 550 5.1.1 User unknown`.
+fn diagnostic(code: Option<&str>) -> Option<&str> {
+    let code = code.map(|d| match d.split_once(';') {
         Some((kind, rest)) if kind.trim().eq_ignore_ascii_case("smtp") => rest.trim(),
         _ => d,
     });
+    code.filter(|d| !d.is_empty())
+}
+
+/// Why mail did not reach a recipient: the cause the server's words fit, else what the bounce
+/// tells; words no cause fits are kept as details.
+fn reason(diagnostic: Option<&str>, status: Option<&str>, told: &str) -> Failure {
     let fits = |text: &str| {
-        let text = text.to_lowercase();
         CAUSES
             .iter()
-            .find(|(_, words)| words.iter().any(|w| text.contains(w)))
-            .map(|(cause, _)| *cause)
+            .find(|(kind, _)| kind.said_in(text))
+            .map(|(_, cause)| *cause)
     };
-    let category = fits(&format!(
+    let cause = fits(&format!(
         "{} {}",
         diagnostic.unwrap_or_default(),
         status.unwrap_or_default()
     ))
-    .or_else(|| fits(told))
-    .unwrap_or("邮件被退回");
-    match diagnostic.filter(|d| !d.is_empty()).or(status) {
-        Some(d) => format!("{category}（{}）", d.chars().take(150).collect::<String>()),
-        None => category.to_owned(),
+    .or_else(|| fits(told));
+    match (cause, diagnostic.or(status)) {
+        (Some(cause), _) => Failure::new(cause),
+        (None, Some(words)) => Failure::unrecognized("邮件被退回", words),
+        (None, None) => Failure::new("邮件被退回"),
     }
 }
 
-/// Why mail bounces, by what the report says, in lowercase; the first that matches wins.
-const CAUSES: [(&str, &[&str]); 3] = [
-    (
-        "收件地址不存在",
-        &[
-            "5.1.1",
-            "5.1.0",
-            "user unknown",
-            "unknown user",
-            "no such user",
-            "does not exist",
-            "doesn't exist",
-            "user not found",
-            "recipient not found",
-            "address rejected",
-            "invalid recipient",
-            "mailbox not found",
-            "不存在",
-            "无此用户",
-        ],
-    ),
-    (
-        "对方邮箱已满",
-        &[
-            "5.2.2",
-            "mailbox full",
-            "over quota",
-            "quota exceeded",
-            "空间不足",
-            "邮箱已满",
-        ],
-    ),
-    (
-        "被对方拒收",
-        &[
-            "5.7.",
-            "spam",
-            "blocked",
-            "blacklist",
-            "policy",
-            "拒收",
-            "拒绝",
-            "垃圾邮件",
-        ],
-    ),
+/// Why mail bounces, by the refusal the report says; the first that fits wins.
+const CAUSES: [(Refusal, &str); 3] = [
+    (Refusal::NoSuchRecipient, "收件地址不存在"),
+    (Refusal::MailboxFull, "对方邮箱已满"),
+    (Refusal::Rejected, "被对方拒收"),
 ];
 
 #[cfg(test)]
 mod tests {
-    use super::{headers, text};
+    use super::{Failure, headers, reason, text};
+
+    #[test]
+    fn a_bounce_says_the_cause_its_words_fit_and_keeps_the_words_of_others() {
+        for (diagnostic, status, told, expected) in [
+            (
+                Some("550 5.1.1 <wang@thu.edu.cn>: Recipient address rejected: User unknown"),
+                Some("5.1.1"),
+                "",
+                Failure::new("收件地址不存在"),
+            ),
+            (
+                Some("552 5.2.2 Mailbox full"),
+                None,
+                "",
+                Failure::new("对方邮箱已满"),
+            ),
+            (
+                Some("554 DT:SPM 163 smtp14, spam message"),
+                None,
+                "",
+                Failure::new("被对方拒收"),
+            ),
+            // A bounce without a report says it in its text.
+            (
+                None,
+                None,
+                "收件人邮箱不存在",
+                Failure::new("收件地址不存在"),
+            ),
+            (
+                Some("451 4.4.1 No answer from host"),
+                Some("4.4.1"),
+                "",
+                Failure::unrecognized("邮件被退回", "451 4.4.1 No answer from host"),
+            ),
+            (
+                None,
+                None,
+                "Undelivered Mail Returned to Sender",
+                Failure::new("邮件被退回"),
+            ),
+        ] {
+            assert_eq!(
+                reason(diagnostic, status, told),
+                expected,
+                "{diagnostic:?} {told}"
+            );
+        }
+    }
 
     #[test]
     fn chinese_encodings_are_read() {

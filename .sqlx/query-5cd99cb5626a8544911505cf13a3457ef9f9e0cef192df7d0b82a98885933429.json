@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT m.id, m.name, m.mailbox_id, m.source_url,\n            m.trashed_at IS NOT NULL AS \"trashed!: bool\",\n            m.match_state AS \"match_state: MatchColumn\", m.match_score, m.matched_at,\n            m.match_model, m.match_error, coalesce(m.matched_at < (SELECT\n            match_basis_changed_at FROM profile), 0) AS \"basis_changed!: bool\",\n            d.research, d.papers AS \"papers: Json<Vec<String>>\", d.note,\n            d.match_reason,\n            d.match_directions AS \"match_directions: Json<Vec<String>>\",\n            d.match_highlights AS \"match_highlights: Json<Vec<String>>\",\n            d.match_risks AS \"match_risks: Json<Vec<String>>\",\n            c.status AS \"status?: ContactStatus\",\n            c.contact_count AS \"contact_count?\", c.last_out_at, c.last_reply_at,\n            c.unread AS \"unread?: bool\", c.opened AS \"opened?: bool\"\n        FROM mentor m\n        JOIN mentor_detail d ON d.mentor_id = m.id\n        LEFT JOIN mentor_contact c ON c.mentor_id = m.id\n        WHERE m.id = ?",
+  "query": "SELECT m.id, m.name, m.mailbox_id, m.source_url,\n            m.trashed_at IS NOT NULL AS \"trashed!: bool\",\n            m.match_state AS \"match_state: MatchColumn\", m.match_score, m.matched_at,\n            m.match_model, m.match_error AS \"match_error: Json<failure::Failure>\",\n            coalesce(m.matched_at < (SELECT\n            match_basis_changed_at FROM profile), 0) AS \"basis_changed!: bool\",\n            d.research, d.papers AS \"papers: Json<Vec<String>>\", d.note,\n            d.match_reason,\n            d.match_directions AS \"match_directions: Json<Vec<String>>\",\n            d.match_highlights AS \"match_highlights: Json<Vec<String>>\",\n            d.match_risks AS \"match_risks: Json<Vec<String>>\",\n            c.status AS \"status?: ContactStatus\",\n            c.contact_count AS \"contact_count?\", c.last_out_at, c.last_reply_at,\n            c.unread AS \"unread?: bool\", c.opened AS \"opened?: bool\"\n        FROM mentor m\n        JOIN mentor_detail d ON d.mentor_id = m.id\n        LEFT JOIN mentor_contact c ON c.mentor_id = m.id\n        WHERE m.id = ?",
   "describe": {
     "columns": [
       {
@@ -98,7 +98,7 @@
         }
       },
       {
-        "name": "match_error",
+        "name": "match_error: Json<failure::Failure>",
         "ordinal": 9,
         "type_info": "Text",
         "origin": {
@@ -288,5 +288,5 @@
       true
     ]
   },
-  "hash": "c2bec1bc0733388fbcc746dcfe3485a77bbe88e6d29ff2e0763a7664db72ce6d"
+  "hash": "5cd99cb5626a8544911505cf13a3457ef9f9e0cef192df7d0b82a98885933429"
 }

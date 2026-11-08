@@ -2,6 +2,7 @@
 //! `transport::pause`.
 
 use sqlx::SqliteConnection;
+use sqlx::types::Json;
 use transport::pause::Pause;
 
 /// In the caller's transaction, so the pause and its email outcome take effect together.
@@ -10,7 +11,7 @@ pub async fn apply(conn: &mut SqliteConnection, id: i64, pause: &Pause) -> Resul
         "UPDATE mailbox SET paused_until = ?1, pause_reason = ?2
          WHERE id = ?3 AND (paused_until IS NULL OR paused_until < ?1)",
         pause.until,
-        pause.reason,
+        Json(&pause.reason),
         id,
     )
     .execute(conn)
@@ -32,7 +33,7 @@ pub async fn apply_for_account(
            AND address = ?4 AND smtp_host = ?5 AND smtp_port = ?6 AND smtp_security = ?7
            AND imap_host = ?8 AND imap_port = ?9 AND imap_security = ?10 AND secret = ?11",
         pause.until,
-        pause.reason,
+        Json(&pause.reason),
         id,
         address,
         account.sender.smtp.host,

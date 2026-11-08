@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Inbox, SearchX } from "lucide-react";
 import { Loading } from "@/components/loading";
 import { Notice } from "@/components/notice";
+import { FailureDetails, FailureNote } from "@/components/failure";
 import { useState } from "react";
 import { exportCrawlLog } from "@/api/app";
 import { call, errorMessage } from "@/api/call";
@@ -265,7 +266,7 @@ function CrawlRecord({ crawl: c, expanded }: { crawl: CrawlSummary; expanded: bo
           </Button>
         </div>
       </div>
-      {c.error && <p className="mt-2 text-sm text-warning">{c.error}</p>}
+      {c.error && <FailureNote failure={c.error} className="mt-2 text-sm text-warning" />}
       {c.failed > 0 && <p className="mt-2 text-sm text-warning">{c.failed} 个页面未能打开，名单可能不完整</p>}
       {expanded && <CrawlDetails id={c.id} modelId={c.modelConfigId} modelIds={c.modelIds} />}
     </section>
@@ -369,8 +370,13 @@ function CrawlDetails({ id, modelId, modelIds }: { id: number; modelId: number |
                           : "mt-1 text-muted-foreground"
                       }
                     >
-                      {p.state === "queued" ? "待读取" : p.state === "running" ? "正在读取" : (p.error ?? "已读取")}
+                      {p.state === "queued"
+                        ? "待读取"
+                        : p.state === "running"
+                          ? "正在读取"
+                          : (p.error?.message ?? "已读取")}
                     </p>
+                    {p.state === "done" && p.error && <FailureDetails failure={p.error} />}
                   </div>
                   {p.state === "done" && p.status !== "success" && (
                     <ModelAction
@@ -578,7 +584,7 @@ function Candidates() {
                     已补充{[...new Set(c.enrichChanges.map((v) => ENRICH_FIELDS[v.field]))].join("、")}
                   </p>
                 )}
-                {c.enrichError && <p className="mt-2 text-sm text-warning">{c.enrichError}</p>}
+                {c.enrichError && <FailureNote failure={c.enrichError} className="mt-2 text-sm text-warning" />}
                 {c.sourceUrl && <SourceLink url={c.sourceUrl} />}
                 {c.issue && <p className="mt-2 text-sm text-warning">{c.issue}</p>}
                 <Collapsible open={expanded === c.id}>

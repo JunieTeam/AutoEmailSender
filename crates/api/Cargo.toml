@@ -17,6 +17,7 @@ tokio.workspace = true
 base64 = "0.22"
 check.workspace = true
 email.workspace = true
+failure = { workspace = true, features = ["ts-rs"] }
 mailbox.workspace = true
 transport.workspace = true
 material.workspace = true

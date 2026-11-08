@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT match_paused_at, match_pause_reason, (\n            SELECT count(*)\n            FROM mentor\n            WHERE match_state IN ('queued', 'running') AND trashed_at IS NULL\n        ) AS \"remaining!: i64\", (\n            SELECT count(*)\n            FROM mentor\n            WHERE match_state = 'failed' AND trashed_at IS NULL\n        ) AS \"failed!: i64\"\n        FROM profile",
+  "query": "SELECT match_paused_at, match_pause_reason AS \"match_pause_reason: Json<Failure>\", (\n            SELECT count(*)\n            FROM mentor\n            WHERE match_state IN ('queued', 'running') AND trashed_at IS NULL\n        ) AS \"remaining!: i64\", (\n            SELECT count(*)\n            FROM mentor\n            WHERE match_state = 'failed' AND trashed_at IS NULL\n        ) AS \"failed!: i64\"\n        FROM profile",
   "describe": {
     "columns": [
       {
@@ -15,7 +15,7 @@
         }
       },
       {
-        "name": "match_pause_reason",
+        "name": "match_pause_reason: Json<Failure>",
         "ordinal": 1,
         "type_info": "Text",
         "origin": {
@@ -48,5 +48,5 @@
       false
     ]
   },
-  "hash": "62f088962699a0a58bbf51af6a73847d8abded1ad82882b37b312b8c84d61c40"
+  "hash": "cf0fe96f14abf43b0f58ebbfce649312fda02c57977c6f972cbd6bcdd7908252"
 }

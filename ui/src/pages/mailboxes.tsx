@@ -3,6 +3,7 @@ import { useState } from "react";
 import { call, errorMessage } from "@/api/call";
 import type { Mailbox, Provider, Rotation } from "@/api/types";
 import { Confirm } from "@/components/batch-bar";
+import { FailureDetails, FailureNote } from "@/components/failure";
 import { MailboxDialog, useProviders } from "@/components/mailbox-dialog";
 import { scheduledAt } from "@/components/schedule";
 import { Button } from "@/components/ui/button";
@@ -118,25 +119,32 @@ function MailboxRow({ mailbox: m, providers }: { mailbox: Mailbox; providers: Pr
             {provider}，每天最多发 {m.dailyLimit} 封
           </p>
           {m.needsSecret && <p className="text-sm text-warning">恢复后需要重新填写授权码，填好之前不收发信</p>}
-          {m.receiveError && <p className="text-sm text-destructive">收信失败：{m.receiveError}</p>}
+          {m.receiveError && (
+            <FailureNote failure={m.receiveError} lead="收信失败：" className="text-sm text-destructive" />
+          )}
           {m.cloudPause && (
-            <p className="text-sm text-warning">
-              云端发信暂停到 {scheduledAt(m.cloudPause.until)}，{m.cloudEmails} 封在等：{m.cloudPause.reason}
-            </p>
+            <FailureNote
+              failure={m.cloudPause.reason}
+              lead={`云端发信暂停到 ${scheduledAt(m.cloudPause.until)}，${m.cloudEmails} 封在等：`}
+              className="text-sm text-warning"
+            />
           )}
           {m.pause && (
-            <p className="text-sm text-warning">
-              发信暂停到 {scheduledAt(m.pause.until)}：{m.pause.reason}
-              <Button
-                variant="quiet"
-                size="sm"
-                className="ml-2"
-                disabled={resume.isPending}
-                onClick={() => resume.mutate(m.id)}
-              >
-                立即恢复
-              </Button>
-            </p>
+            <div className="text-sm text-warning">
+              <p>
+                发信暂停到 {scheduledAt(m.pause.until)}：{m.pause.reason.message}
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  className="ml-2"
+                  disabled={resume.isPending}
+                  onClick={() => resume.mutate(m.id)}
+                >
+                  立即恢复
+                </Button>
+              </p>
+              <FailureDetails failure={m.pause.reason} />
+            </div>
           )}
         </div>
         <div className="flex gap-1">

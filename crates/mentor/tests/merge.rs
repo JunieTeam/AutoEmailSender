@@ -85,7 +85,7 @@ async fn a_mentor_listed_twice_becomes_one(db: SqlitePool) {
     let both = reply(&db, &[li, ming], 3).await;
     exec(&db, "UPDATE message SET kind = 'sent' WHERE id = ?", both).await;
     sqlx::query(
-        "UPDATE message_mentor SET bounce_reason = '收件地址不存在' WHERE message_id = ? AND mentor_id = ?",
+        "UPDATE message_mentor SET bounce_reason = json_object('message', '收件地址不存在') WHERE message_id = ? AND mentor_id = ?",
     )
     .bind(both)
     .bind(li)

@@ -86,7 +86,7 @@ pub struct MentorRow {
 pub enum MatchState {
     Queued,
     Running,
-    Failed { error: String },
+    Failed { error: failure::Failure },
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, TS)]
@@ -205,14 +205,14 @@ enum MatchColumn {
 fn match_state(
     id: i64,
     state: Option<MatchColumn>,
-    error: Option<String>,
+    error: Option<Json<failure::Failure>>,
 ) -> Result<Option<MatchState>, sqlx::Error> {
     Ok(match state {
         None => None,
         Some(MatchColumn::Queued) => Some(MatchState::Queued),
         Some(MatchColumn::Running) => Some(MatchState::Running),
         Some(MatchColumn::Failed) => Some(MatchState::Failed {
-            error: error.ok_or_else(|| inconsistent(id))?,
+            error: error.ok_or_else(|| inconsistent(id))?.0,
         }),
     })
 }
@@ -437,7 +437,8 @@ async fn rows(conn: &mut SqliteConnection, ids: &[i64]) -> Result<Vec<MentorRow>
         ) AS "affiliation_count!: i64",
             substr(d.research, 1, 120) AS "research?: String",
             m.match_state AS "match_state: MatchColumn", m.match_score,
-            m.match_error, coalesce(m.matched_at < (SELECT match_basis_changed_at FROM
+            m.match_error AS "match_error: Json<failure::Failure>",
+            coalesce(m.matched_at < (SELECT match_basis_changed_at FROM
             profile), 0) AS "basis_changed!: bool",
             c.status AS "status?: ContactStatus",
             c.contact_count AS "contact_count?", c.last_out_at, c.last_reply_at,
@@ -509,7 +510,8 @@ pub async fn detail(
         r#"SELECT m.id, m.name, m.mailbox_id, m.source_url,
             m.trashed_at IS NOT NULL AS "trashed!: bool",
             m.match_state AS "match_state: MatchColumn", m.match_score, m.matched_at,
-            m.match_model, m.match_error, coalesce(m.matched_at < (SELECT
+            m.match_model, m.match_error AS "match_error: Json<failure::Failure>",
+            coalesce(m.matched_at < (SELECT
             match_basis_changed_at FROM profile), 0) AS "basis_changed!: bool",
             d.research, d.papers AS "papers: Json<Vec<String>>", d.note,
             d.match_reason,

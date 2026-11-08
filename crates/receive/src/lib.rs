@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use email::SentCopy;
+use failure::Failure;
 use mailbox::Imap;
 use net::Net;
 use serde::Serialize;
@@ -183,9 +184,9 @@ async fn receive_all(
                 round.changed |= mailbox::received(db, id).await?;
             }
             Err(Error::Mail(e)) => {
-                tracing::warn!(mailbox = id, "receive: {e}");
+                tracing::warn!(mailbox = id, diagnostic = e.diagnostic(), "receive: {e}");
                 let refused = matches!(e, MailError::Login { .. } | MailError::Refused { .. });
-                mailbox::receive_failed(db, id, &e.message(), refused.then_some(now + REFUSED))
+                mailbox::receive_failed(db, id, &e.failure(), refused.then_some(now + REFUSED))
                     .await?;
                 round.changed = true;
             }
@@ -759,29 +760,30 @@ impl Session<'_> {
         let mut marked = false;
         // The app sends each email to one address: the first failure naming it, or naming no one,
         // says why it came back.
-        for failure in &bounce.failures {
-            let (to, reason) = (&failure.recipients, &failure.reason);
+        for undelivered in &bounce.failures {
+            let (to, reason) = (&undelivered.recipients, &undelivered.reason);
             let Some(bounced) =
                 email::bounced(&mut tx, &bounce.original, to, reason, sent_at, self.now).await?
             else {
                 continue;
             };
             marked = true;
+            tracing::info!(email = bounced.id, words = undelivered.words, "bounced");
             let Some(mailbox) = bounced.mailbox_id else {
                 continue;
             };
             if bounced.from_cloud {
                 mentor::assign_mailbox(&mut tx, bounced.mentor_id, mailbox).await?;
             }
-            if let Some(throttle) = failure.throttle {
+            if let Some(throttle) = undelivered.throttle {
                 let mut pause = transport::pause::PauseKind::Throttled(throttle).at(sent_at);
-                pause.reason = format!("退信说明{}", pause.reason);
+                pause.reason.message = format!("退信说明{}", pause.reason.message);
                 if pause.until > self.now {
                     mailbox::pause::apply(&mut tx, mailbox, &pause).await?;
                 }
             }
         }
-        for failure in &bounce.failures {
+        for undelivered in &bounce.failures {
             // Mail sent elsewhere to several mentors bounces for those the bounce names, or for
             // all when it does not say who.
             marked |= sqlx::query!(
@@ -791,9 +793,9 @@ impl Session<'_> {
                    AND (json_array_length(?3) = 0 OR mentor_id IN (
                      SELECT mentor_id FROM mentor_email
                      WHERE address IN (SELECT value FROM json_each(?3))))",
-                failure.reason,
+                Json(&undelivered.reason),
                 bounce.original,
-                Json(&failure.recipients)
+                Json(&undelivered.recipients)
             )
             .execute(&mut *tx)
             .await?
@@ -905,7 +907,7 @@ pub enum MessageKind {
     AutoReply,
     /// Sent to the mentor by the user from elsewhere, such as the mailbox's website.
     Sent {
-        bounce: Option<String>,
+        bounce: Option<Failure>,
     },
 }
 
@@ -920,10 +922,11 @@ pub async fn list_in(
 ) -> Result<Vec<Message>, sqlx::Error> {
     let rows = sqlx::query!(
         r#"SELECT m.id, m.kind AS "kind: Kind", m.from_address, m.subject, m.sent_at,
-            m.read_at, mm.bounce_reason, m.body_text, m.message_id,
-            m.truncated AS "truncated: bool",
-            m.outcome AS "outcome: email::outcome::ReplyOutcome", q.state, q.error,
-            t.state AS todo_state, t.error AS todo_error
+            m.read_at, mm.bounce_reason AS "bounce_reason: Json<Failure>", m.body_text,
+            m.message_id, m.truncated AS "truncated: bool",
+            m.outcome AS "outcome: email::outcome::ReplyOutcome", q.state,
+            q.error AS "error: Json<Failure>", t.state AS todo_state,
+            t.error AS "todo_error: Json<Failure>"
         FROM message m
         JOIN message_mentor mm ON mm.message_id = m.id
         LEFT JOIN reply_processing q ON q.message_id = m.id
@@ -961,7 +964,8 @@ pub async fn list_in(
                             Some("failed") => Some(email::todos::TodoExtraction::Failed {
                                 reason: r
                                     .todo_error
-                                    .unwrap_or_else(|| unreachable!("failed work has an error")),
+                                    .unwrap_or_else(|| unreachable!("failed work has an error"))
+                                    .0,
                             }),
                             _ => None,
                         },
@@ -972,14 +976,15 @@ pub async fn list_in(
                             Some("failed") => Some(email::outcome::OutcomeMarking::Failed {
                                 reason: r
                                     .error
-                                    .unwrap_or_else(|| unreachable!("failed work has an error")),
+                                    .unwrap_or_else(|| unreachable!("failed work has an error"))
+                                    .0,
                             }),
                             _ => None,
                         },
                     },
                     Kind::AutoReply => MessageKind::AutoReply,
                     Kind::Sent => MessageKind::Sent {
-                        bounce: r.bounce_reason,
+                        bounce: r.bounce_reason.map(|b| b.0),
                     },
                 },
             }

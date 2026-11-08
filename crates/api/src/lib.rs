@@ -41,6 +41,7 @@ use tracking::{get_tracking, set_tracking};
 use writing_turns::{Writing, WritingRequest, cancel_writing};
 
 use base64::prelude::{BASE64_STANDARD, Engine};
+use failure::Failure;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use ts_rs::{Config, TS, TypeVisitor};
@@ -157,7 +158,7 @@ impl CallError {
         tracing::error!("{e}");
         CallError {
             code: ErrorCode::Internal,
-            message: "处理时出错。请重试；仍然出错时，导出日志发给开发者。".into(),
+            message: "出错了，请重试；仍然出错的，可在电脑上的 设置 › 关于和日志 里反馈问题".into(),
         }
     }
 }
@@ -1621,10 +1622,14 @@ async fn send_test_letter(ctx: &Context, input: SendTestLetter) -> Result<(), Ca
         .send(&outgoing, || false)
         .await
         .map_err(|e| {
-            tracing::warn!("test letter from mailbox {}: {e}", input.mailbox_id);
+            tracing::warn!(
+                diagnostic = e.diagnostic(),
+                "test letter from mailbox {}: {e}",
+                input.mailbox_id
+            );
             CallError {
                 code: ErrorCode::External,
-                message: e.message(),
+                message: e.failure().message,
             }
         })?;
     tracing::info!("test letter sent from mailbox {}", input.mailbox_id);
@@ -1646,10 +1651,10 @@ impl From<mailbox::SaveError> for CallError {
 /// The details go to the log; the user reads what happened and what to do.
 impl From<transport::MailError> for CallError {
     fn from(e: transport::MailError) -> Self {
-        tracing::warn!("{e}");
+        tracing::warn!(diagnostic = e.diagnostic(), "{e}");
         CallError {
             code: ErrorCode::External,
-            message: e.message(),
+            message: e.failure().message,
         }
     }
 }
@@ -1800,7 +1805,9 @@ async fn entered_or_saved_key(
     };
     match (saved, source) {
         (Some(Some(api_key)), _) => Ok(api_key),
-        (Some(None), _) => Err(CallError::invalid(model::ModelError::MissingKey.message())),
+        (Some(None), _) => Err(CallError::invalid(
+            model::ModelError::MissingKey.failure().message,
+        )),
         (None, model::Source::Custom(_)) => Ok(String::new()),
         (None, model::Source::Known(_)) => Err(CallError::invalid(NO_API_KEY.into())),
     }
@@ -1809,10 +1816,10 @@ async fn entered_or_saved_key(
 /// The details go to the log; the user reads what happened and what to do.
 impl From<model::ModelError> for CallError {
     fn from(e: model::ModelError) -> Self {
-        tracing::warn!("{e}");
+        tracing::warn!(diagnostic = e.diagnostic(), "{e}");
         CallError {
             code: ErrorCode::External,
-            message: e.message(),
+            message: e.failure().message,
         }
     }
 }
@@ -3447,7 +3454,7 @@ mod reply_outcome_tests {
             assert!(error.message.contains("导师的回信"));
         }
         let claim = email::outcome::next(&ctx.db).await.unwrap().unwrap();
-        email::outcome::fail(&ctx.db, claim, "格式不对")
+        email::outcome::fail(&ctx.db, claim, &Failure::new("格式不对"))
             .await
             .unwrap();
         assert_eq!(

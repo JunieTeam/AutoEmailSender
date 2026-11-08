@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE mailbox SET cloud_paused_until = ?, cloud_pause_reason = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "0bb197fe51e1c16837726c789275a99d9cd7a21132c727f3adcdaec2aef851b2"
+}

@@ -3,6 +3,7 @@
 
 //! Receiving from a mailbox on the fake IMAP server.
 
+use failure::Failure;
 use std::borrow::Cow;
 
 use email::Delivery;
@@ -63,7 +64,7 @@ async fn sent_email(db: &SqlitePool, mentor: i64, state: &str, message_id: &str)
         "INSERT INTO email (mentor_id, kind, state, planned_at, mailbox_id, from_address, to_address,
            message_id, sent_at, error, created_at, updated_at, subject, body_md, html, text)
          VALUES (?1, 'first', ?2, ?3, 1, ?4, (SELECT address FROM mentor_email WHERE mentor_id = ?1), ?5, ?3,
-           '发送途中应用退出。', 0, 0, '申请读博', '老师您好', '<p>老师您好</p>', '老师您好')
+           json_object('message', '发送途中应用退出。'), 0, 0, '申请读博', '老师您好', '<p>老师您好</p>', '老师您好')
          RETURNING id",
     )
     .bind(mentor)
@@ -108,7 +109,7 @@ async fn throttled_bounces_pause_the_original_sender_once(db: SqlitePool) {
         .await
         .unwrap();
     // Receive the report through mailbox 1; it must pause the sender, mailbox 2.
-    sqlx::query("UPDATE mailbox SET receive_error = '等待重试', receive_retry_at = ? WHERE id = ?")
+    sqlx::query("UPDATE mailbox SET receive_error = json_object('message', '等待重试'), receive_retry_at = ? WHERE id = ?")
         .bind(T + 10 * DAY)
         .bind(sender)
         .execute(&db)
@@ -151,7 +152,7 @@ async fn throttled_bounces_pause_the_original_sender_once(db: SqlitePool) {
     assert!(mailboxes[0].pause.is_none());
     let pause = mailboxes[1].pause.as_ref().unwrap();
     assert_eq!(pause.until, T + 61 * MINUTE);
-    assert!(pause.reason.contains("退信"));
+    assert!(pause.reason.message.contains("退信"));
     let until = pause.until;
     // A separately delivered copy of the same report does not start a fresh pause.
     store.deliver(
@@ -670,15 +671,14 @@ Message-ID: <w1@example.com>
             from_address: ADDRESS.into(),
             to_address: "wang@thu.edu.cn".into(),
             sent_at: T - DAY,
-            error: "收件地址不存在（550 5.1.1 <wang@thu.edu.cn>: Recipient address rejected: User unknown）"
-                .into()
+            error: Failure::new("收件地址不存在")
         }
     );
     assert!(matches!(contact(&db, wang).await, Contact::Bounced { .. }));
     assert_eq!(
         messages(&db, zhang).await[0].kind,
         MessageKind::Sent {
-            bounce: Some("对方邮箱已满".into())
+            bounce: Some(Failure::new("对方邮箱已满"))
         }
     );
     assert!(matches!(contact(&db, zhang).await, Contact::Bounced { .. }));
@@ -687,9 +687,14 @@ Message-ID: <w1@example.com>
         Delivery::Sent { .. }
     ));
     // The new try is still SMTP's to settle.
-    email::failed(&mut conn, resent, "收件地址不存在", T + 11 * MINUTE)
-        .await
-        .unwrap();
+    email::failed(
+        &mut conn,
+        resent,
+        &Failure::new("收件地址不存在"),
+        T + 11 * MINUTE,
+    )
+    .await
+    .unwrap();
     assert!(matches!(
         email::list(&db, zhao).await.unwrap()[0].delivery,
         Delivery::Failed { .. }
@@ -709,7 +714,7 @@ async fn an_earlier_try_settles_a_retry_to_the_same_address(db: SqlitePool) {
     assert!(email::retry(&db, waiting, T).await.unwrap());
     assert!(email::retry(&db, turned_down, T).await.unwrap());
     let mut conn = db.acquire().await.unwrap();
-    email::failed(&mut conn, turned_down, "邮件太大。", T)
+    email::failed(&mut conn, turned_down, &Failure::new("邮件太大。"), T)
         .await
         .unwrap();
     store.deliver(
@@ -845,7 +850,7 @@ async fn a_refused_login_waits_unless_the_mailbox_changes(db: SqlitePool) {
     let error = mailbox::list(&db, T).await.unwrap()[0]
         .receive_error
         .clone();
-    assert!(error.unwrap().starts_with("登录被拒绝"));
+    assert!(error.unwrap().message.starts_with("登录被拒绝"));
     store.commands();
     round(&db, &net, T + 10 * MINUTE).await;
     assert!(store.commands().is_empty());
@@ -964,9 +969,14 @@ async fn a_copy_under_another_message_id_is_still_the_apps(db: SqlitePool) {
         .await
         .unwrap();
     let mut conn = db.acquire().await.unwrap();
-    email::maybe_sent(&mut conn, id, "发送途中断开。", T + 11 * MINUTE)
-        .await
-        .unwrap();
+    email::maybe_sent(
+        &mut conn,
+        id,
+        &Failure::new("发送途中断开。"),
+        T + 11 * MINUTE,
+    )
+    .await
+    .unwrap();
     assert!(matches!(
         email::list(&db, wang).await.unwrap()[0].delivery,
         Delivery::Sent { .. }
@@ -1271,18 +1281,14 @@ Message-ID: <e1@example.com>
     assert_eq!(
         bounces(messages(&db, li).await),
         [
-            Some("对方邮箱已满（552 5.2.2 Mailbox full）".into()),
-            Some("收件地址不存在（550 5.1.1 User unknown）".into()),
+            Some(Failure::new("对方邮箱已满")),
+            Some(Failure::new("收件地址不存在")),
         ]
     );
     assert!(matches!(contact(&db, li).await, Contact::Bounced { .. }));
     assert_eq!(
         bounces(messages(&db, wang).await),
-        [
-            None,
-            Some("对方邮箱已满（552 5.2.2 Mailbox full）".into()),
-            None
-        ]
+        [None, Some(Failure::new("对方邮箱已满")), None]
     );
     assert!(matches!(
         contact(&db, wang).await,

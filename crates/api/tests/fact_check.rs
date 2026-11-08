@@ -93,7 +93,10 @@ async fn check_errors_are_saved_and_retry_replaces_them(db: SqlitePool) {
     });
     let error = result.unwrap_err();
     assert!(matches!(error.code, ErrorCode::External));
-    assert_eq!(stored(&ctx.db, id).await["reason"], error.message);
+    assert_eq!(
+        stored(&ctx.db, id).await["reason"]["message"],
+        error.message
+    );
     let (result, ()) = tokio::join!(call(&ctx, "factCheckEmail", json!({"id":id})), async {
         p.requests
             .recv()
@@ -249,7 +252,10 @@ async fn waiting_for_capacity_rechecks_consent_before_reading_configuration(db: 
     drop(a);
     let error = checking.await.unwrap_err();
     assert!(matches!(error.code, ErrorCode::NeedsAgreement));
-    assert_eq!(stored(&ctx.db, id).await["reason"], error.message);
+    assert_eq!(
+        stored(&ctx.db, id).await["reason"]["message"],
+        error.message
+    );
     assert!(p.requests.try_recv().is_err());
 }
 

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub mod connect;
 mod error;
 pub mod pause;
+pub mod refusal;
 mod smtp;
 
 pub use error::MailError;

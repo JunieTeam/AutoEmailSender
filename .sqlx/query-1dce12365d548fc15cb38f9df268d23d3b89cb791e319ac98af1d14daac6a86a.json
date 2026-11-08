@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT reply_processing_paused_at AS \"at!\", reply_processing_pause_reason AS \"reason!\"\n           FROM profile WHERE reply_processing_paused_at IS NOT NULL",
+  "query": "SELECT reply_processing_paused_at AS \"at!\",\n            reply_processing_pause_reason AS \"reason!: Json<Failure>\"\n        FROM profile WHERE reply_processing_paused_at IS NOT NULL",
   "describe": {
     "columns": [
       {
@@ -15,7 +15,7 @@
         }
       },
       {
-        "name": "reason!",
+        "name": "reason!: Json<Failure>",
         "ordinal": 1,
         "type_info": "Text",
         "origin": {
@@ -34,5 +34,5 @@
       true
     ]
   },
-  "hash": "e20fb2885381f514c0a51fb208e3af008d7ba51d70b473492bc9d3fe12e13803"
+  "hash": "1dce12365d548fc15cb38f9df268d23d3b89cb791e319ac98af1d14daac6a86a"
 }

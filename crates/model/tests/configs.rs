@@ -125,10 +125,10 @@ async fn missing_key_is_distinct_from_a_keyless_model_and_pauses_background_work
         .await
         .unwrap_err();
     assert!(matches!(error, model::ModelError::MissingKey));
-    assert!(error.message().contains("设置 › AI › 模型"));
+    assert!(error.failure().message.contains("设置 › AI › 模型"));
     assert!(matches!(
         model::background::classify(error, &chosen.access),
-        model::background::Failure::Pause(_)
+        model::background::Effect::Pause(_)
     ));
     assert!(matches!(
         model::list_models(&net, &chosen.access).await,

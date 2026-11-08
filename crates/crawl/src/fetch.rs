@@ -107,6 +107,7 @@ impl Fetcher {
                 url = target.url().as_str(),
                 method = "http",
                 %error,
+                diagnostic = error.diagnostic(),
                 elapsed_ms = started.elapsed().as_millis(),
                 result = "failed",
                 "page fetched"

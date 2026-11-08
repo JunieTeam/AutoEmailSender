@@ -42,7 +42,7 @@ const email: PlanEmail = {
   latestAt: null,
   sentAt: 1,
   fromAddress: "me@example.com",
-  error: "发送途中应用退出，无法确定是否已发出。",
+  error: { message: "发送途中应用退出，无法确定是否已发出。", details: null },
   cancelReason: "导师已移入回收站",
   waiting: null,
   cloud: null,

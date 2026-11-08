@@ -4,9 +4,10 @@
 use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use failure::Failure;
 use fastrand::Rng;
 use mentor::{Affiliation, MentorFields};
-use sqlx::SqlitePool;
+use sqlx::{SqlitePool, types::Json};
 
 use crate::Result;
 
@@ -193,10 +194,10 @@ pub async fn fill(db: &SqlitePool, scale: Scale, now: i64) -> Result {
          imap_host, imap_port, imap_security, auth, secret, daily_limit, min_interval_s,
          rotation_order, paused_until, pause_reason, created_at)
          VALUES ('linxiao-backup@example.com', '林晓', 'custom', 'smtp.example.com', 465, 'tls',
-         'imap.example.com', 993, 'tls', 'password', 'sample', 50, 60, 2, ?,
-         '已被邮箱服务商限流。可降低发信频率。', ?)",
+         'imap.example.com', 993, 'tls', 'password', 'sample', 50, 60, 2, ?, ?, ?)",
     )
     .bind(now + 3_600_000)
+    .bind(Json(Failure::new("已被邮箱服务商限流。可降低发信频率。")))
     .bind(now)
     .execute(&mut *tx)
     .await?;
@@ -232,7 +233,7 @@ pub async fn fill(db: &SqlitePool, scale: Scale, now: i64) -> Result {
             .bind(done.then(|| rng.i64(0..=100)))
             .bind(done.then_some(now))
             .bind(done.then_some("deepseek-chat"))
-            .bind((state == "failed").then_some("模型返回的结果不完整"))
+            .bind((state == "failed").then(|| Json(Failure::new("模型返回的结果不完整"))))
             .bind(matches!(state, "queued" | "running").then_some(now))
             .bind(matches!(state, "queued" | "running").then_some(0))
             .bind(id)
@@ -363,7 +364,15 @@ pub async fn fill(db: &SqlitePool, scale: Scale, now: i64) -> Result {
         .bind(out.then(|| format!("m{mentor}@example.edu.cn")))
         .bind(out.then(|| format!("<e{i}@aes>")))
         .bind(out.then_some(at))
-        .bind(matches!(state, "maybe_sent" | "failed" | "bounced").then_some("示例错误"))
+        .bind(match state {
+            "maybe_sent" | "bounced" => Some(Json(Failure::new("示例错误"))),
+            // One the app did not recognize, which shows the server's words under the reason.
+            "failed" => Some(Json(Failure::unrecognized(
+                "服务器拒收了这封邮件。请检查导师的邮箱是否填错。",
+                "550 5.7.0 Message rejected: example policy (sample)",
+            ))),
+            _ => None,
+        })
         .bind((state == "canceled").then_some("任务停止"))
         .bind(at)
         .bind(at)
@@ -481,7 +490,7 @@ pub async fn fill(db: &SqlitePool, scale: Scale, now: i64) -> Result {
                 WHERE id = ?"#,
             )
             .bind(state)
-            .bind(error)
+            .bind(error.map(|e| Json(Failure::new(e))))
             .bind((*state == "canceled").then_some(if name == "夏令营联系" {
                 "任务停止"
             } else {
@@ -585,10 +594,10 @@ pub async fn crawls(db: &SqlitePool, at: i64) -> Result {
     }
     sqlx::query(
         r#"INSERT INTO crawl (kind, start_urls, state, created_at, error)
-        VALUES ('site', '["https://example.edu.cn/teachers"]', 'paused', ?,
-            '模型额度不足，请补充额度后继续')"#,
+        VALUES ('site', '["https://example.edu.cn/teachers"]', 'paused', ?, ?)"#,
     )
     .bind(at)
+    .bind(Json(Failure::new("模型额度不足，请补充额度后继续")))
     .execute(&mut *tx)
     .await?;
     for (name, state, changes, error) in [
@@ -635,7 +644,7 @@ pub async fn crawls(db: &SqlitePool, at: i64) -> Result {
             None
         })
         .bind(sqlx::types::Json(changes))
-        .bind(error)
+        .bind(error.map(|e| Json(Failure::new(e))))
         .bind(sqlx::types::Json(vec![mentor::intake::comparable(name)]))
         .fetch_one(&mut *tx)
         .await?;
@@ -643,8 +652,8 @@ pub async fn crawls(db: &SqlitePool, at: i64) -> Result {
             sqlx::query(
                 r#"INSERT INTO crawl_page (crawl_id, candidate_id, url, scope_url, kind,
                     mode, status, error, work_state)
-                VALUES (?, ?, ?, ?, 'enrich_profile', 'http', 'failed', '尚未读取',
-                    'queued')"#,
+                VALUES (?, ?, ?, ?, 'enrich_profile', 'http', 'failed',
+                    json_object('message', '尚未读取'), 'queued')"#,
             )
             .bind(id)
             .bind(candidate)
@@ -755,7 +764,7 @@ pub async fn scheduled(db: &sqlx::SqlitePool, now: i64) -> Result {
         .bind(sent.then_some(format!("schedule{i}@example.edu.cn")))
         .bind(sent.then_some(format!("<schedule{i}@aes>")))
         .bind(sent.then_some(now - 3_600_000))
-        .bind(error)
+        .bind(error.map(|e| Json(Failure::new(e))))
         .bind((*state == "canceled").then_some("移出任务"))
         .bind(now)
         .bind(now)
@@ -841,7 +850,10 @@ pub async fn follow_up(db: &SqlitePool, now: i64) -> Result {
         .bind(sent.then_some(format!("followup{i}@example.edu.cn")))
         .bind(sent.then_some(format!("<followup-sent-{i}@example.com>")))
         .bind(sent.then_some(now))
-        .bind(matches!(*state, "generation_failed" | "failed").then_some("示例失败，请重试"))
+        .bind(
+            matches!(*state, "generation_failed" | "failed")
+                .then(|| Json(Failure::new("示例失败，请重试"))),
+        )
         .bind((*state == "canceled").then_some("导师已回信"))
         .bind(now)
         .bind(now)
@@ -999,7 +1011,10 @@ pub async fn reply_outcomes(db: &SqlitePool) -> Result {
         )
         .bind(id)
         .bind(state)
-        .bind((state == "failed").then_some("模型未按要求标出回信结果，可重试或更换模型"))
+        .bind(
+            (state == "failed")
+                .then(|| Json(Failure::new("模型未按要求标出回信结果，可重试或更换模型"))),
+        )
         .execute(db)
         .await?;
     }
@@ -1025,7 +1040,7 @@ pub async fn fact_checks(db: &SqlitePool) -> Result {
                 {"quote": "获得国家奖学金", "reason": "参考材料中未说明获奖情况。"},
             ]})
         } else {
-            serde_json::json!({"state": "failed", "reason": "模型服务暂时无法连接，请重试。"})
+            serde_json::json!({"state": "failed", "reason": Failure::new("模型服务暂时无法连接，请重试。")})
         };
         sqlx::query("UPDATE email SET fact_check = ? WHERE id = ?")
             .bind(sqlx::types::Json(result))

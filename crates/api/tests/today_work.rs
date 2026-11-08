@@ -97,7 +97,8 @@ async fn today_work_counts_generated_drafts_retained_matches_and_confirmed_sends
         INSERT INTO email (id, mentor_id, kind, state, planned_at, from_address, to_address,
             message_id, sent_at, error, created_at, updated_at, subject, body_md, html, text)
         SELECT id, 1, 'first', state, 0, 'me@example.com', 'wang@example.com',
-            '<' || id || '@aes>', at, 'fixture', 0, 0, '申请', '信', '<p>信</p>', '信'
+            '<' || id || '@aes>', at, json_object('message', 'fixture'), 0, 0, '申请', '信',
+            '<p>信</p>', '信'
         FROM outgoing;"#,
     )
     .execute(&ctx.db)

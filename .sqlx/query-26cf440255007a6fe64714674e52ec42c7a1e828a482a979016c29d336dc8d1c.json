@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, url, kind AS \"kind: PageKind\", work_state AS \"state: PageState\",\n            status AS \"status: PageStatus\", error\n        FROM crawl_page\n        WHERE crawl_id = ?\n        ORDER BY status = 'success', id\n        LIMIT 50\n        OFFSET ?",
+  "query": "SELECT id, url, kind AS \"kind: PageKind\", work_state AS \"state: PageState\",\n            status AS \"status: PageStatus\", error AS \"error: Json<Failure>\"\n        FROM crawl_page\n        WHERE crawl_id = ?\n        ORDER BY status = 'success', id\n        LIMIT 50\n        OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -59,7 +59,7 @@
         }
       },
       {
-        "name": "error",
+        "name": "error: Json<Failure>",
         "ordinal": 5,
         "type_info": "Text",
         "origin": {
@@ -82,5 +82,5 @@
       true
     ]
   },
-  "hash": "e9d1184bcd5d7cc8bbec667b27549b78c6c3b6ef14b9474db8be00d5184a5a30"
+  "hash": "26cf440255007a6fe64714674e52ec42c7a1e828a482a979016c29d336dc8d1c"
 }

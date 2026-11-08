@@ -2,7 +2,9 @@
 //! its login and limits as last uploaded, and its pause there as last synced.
 
 use cloud_api::cloud_send;
+use failure::Failure;
 use sqlx::SqliteConnection;
+use sqlx::types::Json;
 use transport::Sender;
 
 /// What the server is given of a mailbox.
@@ -95,8 +97,10 @@ pub async fn synced(
     on_server: &[cloud_send::Mailbox],
 ) -> Result<bool, sqlx::Error> {
     let mine = sqlx::query!(
-        r#"SELECT DISTINCT m.id, m.address FROM mailbox m JOIN email e ON e.mailbox_id = m.id
-           WHERE e.state = 'cloud' AND e.cloud_account = ?"#,
+        r#"SELECT DISTINCT m.id, m.address, m.cloud_paused_until,
+            m.cloud_pause_reason AS "cloud_pause_reason: Json<Failure>"
+        FROM mailbox m JOIN email e ON e.mailbox_id = m.id
+        WHERE e.state = 'cloud' AND e.cloud_account = ?"#,
         account
     )
     .fetch_all(&mut *conn)
@@ -107,18 +111,23 @@ pub async fn synced(
             .iter()
             .find(|s| s.address == m.address)
             .and_then(|s| s.pause.as_ref());
-        let (until, reason) = (pause.map(|p| p.until), pause.map(|p| p.reason.as_str()));
-        changed |= sqlx::query!(
-            "UPDATE mailbox SET cloud_paused_until = ?1, cloud_pause_reason = ?2
-             WHERE id = ?3 AND (cloud_paused_until IS NOT ?1 OR cloud_pause_reason IS NOT ?2)",
+        let (until, reason) = (pause.map(|p| p.until), pause.map(|p| &p.reason));
+        if (
+            m.cloud_paused_until,
+            m.cloud_pause_reason.as_ref().map(|r| &r.0),
+        ) == (until, reason)
+        {
+            continue;
+        }
+        sqlx::query!(
+            "UPDATE mailbox SET cloud_paused_until = ?, cloud_pause_reason = ? WHERE id = ?",
             until,
-            reason,
+            reason.map(Json),
             m.id,
         )
         .execute(&mut *conn)
-        .await?
-        .rows_affected()
-            > 0;
+        .await?;
+        changed = true;
     }
     Ok(changed)
 }

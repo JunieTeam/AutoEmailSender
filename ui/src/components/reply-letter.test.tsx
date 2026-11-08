@@ -197,7 +197,7 @@ const firstEmail: Email = {
   resendOf: null,
   resent: false,
   tracking: null,
-  error: "发送失败",
+  error: { message: "发送失败", details: null },
 };
 
 const reply: Extract<Message, { kind: "reply" }> = {

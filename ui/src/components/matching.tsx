@@ -5,6 +5,7 @@ import { call, errorMessage } from "@/api/call";
 import type { MentorDetail } from "@/api/types";
 import { AiIcon, ModelAction } from "@/components/ai-writing";
 import { Confirm } from "@/components/batch-bar";
+import { FailureNote } from "@/components/failure";
 import { refreshMentors } from "@/components/mentor";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -177,11 +178,13 @@ export function MatchingProgress() {
               </>
             )}
           </div>
-          {p.pause && p.remaining > 0 && (
-            <p className="mt-1 text-muted-foreground wrap-anywhere">
-              {p.pause.reason ?? "你已暂停分析，正在分析的几位会做完"}
-            </p>
-          )}
+          {p.pause &&
+            p.remaining > 0 &&
+            (p.pause.reason ? (
+              <FailureNote failure={p.pause.reason} className="mt-1 text-muted-foreground" />
+            ) : (
+              <p className="mt-1 text-muted-foreground">你已暂停分析，正在分析的几位会做完</p>
+            ))}
         </>
       )}
       {(query.error ?? action.error) && (

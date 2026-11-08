@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT m.id, m.address, m.cloud_paused_until,\n            m.cloud_pause_reason AS \"cloud_pause_reason: Json<Failure>\"\n        FROM mailbox m JOIN email e ON e.mailbox_id = m.id\n        WHERE e.state = 'cloud' AND e.cloud_account = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "address",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "address"
+          }
+        }
+      },
+      {
+        "name": "cloud_paused_until",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "cloud_paused_until"
+          }
+        }
+      },
+      {
+        "name": "cloud_pause_reason: Json<Failure>",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "cloud_pause_reason"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "e91a8ee536a73f2bfbf33979ab1fe4df28d9c74a8a89d38b0ac8065b188c6626"
+}

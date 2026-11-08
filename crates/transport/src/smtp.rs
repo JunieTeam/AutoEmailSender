@@ -18,9 +18,12 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 
+use failure::Failure;
 use net::Net;
 
 use crate::connect;
+use crate::pause::{Effect, PauseKind, classify};
+use crate::refusal::Refusal;
 use crate::{MailError, Security, Sender, Server};
 
 /// Greets with an address rather than the computer's name, which in Chinese makes servers refuse
@@ -206,15 +209,27 @@ impl std::fmt::Display for SendError {
 }
 
 impl SendError {
-    /// What happened and what to do about it.
-    pub fn message(&self) -> String {
+    /// What happened and what to do about it; the server's words only when no case fits them.
+    pub fn failure(&self) -> Failure {
         match self {
-            SendError::NotSent(MailError::Refused { reply, .. }) => format!(
-                "服务器拒收了这封邮件（服务器回复：{reply}）。请检查导师的邮箱地址是否正确；\
-                回复中提到垃圾邮件时，请检查邮件内容。"
-            ),
-            SendError::NotSent(e) => e.message(),
-            SendError::Unknown(_) => "交给服务器的途中连接中断，无法确定是否已发出".into(),
+            SendError::NotSent(e @ MailError::Refused { reply, .. })
+                if Refusal::of(reply).is_none()
+                    && !matches!(classify(e), Effect::Pause(PauseKind::Throttled(_))) =>
+            {
+                Failure::unrecognized(
+                    "服务器拒收了这封邮件。请检查导师的邮箱地址是否正确。",
+                    reply,
+                )
+            }
+            SendError::NotSent(e) => e.failure(),
+            SendError::Unknown(_) => Failure::new("交给服务器的途中连接中断，无法确定是否已发出"),
+        }
+    }
+
+    /// The server's words, for the log.
+    pub fn diagnostic(&self) -> Option<String> {
+        match self {
+            SendError::NotSent(e) | SendError::Unknown(e) => e.diagnostic(),
         }
     }
 }
