@@ -172,6 +172,8 @@
 - `crates/app/src/background.rs` 管理 Tauri 自带的托盘和首次关窗的一次性说明对话框，`autostart.rs` 管理系统登录项；后台工作仍由核心运行。
 - 开机自启使用官方 `tauri-plugin-autostart`，macOS 使用默认的 LaunchAgent。登录项以应用标识命名，开发版与安装版分开；启动参数 `--autostart` 让主窗口保持隐藏。普通启动、再次启动、恢复备份后的启动和 macOS Dock 图标打开窗口。启动时读取现有登记命令，只在路径或参数改变时重新登记；macOS 的 App Translocation 临时路径不允许登记。Windows 卸载（不是更新）时由 NSIS 钩子 `crates/app/windows/hooks.nsh` 删掉登录项。
 - 界面通过 `ui/src/api/app.ts` 的 `autostartEnabled()` 和 `setAutostart(enabled)` 读写系统状态。插件只在 Rust 层使用，不增加界面的插件权限。
+- 系统通知由 `tauri-plugin-notification` 发出。它在电脑上的 `permission_state()`、`request_permission()` 总返回已允许，所以 macOS 的通知权限由 `crates/app/src/notifications.rs` 直接用 `UNUserNotificationCenter` 读取和请求，界面通过 `ui/src/api/app.ts` 的 `notificationPermission()`、`requestNotificationPermission()`、`openNotificationSettings()` 调用。不是以 `.app` 运行的程序（`pnpm dev`）没有包，取通知中心会抛异常退出，所以按主程序的包路径判断，读不到时返回 `unsupported`。
+- 通知只能用打包的应用测：开发版的插件冒充"终端"发通知，新的 macOS 一律拒收。用开发数据打一个 debug 包：`pnpm exec tauri build --debug --bundles app --config crates/app/tauri.agent.conf.json --config crates/app/tauri.dev.conf.json --config '{"bundle":{"createUpdaterArtifacts":false}}'`，它用 `.dev-data`、信任假邮箱的证书、用开发标识，从 `target/debug/bundle/macos/` 打开。系统按标识记住选择：要从"尚未询问"测起，再加一个 `--config '{"identifier":"<新的标识>"}'`。`.dev-data` 在外接盘上时，新标识的包第一次打开会被系统问能否访问"可移除宗卷"，点允许前应用停在启动；从后台打开时网页可能不显示，切到前面即可。
 - `crates/app/Info.plist` 设置 `NSAppSleepDisabled`，避免 macOS 在窗口隐藏后通过 App Nap 推迟定时发送和收信。
 
 ### Agent 本机通道

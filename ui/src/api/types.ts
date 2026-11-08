@@ -789,6 +789,8 @@ export type NewTodo = { mentorId: number, text: string, dueDate: string | null, 
 
 export type Nothing = Record<symbol, never>;
 
+export type NotificationPermission = "unsupported" | "not_asked" | "allowed" | "denied";
+
 export type NotificationSetting = { on: boolean, };
 
 export type OpenTodo = { mentorId: number, mentorName: string, id: number, text: string, dueDate: string | null, dueTime: string | null, done: boolean, messageId: number | null, createdAt: number, };

@@ -12,6 +12,7 @@ use agent_settings::*;
 use phones::*;
 mod accounts;
 pub mod libraries;
+pub mod notifications;
 use libraries::*;
 pub mod backup;
 use accounts::*;
@@ -305,6 +306,7 @@ macro_rules! operations {
             collect::<ExportMentors>(&cfg, &mut decls);
             collect::<backup::RestoreInfo>(&cfg, &mut decls);
             collect::<updater::UpdateStatus>(&cfg, &mut decls);
+            collect::<notifications::NotificationPermission>(&cfg, &mut decls);
             $($(
                 collect::<$input>(&cfg, &mut decls);
                 collect::<$output>(&cfg, &mut decls);

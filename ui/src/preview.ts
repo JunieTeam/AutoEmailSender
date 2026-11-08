@@ -49,6 +49,10 @@ async function invoke(command: string, args?: InvokeArgs): Promise<unknown> {
       return { kind: "current" };
     case "data_location":
       return import.meta.env.AES_PREVIEW_DATA;
+    // Like the development build, which cannot be asked for want of a bundle.
+    case "notification_permission":
+    case "request_notification_permission":
+      return "unsupported";
     case "plugin:app|version":
       return import.meta.env.AES_PREVIEW_VERSION;
     case "plugin:window|set_theme":

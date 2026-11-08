@@ -2,6 +2,7 @@ import { type MutationState, useMutation, useMutationState, useQuery, useQueryCl
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
+import { notificationPermission, requestNotificationPermission } from "@/api/app";
 import { call, errorMessage } from "@/api/call";
 import type { Mailbox, Material, TestLetter } from "@/api/types";
 import { Attachments } from "@/components/attachments";
@@ -13,6 +14,7 @@ import { ModelDialog, useModelProviders } from "@/components/model-dialog";
 import { TemplateDialog, usePlaceholders } from "@/components/template-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, ExpandChevron } from "@/components/ui/collapsible";
+import { desktop } from "@/host";
 import { letterHtml, letterText } from "@/letter";
 import { uploadMaterial } from "@/material";
 import { findSearch } from "./find";
@@ -55,6 +57,21 @@ export function WelcomePage() {
       await navigate({ to: "/mentors" });
     },
   });
+  const permission = useQuery({
+    queryKey: ["notificationPermission"],
+    queryFn: notificationPermission,
+    enabled: desktop,
+  });
+  const askPermission = useMutation({
+    mutationFn: requestNotificationPermission,
+    onSuccess: (state) => queryClient.setQueryData(["notificationPermission"], state),
+  });
+  const askFirst = permission.data === "not_asked";
+  // macOS asks the user on its own; onboarding ends whatever they choose (docs/design.md#桌面应用).
+  const end = () => {
+    if (askFirst && askPermission.isIdle) askPermission.mutate();
+    finish.mutate();
+  };
   const error =
     profile.error ??
     mailboxes.error ??
@@ -153,16 +170,17 @@ export function WelcomePage() {
             <h1 className="text-2xl font-semibold">开始使用</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               完成下面几项后即可开始联系导师。每一步都可先跳过，之后在设置里修改。
+              {askFirst && "结束引导时会请求系统通知权限，用于提醒回信、待办和完成的工作。"}
             </p>
           </div>
-          <Button variant="quiet" disabled={finish.isPending} onClick={() => finish.mutate()}>
+          <Button variant="quiet" disabled={finish.isPending} onClick={end}>
             跳过引导
           </Button>
         </header>
         <Steps steps={steps} />
         <div className="mt-6 flex items-center justify-end gap-3">
           {finish.error && <p className="text-sm text-destructive">{errorMessage(finish.error)}</p>}
-          <Button disabled={finish.isPending} onClick={() => finish.mutate()}>
+          <Button disabled={finish.isPending} onClick={end}>
             完成
           </Button>
         </div>

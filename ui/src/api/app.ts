@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ExportMentors, RestoreInfo, UpdateStatus } from "@/api/types";
+import type { ExportMentors, NotificationPermission, RestoreInfo, UpdateStatus } from "@/api/types";
 
 // Commands of the desktop app itself (crates/app), beside the core's operations in call.ts.
 
@@ -41,6 +41,21 @@ export function autostartEnabled(): Promise<boolean> {
 /** Updates the system's login item; login launches stay in the background. */
 export function setAutostart(enabled: boolean): Promise<void> {
   return invoke<void>("set_autostart", { enabled });
+}
+
+/** Whether the system shows the app's notifications (docs/design.md#桌面应用). */
+export function notificationPermission(): Promise<NotificationPermission> {
+  return invoke<NotificationPermission>("notification_permission");
+}
+
+/** Asks the system to show the app's notifications; resolves once the user has chosen. */
+export function requestNotificationPermission(): Promise<NotificationPermission> {
+  return invoke<NotificationPermission>("request_notification_permission");
+}
+
+/** Opens the app's page in the system's notification settings, on macOS. */
+export function openNotificationSettings(): Promise<void> {
+  return invoke<void>("open_notification_settings");
 }
 
 /** Saves a backup where the user chooses; false when canceled. */

@@ -6,6 +6,7 @@ mod background;
 mod backup;
 mod browser;
 mod logs;
+mod notifications;
 mod save;
 mod updater;
 
@@ -176,6 +177,10 @@ fn main() -> tauri::Result<()> {
             open_data_location,
             autostart::autostart_enabled,
             autostart::set_autostart,
+            notifications::notification_permission,
+            notifications::request_notification_permission,
+            #[cfg(target_os = "macos")]
+            notifications::open_notification_settings,
             updater::update_status,
             updater::check_update,
             updater::download_update,

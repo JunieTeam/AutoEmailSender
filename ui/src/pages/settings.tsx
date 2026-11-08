@@ -1,9 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useChildMatches, useNavigate } from "@tanstack/react-router";
 import { getVersion } from "@tauri-apps/api/app";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { autostartEnabled, checkUpdate, dataLocation, exportLogs, openDataLocation, setAutostart } from "@/api/app";
+import {
+  autostartEnabled,
+  checkUpdate,
+  dataLocation,
+  exportLogs,
+  notificationPermission,
+  openDataLocation,
+  openNotificationSettings,
+  requestNotificationPermission,
+  setAutostart,
+} from "@/api/app";
 import { call, errorMessage } from "@/api/call";
 import { ModelAction } from "@/components/ai-writing";
 import { refreshReplyOutcomes } from "@/components/mentor";
@@ -235,6 +245,7 @@ function CheckUpdate() {
 export function NotificationsSection() {
   return (
     <Section title="通知">
+      {desktop && <SystemPermission />}
       <Toggle
         get="getReplyNotifications"
         set="setReplyNotifications"
@@ -254,6 +265,51 @@ export function NotificationsSection() {
         description="有截止日期的待办，在截止前一天上午 9:00 弹出系统通知"
       />
     </Section>
+  );
+}
+
+/** macOS lets the app show notifications only once the user allows it (docs/ui.md#后台). */
+function SystemPermission() {
+  const queryClient = useQueryClient();
+  const permission = useQuery({ queryKey: ["notificationPermission"], queryFn: notificationPermission });
+  // Changed in System Settings, it is read again when the window comes back to the front.
+  useEffect(() => {
+    const read = () => void queryClient.invalidateQueries({ queryKey: ["notificationPermission"] });
+    window.addEventListener("focus", read);
+    return () => window.removeEventListener("focus", read);
+  }, [queryClient]);
+  const request = useMutation({
+    mutationFn: requestNotificationPermission,
+    onSuccess: (state) => queryClient.setQueryData(["notificationPermission"], state),
+  });
+  const open = useMutation({ mutationFn: openNotificationSettings });
+  if (permission.error) {
+    return <p className="text-sm text-destructive">{errorMessage(permission.error)}</p>;
+  }
+  if (permission.data !== "not_asked" && permission.data !== "denied") return null;
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-warning">
+        <p className="flex items-start gap-2">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" strokeWidth={1.8} />
+          {permission.data === "not_asked"
+            ? "系统尚未允许 Auto Email Sender 发通知，以下通知都不会弹出"
+            : "系统设置里关闭了 Auto Email Sender 的通知，以下通知都不会弹出"}
+        </p>
+        {permission.data === "denied" ? (
+          <Button variant="quiet" size="sm" disabled={open.isPending} onClick={() => open.mutate()}>
+            打开系统设置
+          </Button>
+        ) : request.isPending ? (
+          <span className="text-muted-foreground">请在屏幕右上角的系统提示里选择</span>
+        ) : (
+          <Button variant="quiet" size="sm" onClick={() => request.mutate()}>
+            允许通知
+          </Button>
+        )}
+      </div>
+      {(request.error ?? open.error) && <p className="text-destructive">{errorMessage(request.error ?? open.error)}</p>}
+    </div>
   );
 }
 
