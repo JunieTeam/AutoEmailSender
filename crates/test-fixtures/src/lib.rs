@@ -2,6 +2,7 @@ pub mod backup;
 pub mod cloud_send;
 pub mod contact;
 pub mod db;
+pub mod feedback;
 pub mod http;
 pub mod mail;
 pub mod provider;

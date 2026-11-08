@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { day } from "@/format";
-import { LegalLink } from "@/legal";
+import { LegalLink, SUPPORT_ADDRESS } from "@/legal";
 
 // Plus and tracking packs are paid for in the browser through the payment service (docs/design.md#Plus).
 
@@ -55,8 +55,7 @@ export function yuan(fen: number): string {
 
 export type Purchase = { tier: Tier } | { pack: Pack; plusUntil: number };
 
-const NOTICE =
-  "不自动续费，到期不会扣款。开通后 7 天内可申请无理由全额退款：首次开通 Plus 的无条件退款；其他 Plus 订单开通后带追踪的邮件超过 30 封、额度包已使用的，不予退款；办理过无理由退款的账号不能再购买。退款和其他问题请发邮件到 support@auto-email-sender.cn，也可加入 QQ 群 952383261 交流。";
+const NOTICE = `不自动续费，到期不会扣款。开通后 7 天内可申请无理由全额退款：首次开通 Plus 的无条件退款；其他 Plus 订单开通后带追踪的邮件超过 30 封、额度包已使用的，不予退款；办理过无理由退款的账号不能再购买。退款和其他问题请发邮件到 ${SUPPORT_ADDRESS}，也可加入 QQ 群 952383261 交流。`;
 
 /** How long to wait on the payment page before saying it has not arrived yet. */
 const WAIT = 15 * 60_000;

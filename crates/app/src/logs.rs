@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 
 use api::CallError;
-use chrono::{DateTime, Local, SecondsFormat, Utc};
+use chrono::{DateTime, Local, Utc};
 use crawl::queue::{CrawlDetail, CrawlState};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
@@ -15,9 +15,7 @@ use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-/// Files are named app.<date>.log, one for each day the app runs; the newest are kept.
-const PREFIX: &str = "app";
-const SUFFIX: &str = "log";
+/// The newest files kept, one for each day the app ran.
 const FILES_KEPT: usize = 14;
 
 /// Sends logs and panics to daily files in `dir`, and in development builds to the terminal too.
@@ -26,8 +24,8 @@ pub fn init(dir: &Path) -> Result<(), Box<dyn Error>> {
     std::fs::create_dir_all(dir)?;
     let file = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
-        .filename_prefix(PREFIX)
-        .filename_suffix(SUFFIX)
+        .filename_prefix(api::logs::PREFIX)
+        .filename_suffix(api::logs::SUFFIX)
         .max_log_files(FILES_KEPT)
         .build(dir)?;
     tracing_subscriber::registry()
@@ -75,7 +73,7 @@ fn content(dir: Option<&Path>, startup: Option<&str>) -> std::io::Result<String>
         out.push_str(&format!("启动失败：{startup}\n"));
     }
     if let Some(dir) = dir {
-        for name in files(dir)? {
+        for name in api::logs::files(dir)? {
             out.push_str(&format!("\n== {name} ==\n"));
             out.push_str(&std::fs::read_to_string(dir.join(name))?);
         }
@@ -92,45 +90,20 @@ fn environment() -> String {
     )
 }
 
-fn files(dir: &Path) -> std::io::Result<Vec<String>> {
-    let mut names = Vec::new();
-    for entry in std::fs::read_dir(dir)? {
-        let name = entry?.file_name().to_string_lossy().into_owned();
-        // Finder and others leave their own files here, such as .DS_Store.
-        if name.starts_with(PREFIX) && name.ends_with(SUFFIX) {
-            names.push(name);
-        }
-    }
-    // Daily file names sort by date.
-    names.sort();
-    Ok(names)
-}
-
 fn crawl_lines(dir: &Path, id: i64, created_at: DateTime<Utc>) -> std::io::Result<String> {
-    let start = created_at.to_rfc3339_opts(SecondsFormat::Micros, true);
-    let mut out = String::new();
     let marker = format!("crawl{{id={id}}}:");
-    for name in files(dir)? {
-        let content = std::fs::read_to_string(dir.join(name))?;
-        let mut kept = false;
-        for line in content.lines() {
-            let mut fields = line.split_whitespace();
-            // An event's later lines, such as a panic's message, have no time of their own.
-            if let Some(time) = fields
-                .next()
-                .filter(|f| DateTime::parse_from_rfc3339(f).is_ok())
-            {
-                // Fixed-width UTC RFC 3339 timestamps sort chronologically as strings.
-                kept = time >= start.as_str()
-                    && fields.nth(1).is_some_and(|span| span.starts_with(&marker));
-            }
-            if kept {
-                out.push_str(line);
-                out.push('\n');
-            }
-        }
-    }
-    Ok(out)
+    Ok(api::logs::events(dir)?
+        .into_iter()
+        .filter(|event| {
+            event.at.is_some_and(|at| at >= created_at)
+                && event
+                    .text
+                    .split_whitespace()
+                    .nth(2)
+                    .is_some_and(|span| span.starts_with(&marker))
+        })
+        .map(|event| event.text)
+        .collect())
 }
 
 fn crawl_content(

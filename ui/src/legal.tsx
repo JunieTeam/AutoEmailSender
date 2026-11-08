@@ -8,6 +8,9 @@ import { openLinks } from "@/components/correspondence";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 
+/** Where users reach the developer by email; the legal texts give it too. */
+export const SUPPORT_ADDRESS = "support@auto-email-sender.cn";
+
 // The terms the core sends the server the version of (crates/account), shown in the app as written.
 
 const LEGAL = {

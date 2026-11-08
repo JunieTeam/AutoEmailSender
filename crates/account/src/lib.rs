@@ -829,6 +829,13 @@ impl Error {
                 ErrorCode::UnknownMailbox => {
                     "云端尚无这个发件邮箱，请重新打开“交给云端发送”再交一次".into()
                 }
+                // The log is cut to fit before it is shown, so this is not expected to happen.
+                ErrorCode::FeedbackTooLarge => {
+                    "反馈的内容超过上限，请取消“附上日志”后重试，或导出日志发到客服邮箱".into()
+                }
+                ErrorCode::FeedbackUnavailable => {
+                    "反馈暂时无法发送，请稍后重试，或导出日志发到客服邮箱".into()
+                }
                 // Logging in to another account gives the computer a new room, so this is not
                 // expected to happen.
                 ErrorCode::RoomTaken => {

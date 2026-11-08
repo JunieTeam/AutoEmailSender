@@ -5,6 +5,7 @@ import { failureOf } from "@/api/call";
 import type { StartupFailure as Failed } from "@/api/types";
 import { FailureNote } from "@/components/failure";
 import { Button } from "@/components/ui/button";
+import { SUPPORT_ADDRESS } from "@/legal";
 
 /**
  * Shown in place of the app when the core could not start (docs/ui.md#页面). Signed-in state cannot
@@ -27,7 +28,7 @@ export function StartupFailure({ failure }: { failure: Failed }) {
           {exported.isError && <FailureNote className="text-sm text-destructive" failure={failureOf(exported.error)} />}
         </div>
         <p className="mt-4 text-sm">
-          仍未解决的，可将日志和问题说明发到 support@auto-email-sender.cn
+          仍未解决的，可将日志和问题说明发到 {SUPPORT_ADDRESS}
           <Button variant="quiet" size="sm" onClick={() => copy.mutate()}>
             {copy.isSuccess ? "已复制" : "复制诊断信息"}
           </Button>

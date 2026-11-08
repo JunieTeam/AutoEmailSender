@@ -198,6 +198,7 @@ dependencies = [
  "model",
  "net",
  "office_oxide",
+ "os_info",
  "profile",
  "qrcode",
  "receive",

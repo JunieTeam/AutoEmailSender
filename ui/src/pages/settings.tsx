@@ -16,6 +16,7 @@ import {
 } from "@/api/app";
 import { call, failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
+import { FeedbackDialog } from "@/components/feedback";
 import { ModelAction } from "@/components/ai-writing";
 import { refreshReplyOutcomes } from "@/components/mentor";
 import { UpdateDialog, useUpdate } from "@/components/update";
@@ -190,8 +191,10 @@ function ComputerSide() {
   const location = useQuery({ queryKey: ["dataLocation"], queryFn: dataLocation, staleTime: Infinity });
   const open = useMutation({ mutationFn: openDataLocation });
   const exported = useMutation({ mutationFn: exportLogs });
+  const [feedback, setFeedback] = useState(false);
   return (
     <>
+      {feedback && <FeedbackDialog onClose={() => setFeedback(false)} />}
       <Row label="数据位置">
         <p className="text-sm break-all text-muted-foreground">{location.data ?? " "}</p>
         <div className="flex items-center gap-3">
@@ -202,12 +205,13 @@ function ComputerSide() {
         </div>
       </Row>
       <Row label="日志">
-        <p className="text-sm text-muted-foreground">
-          日志记下应用做过的事，用来查明问题，不含邮件正文、密码和密钥。遇到问题时导出发给开发者。
-        </p>
+        <p className="text-sm text-muted-foreground">日志记下应用做过的事，用来查明问题，不含邮件正文、密码和密钥</p>
         <div className="flex items-center gap-3">
           <Button variant="quiet" disabled={exported.isPending} onClick={() => exported.mutate()}>
             导出日志
+          </Button>
+          <Button variant="quiet" onClick={() => setFeedback(true)}>
+            反馈问题
           </Button>
           {exported.data && <span className="text-sm text-muted-foreground">已导出</span>}
           {exported.isError && <FailureNote className="text-sm text-destructive" failure={failureOf(exported.error)} />}

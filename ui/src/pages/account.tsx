@@ -20,7 +20,7 @@ import {
 } from "@/components/plus";
 import { Input } from "@/components/ui/input";
 import { day, time } from "@/format";
-import { LegalLink } from "@/legal";
+import { LegalLink, SUPPORT_ADDRESS } from "@/legal";
 import { useNow } from "@/now";
 import { Row, Section } from "./settings";
 
@@ -157,7 +157,7 @@ function PlusRow({ email, outdated }: { email: string; outdated: boolean }) {
         <>
           <TermsNotice />
           <p className="text-sm text-muted-foreground">
-            未到期的 Plus 和未用完的额度包，可发邮件到 support@auto-email-sender.cn 申请按剩余部分退款
+            未到期的 Plus 和未用完的额度包，可发邮件到 {SUPPORT_ADDRESS} 申请按剩余部分退款
           </p>
         </>
       ) : items.error ? (
@@ -416,7 +416,7 @@ function DeleteDialog({ email, onClose }: { email: string; onClose: () => void }
                   kept.length > 0 && (
                     <p>
                       {kept.join("、")}
-                      ，注销后一并放弃，冷静期内照常计时。如需退款，请先发邮件到 support@auto-email-sender.cn。
+                      ，注销后一并放弃，冷静期内照常计时。如需退款，请先发邮件到 {SUPPORT_ADDRESS}。
                     </p>
                   )
                 )}

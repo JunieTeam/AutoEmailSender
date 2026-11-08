@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub mod account;
 pub mod backup;
 pub mod cloud_send;
+pub mod feedback;
 pub mod library;
 pub mod plus;
 pub mod relay;
@@ -34,6 +35,7 @@ pub mod path {
     pub const BACKUP_DISCARD: &str = "/v1/backup/discard";
     /// Followed by `/{id}`.
     pub const BACKUP_OBJECTS: &str = "/v1/backup/objects";
+    pub const FEEDBACK: &str = "/v1/feedback";
 }
 
 #[derive(Serialize, Deserialize)]
@@ -183,6 +185,10 @@ pub enum ErrorCode {
     CloudTooLarge,
     /// The email's mailbox has not been uploaded.
     UnknownMailbox,
+    /// The feedback's body or log is over the limit.
+    FeedbackTooLarge,
+    /// The feedback could not be passed on to the support mailbox.
+    FeedbackUnavailable,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

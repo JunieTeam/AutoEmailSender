@@ -12,6 +12,7 @@ use agent_settings::*;
 use phones::*;
 mod accounts;
 pub mod libraries;
+pub mod logs;
 pub mod notifications;
 use libraries::*;
 pub mod backup;
@@ -22,8 +23,12 @@ pub mod cloud_send;
 use cloud_send::{cloud_send_preview, hand_off_to_cloud, withdraw_from_cloud};
 mod crawling;
 mod fact_check;
+mod feedback;
 mod mail_domains;
 use fact_check::*;
+use feedback::{
+    FeedbackInput, FeedbackPreview, get_feedback_log, preview_feedback, submit_feedback,
+};
 pub use mail_domains::MailDomains;
 pub mod startup;
 mod statistics;
@@ -72,6 +77,9 @@ pub struct Context {
     pub cloud_send: cloud_send::CloudSend,
     /// Where material files are kept.
     pub materials: std::path::PathBuf,
+    /// Where the desktop app keeps its log files.
+    pub logs: std::path::PathBuf,
+    pub feedback: feedback::Feedback,
 }
 
 impl Context {
@@ -92,6 +100,8 @@ impl Context {
             tracking: Default::default(),
             cloud_send: Default::default(),
             materials: data.join("materials"),
+            logs: data.join("logs"),
+            feedback: Default::default(),
             sender: Default::default(),
             receiver: Default::default(),
             matcher: Default::default(),
@@ -243,8 +253,8 @@ impl From<sqlx::Error> for CallError {
     }
 }
 
-/// Operations only the app's window may call: neither an Agent nor a phone decides who may connect
-/// or answers an Agent's request.
+/// Operations only the app's window may call: neither an Agent nor a phone decides who may connect,
+/// answers an Agent's request or sends this computer's logs away.
 pub(crate) fn window_only(op: &str) -> bool {
     matches!(
         op,
@@ -265,6 +275,9 @@ pub(crate) fn window_only(op: &str) -> bool {
             | "cancelPhonePairing"
             | "listPhones"
             | "revokePhone"
+            | "previewFeedback"
+            | "getFeedbackLog"
+            | "submitFeedback"
     )
 }
 
@@ -396,6 +409,10 @@ macro_rules! operations {
             out.push_str(&format!(
                 "export const TAG_COLORS = {:?} as const;\n\n",
                 mentor::tags::COLORS,
+            ));
+            out.push_str(&format!(
+                "export const FEEDBACK_CHARS = {};\n\n",
+                cloud_api::feedback::DESCRIPTION_CHARS,
             ));
             out.push_str("export interface Operations {\n");
             $($(
@@ -1059,6 +1076,14 @@ operations! {
     "界面" {
         /// 把界面自身的错误记进日志。
         "logUiError" [none] => log_ui_error(UiErrorReport) -> ();
+    }
+    "问题反馈" {
+        /// 打开反馈弹窗时读取要附上的日志：大小和起止日期。上次提交没确认成功的，沿用那次的日志。
+        "previewFeedback" [none] => preview_feedback(Nothing) -> FeedbackPreview;
+        /// 读取预览的那份日志的全文，已打码，就是要发出的内容。
+        "getFeedbackLog" [none] => get_feedback_log(Nothing) -> String;
+        /// 把问题说明和可选的日志经官方服务器发到客服邮箱；账号、说明和是否附日志都和上次没确认成功的相同时算重试。
+        "submitFeedback" [none] => submit_feedback(FeedbackInput) -> ();
     }
 }
 

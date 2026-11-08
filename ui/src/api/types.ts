@@ -354,6 +354,18 @@ export type FactCheck = { "state": "completed", findings: Array<Finding>, } | { 
 
 export type Failure = { message: string, details: string | null, };
 
+export type FeedbackInput = { description: string, withLog: boolean, };
+
+export type FeedbackPreview = {
+/**
+ * The bytes of the log as sent.
+ */
+size: number,
+/**
+ * None when nothing has been logged.
+ */
+days: LogDays | null, };
+
 export type Field = "name" | "email" | "university" | "school" | "department" | "title" | "homepage" | "alias" | "research" | "papers" | "sourceUrl" | "tags" | "note";
 
 export type FilledTemplate = { subject: string, bodyMd: string, };
@@ -483,6 +495,8 @@ export type LibraryUpdateChoices = { choices: Array<LibraryUpdate>, };
 export type LibraryUpdateField = "name" | "research" | "sourceUrl" | "title" | "primaryEmail" | "primaryAffiliation";
 
 export type LibraryUpdateGroup = { field: LibraryUpdateField, differences: Array<LibraryUpdate>, };
+
+export type LogDays = { first: number, last: number, };
 
 export type MailAddress = { address: string, };
 
@@ -1219,6 +1233,8 @@ export type WritingRequest = { request: string, };
 
 export const TAG_COLORS = ["#991b1b", "#c2410c", "#985a0c", "#2c7a4f", "#0e7490", "#3f6aa8", "#7e22ce", "#6f6762"] as const;
 
+export const FEEDBACK_CHARS = 2000;
+
 export interface Operations {
   getAccount: { input: Nothing; output: AccountState };
   getPlus: { input: Nothing; output: Plus };
@@ -1459,4 +1475,7 @@ export interface Operations {
   listProviderModels: { input: ModelSource; output: Array<string> };
   testModel: { input: ModelTest; output: null };
   logUiError: { input: UiErrorReport; output: null };
+  previewFeedback: { input: Nothing; output: FeedbackPreview };
+  getFeedbackLog: { input: Nothing; output: string };
+  submitFeedback: { input: FeedbackInput; output: null };
 }
