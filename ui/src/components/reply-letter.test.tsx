@@ -66,6 +66,7 @@ const remote = vi.hoisted(
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   useNavigate: () => () => undefined,
+  useRouterState: () => "",
   useSearch: () => ({}),
 }));
 vi.mock("@/api/call", async (importOriginal) => ({

@@ -134,7 +134,7 @@ export function TasksPage() {
     enabled: search.tab !== "plan",
     refetchInterval: 3000,
   });
-  const list = useKeptScroll<HTMLDivElement>(query.data !== undefined);
+  const scroller = useKeptScroll<HTMLDivElement>(query);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="px-7 pt-6 pb-5 phone:px-4">
@@ -157,7 +157,7 @@ export function TasksPage() {
           <SendingPlan />
         ) : (
           <>
-            <div ref={list} className="min-h-0 flex-1 overflow-y-auto px-4 phone:px-2">
+            <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 phone:px-2">
               {query.error ? (
                 <Notice title="任务列表未能加载" failure={failureOf(query.error)} />
               ) : !query.data ? (
@@ -269,6 +269,7 @@ export function TaskReviewPage() {
     queryFn: () => call("listTaskDrafts", { taskId: id, filter, page }),
     refetchInterval: 3000,
   });
+  const scroller = useKeptScroll<HTMLDivElement>(list, `${filter} ${page}`);
   // Every router navigation, including the sidebar and browser back, waits for the current letter's operations.
   useBlocker({
     enableBeforeUnload: () =>
@@ -538,7 +539,7 @@ export function TaskReviewPage() {
               </Button>
             )}
           </div>
-          <div className="min-h-0 flex-1 space-y-[3px] overflow-y-auto px-2">
+          <div ref={scroller} className="min-h-0 flex-1 space-y-[3px] overflow-y-auto px-2">
             {list.error ? (
               <Notice title="草稿列表未能加载" failure={failureOf(list.error)} />
             ) : !list.data ? (

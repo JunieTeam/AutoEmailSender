@@ -12,6 +12,7 @@ import { dropDrafts } from "@/components/mentor";
 import { day, sentence, time } from "@/format";
 import { Loading } from "@/components/loading";
 import { FailureDetails, FailureNote } from "@/components/failure";
+import { useKeptScroll } from "@/kept-scroll";
 
 const COLUMNS: [PlanColumn, string][] = [
   ["pending", "待处理"],
@@ -61,6 +62,7 @@ function PlanList({ column, label, hidden }: { column: PlanColumn; label: string
     queryFn: () => call("sendingPlan", { column, page }),
     refetchInterval: 3000,
   });
+  const scroller = useKeptScroll<HTMLDivElement>(query, `${column} ${page}`);
   return (
     <section className={`flex min-h-0 min-w-0 flex-col rounded-lg bg-muted/50 ${hidden ? "phone:hidden" : ""}`}>
       <h2 className={`px-3 py-3 font-medium phone:hidden ${column === "pending" ? "text-warning" : ""}`}>
@@ -73,7 +75,7 @@ function PlanList({ column, label, hidden }: { column: PlanColumn; label: string
           <span className="text-xs text-muted-foreground">电脑关机也按时发出</span>
         </div>
       )}
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
+      <div ref={scroller} className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
         {query.data?.emails.map((e) =>
           e.cloud ? (
             <CloudRow key={e.id} email={e} cloud={e.cloud} />

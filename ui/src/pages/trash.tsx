@@ -27,7 +27,7 @@ export function TrashPage() {
     queryFn: () => call("listTrash", { page }),
     placeholderData: keepPreviousData,
   });
-  const list = useKeptScroll<HTMLDivElement>(query.data !== undefined);
+  const scroller = useKeptScroll<HTMLDivElement>(query);
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   useLastPage(query.isSuccess && !query.isFetching ? query.data.total : undefined, page, (n) =>
@@ -62,7 +62,7 @@ export function TrashPage() {
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
-          ref={list}
+          ref={scroller}
           className={`@container min-h-0 flex-1 overflow-y-auto px-4 phone:px-1.5 ${selected.size > 0 ? "pb-20" : ""}`}
         >
           {query.isError ? (

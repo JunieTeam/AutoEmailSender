@@ -20,6 +20,7 @@ import { Notice } from "@/components/notice";
 import { TodoCheck, TodoCheckError, dueLabel, dueTone } from "@/components/todos";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { day, time } from "@/format";
+import { useKeptScroll } from "@/kept-scroll";
 import { useNow } from "@/now";
 import { Segments } from "@/components/ui/segments";
 import { Loading } from "@/components/loading";
@@ -94,6 +95,7 @@ export function ConversationsPage() {
     placeholderData: keepPreviousData,
   });
   const listed = todos ? todoQuery : query;
+  const scroller = useKeptScroll<HTMLDivElement>(listed, `${search.show ?? "all"} ${page}`);
   useLastPage(listed.isSuccess && !listed.isFetching ? listed.data.total : undefined, page, (n) =>
     navigate({ search: (s) => ({ ...s, page: n > 1 ? n : undefined }), replace: true }),
   );
@@ -157,7 +159,7 @@ export function ConversationsPage() {
               </div>
             ))}
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2">
+        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2">
           {todos ? (
             <TodoList query={todoQuery} selected={search.mentor} />
           ) : query.isError ? (

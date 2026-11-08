@@ -33,6 +33,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { day, time } from "@/format";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { desktop } from "@/host";
+import { useKeptScroll } from "@/kept-scroll";
 
 const FILTERS = {
   all: "全部",
@@ -142,6 +143,7 @@ function Crawls() {
     queryFn: () => call("listCrawls", { page: s.page }),
     refetchInterval: 2000,
   });
+  const scroller = useKeptScroll<HTMLDivElement>(records);
   const start = useMutation({
     mutationFn: () => {
       if (!chosen) throw new UiError("请在设置中添加模型");
@@ -155,7 +157,7 @@ function Crawls() {
     },
   });
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8 phone:px-4">
+    <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-6 pb-8 phone:px-4">
       <section className="mb-6 max-w-3xl space-y-3 rounded-lg bg-muted p-4">
         <label className="block font-medium" htmlFor="crawl-urls">
           学院官网或教师名单网址
@@ -450,6 +452,7 @@ function Candidates() {
     queryFn: () => call("listCandidates", q),
     refetchInterval: 3000,
   });
+  const scroller = useKeptScroll<HTMLDivElement>(list);
   const crawls = useQuery({
     queryKey: ["crawlOptions"],
     queryFn: () => call("crawlOptions", {}),
@@ -509,7 +512,7 @@ function Candidates() {
         )}
         <ErrorText error={list.error ?? crawls.error ?? reject.error} />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-24 phone:px-4">
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-6 pb-24 phone:px-4">
         {!s.processed && items.length > 0 && (
           <label className="mb-3 flex min-h-10 items-center gap-2 text-sm">
             <Checkbox

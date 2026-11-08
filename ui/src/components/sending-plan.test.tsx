@@ -11,6 +11,7 @@ vi.mock("@tanstack/react-router", async (original) => ({
   ...(await original<typeof import("@tanstack/react-router")>()),
   useSearch: () => ({}),
   useNavigate: () => () => undefined,
+  useRouterState: () => "",
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }));
 vi.mock("@/api/call", async (importOriginal) => ({

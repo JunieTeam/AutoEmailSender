@@ -16,6 +16,7 @@ import { Collapsible, CollapsibleContent, ExpandChevron } from "@/components/ui/
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { day } from "@/format";
+import { useKeptScroll } from "@/kept-scroll";
 import { Loading } from "@/components/loading";
 
 const LIMIT = 200;
@@ -71,6 +72,7 @@ function Library() {
     queryFn: () => call("listLibraryMentors", { org: s.org, q: s.q, page: s.page }),
     placeholderData: keepPreviousData,
   });
+  const scroller = useKeptScroll<HTMLDivElement>(list);
   const quota = useQuery({ queryKey: ["getLibraryQuota"], queryFn: () => call("getLibraryQuota", {}) });
   // Ticked records, and whether each was taken before and so does not count toward today's number.
   const [selected, setSelected] = useState<ReadonlyMap<string, boolean>>(new Map());
@@ -151,7 +153,7 @@ function Library() {
               <span className="text-sm text-muted-foreground">共 {list.data.total.toLocaleString()} 位</span>
             )}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 phone:px-4">
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 phone:px-4">
             {added && (
               <p
                 role="status"
