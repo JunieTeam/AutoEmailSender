@@ -21,11 +21,16 @@ const PASSING_ON: Duration = Duration::from_secs(25);
 
 /// The feedback the window shows. Only one at a time.
 #[derive(Default)]
-pub struct Feedback(Mutex<Option<Snapshot>>);
+pub struct Feedback {
+    kept: Mutex<Option<Snapshot>>,
+    /// Held while a snapshot is taken, so that of two the window asked for in turn, the one kept
+    /// is the later, which it shows.
+    taking: tokio::sync::Mutex<()>,
+}
 
 impl Feedback {
     fn lock(&self) -> MutexGuard<'_, Option<Snapshot>> {
-        self.0
+        self.kept
             .lock()
             .unwrap_or_else(|_| unreachable!("nothing panics while holding the lock"))
     }
@@ -81,6 +86,7 @@ impl Snapshot {
 /// What the feedback dialog shows as it opens: the log of a try not known to have got through,
 /// or else the log as it is now.
 pub async fn preview_feedback(ctx: &Context, _: Nothing) -> Result<FeedbackPreview, CallError> {
+    let _taking = ctx.feedback.taking.lock().await;
     if let Some(snapshot) = &*ctx.feedback.lock()
         && snapshot.tried.is_some()
     {

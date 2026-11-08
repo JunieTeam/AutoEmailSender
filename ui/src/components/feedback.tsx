@@ -1,4 +1,11 @@
-import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type MutationState,
+  type Query,
+  useMutation,
+  useMutationState,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { exportLogs } from "@/api/app";
 import { call, failureOf } from "@/api/call";
@@ -14,6 +21,15 @@ import { day, fileSize } from "@/format";
 import { SUPPORT_ADDRESS } from "@/legal";
 
 const SUBMIT = ["submitFeedback"];
+
+/** A try to submit, with the account it went with: another may have logged in since. */
+type Sent = { input: FeedbackInput; email: string };
+
+/** Whether a query is of the log the dialog shows, which stays as it was taken while the dialog is
+ * open, as the one sent. */
+export function showsFeedbackLog({ queryKey }: Query) {
+  return queryKey[0] === "previewFeedback" || queryKey[0] === "getFeedbackLog";
+}
 
 // What the user wrote stays until it is sent or the app quits, whether the dialog stays open or not.
 let kept: FeedbackInput = { description: "", withLog: true };
@@ -70,7 +86,7 @@ function Submit({ email }: { email: string }) {
   });
   const submit = useMutation({
     mutationKey: SUBMIT,
-    mutationFn: (i: FeedbackInput) => call("submitFeedback", i),
+    mutationFn: (sent: Sent) => call("submitFeedback", sent.input),
     // Here rather than at the call: the dialog may be closed by the time it answers.
     onSuccess: () => {
       keep({ ...kept, description: "" });
@@ -78,7 +94,10 @@ function Submit({ email }: { email: string }) {
     },
   });
   // The dialog may have been closed and opened again since the try began.
-  const last = useMutationState({ filters: { mutationKey: SUBMIT }, select: (m) => m.state }).at(-1);
+  const last = useMutationState<MutationState<null, Error, Sent>>({
+    filters: { mutationKey: SUBMIT },
+    select: (m) => m.state,
+  }).at(-1);
   const pending = last?.status === "pending";
   return (
     <>
@@ -109,8 +128,8 @@ function Submit({ email }: { email: string }) {
           说明、版本和系统信息发给开发者，日志可选；日志里有出错时服务器和服务商的回复，偶尔可能引用邮件的主题或片段。服务器不保存，反馈以邮件形式保存在开发者的客服邮箱，处理完一年后删除。回复会发到你的账号邮箱{" "}
           {masked(email)}。
         </p>
-        {last?.status === "success" && input.description === "" && (
-          <p className="text-success">已发给开发者，回复会发到你的账号邮箱</p>
+        {last?.status === "success" && last.variables && input.description === "" && (
+          <p className="text-success">已发给开发者，回复会发到 {masked(last.variables.email)}</p>
         )}
         {last?.status === "error" && (
           <div className="flex flex-col gap-2">
@@ -124,7 +143,7 @@ function Submit({ email }: { email: string }) {
         {/* Not while a new snapshot is being taken: the log shown would not be the one sent. */}
         <Button
           disabled={pending || !preview.data || preview.isFetching || input.description.trim() === ""}
-          onClick={() => submit.mutate(input)}
+          onClick={() => submit.mutate({ input, email })}
         >
           {pending ? "正在提交…" : "提交"}
         </Button>

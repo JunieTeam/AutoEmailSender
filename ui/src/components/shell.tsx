@@ -28,6 +28,7 @@ import { refreshTodos } from "@/components/todos";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StartupFailure } from "@/components/startup-failure";
+import { showsFeedbackLog } from "@/components/feedback";
 import { AgentRequests } from "@/components/agent-requests";
 import { LibraryUpdatesDialog } from "@/components/library";
 import { TermsUpdate, useAccount } from "@/components/account";
@@ -137,8 +138,9 @@ export function Shell() {
     });
     return () => void stop.then((unlisten) => unlisten());
   }, [queryClient]);
-  // What an Agent or a phone did may touch anything on screen. An Agent often calls many
-  // operations in a row, so refresh at most twice a second while it works.
+  // What an Agent or a phone did may touch anything on screen, but for the feedback dialog's log,
+  // which stays the one it will send. An Agent often calls many operations in a row, so refresh at
+  // most twice a second while it works.
   useEffect(() => {
     let waiting = false;
     const stop = listen("called-elsewhere", () => {
@@ -146,7 +148,7 @@ export function Shell() {
       waiting = true;
       setTimeout(() => {
         waiting = false;
-        void queryClient.invalidateQueries();
+        void queryClient.invalidateQueries({ predicate: (query) => !showsFeedbackLog(query) });
       }, 500);
     });
     return () => void stop.then((unlisten) => unlisten());

@@ -8,12 +8,12 @@ import { FeedbackDialog } from "./feedback";
 
 const remote = vi.hoisted(() => {
   const submitted: FeedbackInput[] = [];
-  return { submitted, fail: true, previews: 0 };
+  return { submitted, email: "lisi@163.com", fail: true, answered: Promise.resolve(), previews: 0 };
 });
 vi.mock("@/api/call", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/call")>()),
   call: async (op: string, input: FeedbackInput) => {
-    if (op === "getAccount") return { kind: "loggedIn", email: "lisi@163.com", termsOutdated: false, cloudEmails: 0 };
+    if (op === "getAccount") return { kind: "loggedIn", email: remote.email, termsOutdated: false, cloudEmails: 0 };
     if (op === "previewFeedback") {
       remote.previews += 1;
       return { size: 88_064, days: { first: 0, last: 0 } };
@@ -21,6 +21,7 @@ vi.mock("@/api/call", async (importOriginal) => ({
     if (op === "getFeedbackLog") return `log ${remote.previews}`;
     if (op === "submitFeedback") {
       remote.submitted.push(input);
+      await remote.answered;
       if (remote.fail)
         throw { code: "external", message: "反馈次数已达上限，请在 5 小时后再试", details: null } satisfies CallError;
       return null;
@@ -33,6 +34,15 @@ function written() {
   return document.querySelector("textarea")?.value;
 }
 
+async function write(text: string) {
+  const box = document.querySelector("textarea");
+  if (!box) throw new Error("missing description");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(box, text);
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
 function shownLog() {
   return document.querySelector("pre")?.textContent;
 }
@@ -43,9 +53,10 @@ function button(text: string) {
 
 afterEach(() => {
   document.body.innerHTML = "";
+  Object.assign(remote, { email: "lisi@163.com", fail: true, answered: Promise.resolve() });
 });
 
-it("keeps what was written through closing and a failed try, and shows the log the next one sends", async () => {
+function render() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRoot(document.body.appendChild(document.createElement("div")));
   const open = () =>
@@ -56,17 +67,21 @@ it("keeps what was written through closing and a failed try, and shows the log t
         </QueryClientProvider>,
       ),
     );
+  const close = async () => {
+    await act(async () => root.unmount());
+    client.clear();
+  };
+  return { client, root, open, close };
+}
+
+it("keeps what was written through closing and a failed try, and shows the log the next one sends", async () => {
+  const { root, open, close } = render();
   try {
     await open();
     await vi.waitFor(() => expect(document.body.textContent).toContain("运行日志（86 KB）"));
     expect(document.body.textContent).toContain("回复会发到你的账号邮箱 l***@163.com");
     expect(button("提交")?.disabled).toBe(true);
-    const box = document.querySelector("textarea");
-    if (!box) throw new Error("missing description");
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(box, "导出日志时卡住了");
-      box.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    await write("导出日志时卡住了");
     await act(async () => root.render(<></>));
     await open();
     await vi.waitFor(() => expect(written()).toBe("导出日志时卡住了"));
@@ -90,7 +105,27 @@ it("keeps what was written through closing and a failed try, and shows the log t
       { description: "导出日志时卡住了", withLog: true },
     ]);
   } finally {
-    await act(async () => root.unmount());
-    client.clear();
+    await close();
+  }
+});
+
+it("says the reply goes to the account that sent the feedback, though another has logged in since", async () => {
+  const { client, open, close } = render();
+  remote.fail = false;
+  let answer: (() => void) | undefined;
+  remote.answered = new Promise((resolve) => (answer = resolve));
+  try {
+    await open();
+    await vi.waitFor(() => expect(document.body.textContent).toContain("运行日志"));
+    await write("收不到回信");
+    await act(async () => button("提交")?.click());
+    await vi.waitFor(() => expect(button("正在提交…")).toBeDefined());
+    remote.email = "wangwu@qq.com";
+    await act(() => client.invalidateQueries({ queryKey: ["getAccount"] }));
+    await vi.waitFor(() => expect(document.body.textContent).toContain("回复会发到你的账号邮箱 w***@qq.com"));
+    await act(async () => answer?.());
+    await vi.waitFor(() => expect(document.body.textContent).toContain("已发给开发者，回复会发到 l***@163.com"));
+  } finally {
+    await close();
   }
 });
