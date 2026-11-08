@@ -108,6 +108,9 @@ impl Error {
             Self::Database(OpenError::Open(e)) => {
                 Failure::unrecognized("数据库无法打开", &e.to_string())
             }
+            Self::Database(OpenError::Newer) => Failure::new(
+                "这份数据已被更新版本的应用升级，当前版本无法打开。请到 auto-email-sender.cn 下载安装最新版本。",
+            ),
             Self::Database(OpenError::Backup(e)) => {
                 Failure::unrecognized("升级数据库前未能备份，为保护数据未做升级", &e.to_string())
             }

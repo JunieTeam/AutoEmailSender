@@ -57,3 +57,25 @@ async fn failed_upgrade_keeps_a_copy() {
         .unwrap();
     assert_eq!(names, ["甲"]);
 }
+
+#[tokio::test]
+async fn a_database_a_newer_app_upgraded_is_left_alone() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("newer-database");
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("app.db");
+    let db = db::open(&path).await.unwrap();
+    sqlx::query(
+        "INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time)
+         VALUES (99999, 'from a newer app', 1, x'00', 0)",
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    db.close().await;
+
+    assert!(matches!(db::open(&path).await, Err(db::OpenError::Newer)));
+    assert!(!dir.join("backups").exists());
+}

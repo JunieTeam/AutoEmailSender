@@ -83,6 +83,8 @@ pub enum OpenError {
     Open(sqlx::Error),
     /// An existing database could not be copied before upgrading, so it was left as it was.
     Backup(sqlx::Error),
+    /// A newer version of the app upgraded it past what this one knows, so it was left as it was.
+    Newer,
     /// The schema could not be brought up to date. `backup` is the copy taken just before, absent
     /// when the database was new.
     Upgrade {
@@ -96,6 +98,7 @@ impl std::fmt::Display for OpenError {
         match self {
             OpenError::Open(e) => write!(f, "open database: {e}"),
             OpenError::Backup(e) => write!(f, "back up database before upgrading: {e}"),
+            OpenError::Newer => write!(f, "database upgraded by a newer version of the app"),
             OpenError::Upgrade { error, backup } => {
                 write!(f, "upgrade database: {error}")?;
                 match backup {
@@ -126,7 +129,12 @@ pub async fn open(path: &Path) -> Result<SqlitePool, OpenError> {
     let mut conn = SqliteConnection::connect_with(&options)
         .await
         .map_err(OpenError::Open)?;
-    let upgrading = upgrading(&mut conn).await.map_err(OpenError::Open)?;
+    let applied = applied(&mut conn).await.map_err(OpenError::Open)?;
+    let known = |version: &i64| MIGRATOR.iter().any(|m| m.version == *version);
+    if applied.as_ref().is_some_and(|a| !a.iter().all(known)) {
+        return Err(OpenError::Newer);
+    }
+    let upgrading = applied.is_some_and(|a| MIGRATOR.iter().any(|m| !a.contains(&m.version)));
     let backup = if upgrading {
         let backup = back_up(&mut conn, &path.with_file_name("backups"))
             .await
@@ -178,20 +186,20 @@ pub async fn durable(db: &SqlitePool) -> Result<SqliteConnection, sqlx::Error> {
     Ok(conn)
 }
 
-/// Whether this is an existing database with migrations still to run.
-async fn upgrading(conn: &mut SqliteConnection) -> Result<bool, sqlx::Error> {
+/// The migrations an existing database has had; None for a new one.
+async fn applied(conn: &mut SqliteConnection) -> Result<Option<Vec<i64>>, sqlx::Error> {
     let existing: bool = sqlx::query_scalar(
         "SELECT count(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations'",
     )
     .fetch_one(&mut *conn)
     .await?;
     if !existing {
-        return Ok(false);
+        return Ok(None);
     }
-    let applied: Vec<i64> = sqlx::query_scalar("SELECT version FROM _sqlx_migrations")
+    let applied = sqlx::query_scalar("SELECT version FROM _sqlx_migrations")
         .fetch_all(conn)
         .await?;
-    Ok(MIGRATOR.iter().any(|m| !applied.contains(&m.version)))
+    Ok(Some(applied))
 }
 
 /// Copies the database into `dir` and drops the oldest copies beyond `BACKUPS_KEPT`.
