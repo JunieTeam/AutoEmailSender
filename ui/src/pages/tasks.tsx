@@ -28,6 +28,7 @@ import { Pager, pageParam } from "@/components/mentor-table";
 import { Notice } from "@/components/notice";
 import { usePlaceholders } from "@/components/template-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { useKeptScroll } from "@/kept-scroll";
 import { StatusLabel, type Tone } from "@/components/ui/status-dot";
 import { Segments } from "@/components/ui/segments";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -133,6 +134,7 @@ export function TasksPage() {
     enabled: search.tab !== "plan",
     refetchInterval: 3000,
   });
+  const list = useKeptScroll<HTMLDivElement>(query.data !== undefined);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="px-7 pt-6 pb-5 phone:px-4">
@@ -155,7 +157,7 @@ export function TasksPage() {
           <SendingPlan />
         ) : (
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 phone:px-2">
+            <div ref={list} className="min-h-0 flex-1 overflow-y-auto px-4 phone:px-2">
               {query.error ? (
                 <Notice title="任务列表未能加载" failure={failureOf(query.error)} />
               ) : !query.data ? (

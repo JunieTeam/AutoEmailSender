@@ -9,6 +9,7 @@ import { MentorTable, Pager, pageParam, useLastPage } from "@/components/mentor-
 import { Loading } from "@/components/loading";
 import { Notice } from "@/components/notice";
 import { Button } from "@/components/ui/button";
+import { useKeptScroll } from "@/kept-scroll";
 
 export function trashSearch(search: Record<string, unknown>): { page?: number } {
   return { page: pageParam(search.page) };
@@ -26,6 +27,7 @@ export function TrashPage() {
     queryFn: () => call("listTrash", { page }),
     placeholderData: keepPreviousData,
   });
+  const list = useKeptScroll<HTMLDivElement>(query.data !== undefined);
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   useLastPage(query.isSuccess && !query.isFetching ? query.data.total : undefined, page, (n) =>
@@ -60,6 +62,7 @@ export function TrashPage() {
 
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
+          ref={list}
           className={`@container min-h-0 flex-1 overflow-y-auto px-4 phone:px-1.5 ${selected.size > 0 ? "pb-20" : ""}`}
         >
           {query.isError ? (

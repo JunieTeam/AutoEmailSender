@@ -27,6 +27,7 @@ import { SearchBox } from "@/components/search-box";
 import { Segments } from "@/components/ui/segments";
 import { type FilterSearch, filterOf, filterSearch, filtered, MentorFilters } from "@/components/mentor-filters";
 import { desktop } from "@/host";
+import { useKeptScroll } from "@/kept-scroll";
 
 const STATUSES: [ContactStatus | undefined, string][] = [
   [undefined, "全部"],
@@ -87,6 +88,7 @@ export function MentorsPage() {
     queryFn: () => call("listMentors", { ...listFilter(search), page }),
     placeholderData: keepPreviousData,
   });
+  const list = useKeptScroll<HTMLDivElement>(query.data !== undefined);
   const total = query.data?.total ?? 0;
   const queryClient = useQueryClient();
   const [task, setTask] = useState<{ ids: number[]; kind: Kind } | null>(null);
@@ -281,6 +283,7 @@ export function MentorsPage() {
       <MatchingProgress />
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
+          ref={list}
           className={`@container min-h-0 flex-1 overflow-y-auto px-4 phone:px-1.5 ${selected.size > 0 ? "pb-20" : ""}`}
         >
           {query.isError ? (
