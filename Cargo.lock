@@ -72,6 +72,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "static_vcruntime",
  "tempfile",
  "test-fixtures",
  "tokio",
