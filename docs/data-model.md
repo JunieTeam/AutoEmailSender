@@ -41,6 +41,7 @@
 - 状态：用 Rust 枚举表示，每种状态带着它要的数据，比如"已发出"一定有发出时间和 Message-ID；表里用约束保证状态列和这些字段一致。
 - 能推出来的不存：任务进度、Token 合计都在查询时算。唯一的例外是[联系汇总](#联系状态)。
 - JSON 只用在只整体显示、不按其中的值查询的小列表上（近期论文、定时的日期、收件人）。
+- 失败原因：给用户看的失败和暂停原因存成 `Failure` 的 JSON：`message` 是说明，认不出的外部情况另有 `details`（原话，见[出错时的说明](design.md#桌面应用)）。说明和详细信息是同一个值，一起写入、替换和清除；只在 Rust 里整体读写，SQL 里不拼接、不比较其中的内容。用在 `email.error`（生成失败、发送失败、可能已发出、退信）、`email.fact_check` 里的核对失败、`message_mentor.bounce_reason`、`mailbox` 的 `pause_reason`、`receive_error` 和 `cloud_pause_reason`、`mentor.match_error`、`profile` 的 `match_pause_reason`、`reply_processing_pause_reason` 和 `cloud_backup_error`、`task.generation_pause_reason`、`reply_processing.error`、`crawl.error`、`crawl_page.error`、`candidate.enrich_error`。`cancel_reason`、`match_reason` 不是失败原因；导师库和邮件追踪的同步错误（`account` 的 `library_error`、`tracking_error`）来自官方协议和已归类的网络错误，没有原话，都照旧存文字。
 - 邮箱地址按用户填的存（全角的字母、数字和 `＠．` 先转成半角），比较时不区分大小写。
 - 大字段（邮件正文、页面文字、材料文字）列表查询不取，用到时再取。
 - 文件：材料存在数据目录的 `materials` 里，文件名用材料编号；数据库只存元数据和提取的文字。添加时先写临时文件，改名后才提交数据库记录；删除时在删记录的事务里先删文件再提交，文件删不掉就不删记录、报错，免得用户以为删掉了的材料还留在电脑上。中途退出可能留下一个用不到的文件（添加时）或没有文件的材料（删除时），后者再删一次即可。
