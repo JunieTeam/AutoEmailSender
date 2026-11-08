@@ -67,7 +67,7 @@ fn run(executable: &Path, action: &str) -> Result<bool, CallError> {
                 "无法更新当前用户的 PATH。请检查用户环境变量的权限后重试。",
                 &words,
             ),
-            words,
+            failure::diagnostic(&words),
         ));
     }
     serde_json::from_slice(&output.stdout).map_err(CallError::internal)

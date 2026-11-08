@@ -90,7 +90,10 @@ pub async fn fact_check_email(
                 )
             },
         )
-        .await?;
+        .await
+        .map_err(|e| {
+            CallError::from(e).logging(format!("email {id}, model config {}", chosen.id))
+        })?;
         Ok(findings.map(|findings| FactCheck::Completed { findings }))
     }
     .await;

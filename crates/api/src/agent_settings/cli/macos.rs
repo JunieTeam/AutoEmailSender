@@ -150,7 +150,7 @@ fn authorize(executable: &Path, link: &Path, install: bool) -> Result<(), CallEr
             "管理员操作未完成。请检查 /usr/local/bin 的权限后重试。",
             &message,
         ),
-        message,
+        failure::diagnostic(&message),
     ))
 }
 
