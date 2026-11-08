@@ -40,6 +40,25 @@ async fn a_saved_secret_is_only_for_its_servers(db: SqlitePool) {
     assert_eq!(mailbox::secret(&db, id, &moved).await.unwrap(), None);
 }
 
+#[test]
+fn a_pasted_code_is_cleaned_and_an_own_password_kept() {
+    let qq = form("me@qq.com").check().unwrap();
+    assert_eq!(
+        qq.secret("ａｂｃｄ efgh\u{200b}\n").unwrap().as_deref(),
+        Some("abcdefgh")
+    );
+    assert!(qq.secret("授权码：abcdefgh").is_err());
+    assert_eq!(qq.secret(" \n").unwrap(), None);
+    // 阿里邮箱 may log in with the mailbox's own password, spaces and all.
+    let mut aliyun = form("me@example.cn");
+    aliyun.provider = "aliyun".into();
+    let aliyun = aliyun.check().unwrap();
+    assert_eq!(
+        aliyun.secret(" 我的 密码 ").unwrap().as_deref(),
+        Some("我的 密码")
+    );
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn an_address_is_added_once_in_any_letter_case(db: SqlitePool) {
     let first = form("Me@qq.com").check().unwrap();

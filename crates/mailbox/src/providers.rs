@@ -38,6 +38,10 @@ pub enum Setup {
         imap: Server,
         /// What the provider calls that password.
         secret: &'static str,
+        /// The provider makes that password, so it is taken as pasted (`net::pasted_key`); else
+        /// it may be the mailbox's own, which is taken as typed.
+        #[serde(skip)]
+        generated: bool,
         /// How to turn on SMTP and IMAP and get the password.
         steps: &'static [&'static str],
         /// Where the steps start.
@@ -87,6 +91,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.qq.com", 465),
             imap: tls("imap.qq.com", 993),
             secret: "授权码",
+            generated: true,
             steps: &[
                 "在电脑上登录 QQ 邮箱网页版，打开“设置”里的“账号与安全”",
                 "在“安全设置”里开启“POP3/IMAP/SMTP/Exchange/CardDAV 服务”，并勾选“SMTP \
@@ -105,6 +110,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.163.com", 465),
             imap: tls("imap.163.com", 993),
             secret: "授权码",
+            generated: true,
             steps: NETEASE_STEPS,
             url: "https://mail.163.com",
         },
@@ -118,6 +124,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.126.com", 465),
             imap: tls("imap.126.com", 993),
             secret: "授权码",
+            generated: true,
             steps: NETEASE_STEPS,
             url: "https://mail.126.com",
         },
@@ -131,6 +138,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.yeah.net", 465),
             imap: tls("imap.yeah.net", 993),
             secret: "授权码",
+            generated: true,
             steps: NETEASE_STEPS,
             url: "https://mail.yeah.net",
         },
@@ -144,6 +152,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.sina.com", 465),
             imap: tls("imap.sina.com", 993),
             secret: "授权码",
+            generated: true,
             steps: GENERIC_STEPS,
             url: "https://mail.sina.com.cn",
         },
@@ -157,6 +166,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.sohu.com", 465),
             imap: tls("imap.sohu.com", 993),
             secret: "授权码",
+            generated: true,
             steps: GENERIC_STEPS,
             url: "https://mail.sohu.com",
         },
@@ -170,6 +180,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.139.com", 465),
             imap: tls("imap.139.com", 993),
             secret: "授权码",
+            generated: true,
             steps: GENERIC_STEPS,
             url: "https://mail.10086.cn",
         },
@@ -183,6 +194,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.gmail.com", 465),
             imap: tls("imap.gmail.com", 993),
             secret: "应用专用密码",
+            generated: true,
             steps: &[
                 "在 Google 账号的“安全性”里开启两步验证",
                 "打开“应用专用密码”页面，填个名称（比如 Auto Email Sender）后点“创建”",
@@ -204,6 +216,7 @@ pub static PROVIDERS: &[Provider] = &[
             },
             imap: tls("imap.mail.me.com", 993),
             secret: "App 专用密码",
+            generated: true,
             steps: &[
                 "登录 Apple 账户网站，进入“登录与安全”",
                 "选“App 专用密码”，生成一个新密码",
@@ -221,6 +234,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.mail.yahoo.com", 465),
             imap: tls("imap.mail.yahoo.com", 993),
             secret: "应用密码",
+            generated: true,
             steps: &[
                 "登录 Yahoo 账户，打开“账户安全”",
                 "点“生成应用密码”，填个名称后生成",
@@ -238,6 +252,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.aol.com", 465),
             imap: tls("imap.aol.com", 993),
             secret: "应用密码",
+            generated: true,
             steps: &[
                 "登录 AOL 账户，打开“账户安全”",
                 "点“生成应用密码”，填个名称后生成",
@@ -255,6 +270,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.zoho.com", 465),
             imap: tls("imap.zoho.com", 993),
             secret: "应用专用密码",
+            generated: true,
             steps: &[
                 "在 Zoho Mail 的设置里开启 IMAP 访问",
                 "在 Zoho 账户的安全设置里生成一个应用专用密码",
@@ -272,6 +288,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.exmail.qq.com", 465),
             imap: tls("imap.exmail.qq.com", 993),
             secret: "客户端专用密码",
+            generated: false,
             steps: &[
                 "登录腾讯企业邮网页版，在“设置”里开启 IMAP/SMTP 服务",
                 "开启了安全登录（绑定微信）的，在设置里生成客户端专用密码，填到这里；未开启的填邮箱密码",
@@ -288,6 +305,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.qiye.163.com", 465),
             imap: tls("imap.qiye.163.com", 993),
             secret: "客户端授权密码",
+            generated: true,
             steps: &[
                 "登录网易企业邮网页版，在“设置”里开启 IMAP/SMTP 服务",
                 "按提示生成客户端授权密码，填到这里",
@@ -304,6 +322,7 @@ pub static PROVIDERS: &[Provider] = &[
             smtp: tls("smtp.qiye.aliyun.com", 465),
             imap: tls("imap.qiye.aliyun.com", 993),
             secret: "密码",
+            generated: false,
             steps: &[
                 "登录阿里邮箱网页版，在“设置”里开启 IMAP/SMTP 服务",
                 "开启了三方客户端安全密码的，生成一个填到这里；未开启的填邮箱密码",

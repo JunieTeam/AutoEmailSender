@@ -163,11 +163,15 @@ impl ModelForm {
     }
 }
 
-/// An API key as the user typed it, trimmed; None when left blank.
-pub fn checked_key(api_key: &str) -> Option<String> {
-    Some(api_key.trim())
-        .filter(|k| !k.is_empty())
-        .map(str::to_owned)
+/// An API key as pasted (`net::pasted_key`); None when left blank. A line break inside it would
+/// fail every request as if the network were down, and the provider would only call a key with
+/// other characters wrong.
+pub fn checked_key(api_key: &str) -> Result<Option<String>, &'static str> {
+    let key = net::pasted_key(api_key);
+    if !key.is_ascii() {
+        return Err("API Key 里有中文或其他多余的字符。请重新复制，只粘贴 Key 本身。");
+    }
+    Ok((!key.is_empty()).then_some(key))
 }
 
 /// Every model configuration, oldest first.

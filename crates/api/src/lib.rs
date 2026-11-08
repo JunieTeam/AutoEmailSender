@@ -1585,7 +1585,9 @@ async fn set_rotation(ctx: &Context, rotation: profile::Rotation) -> Result<(), 
 
 async fn add_mailbox(ctx: &Context, input: NewMailbox) -> Result<MailboxId, CallError> {
     let fields = input.form.check().map_err(CallError::invalid)?;
-    let secret = mailbox::checked_secret(&input.secret)
+    let secret = fields
+        .secret(&input.secret)
+        .map_err(|e| CallError::invalid(e.into()))?
         .ok_or_else(|| CallError::invalid(NO_SECRET.into()))?;
     let id = mailbox::create(&ctx.db, &fields, &secret, now()).await?;
     // Emails may be waiting for a mailbox.
@@ -1659,7 +1661,10 @@ async fn entered_or_saved_secret(
     id: Option<i64>,
     fields: &mailbox::MailboxFields,
 ) -> Result<String, CallError> {
-    if let Some(secret) = mailbox::checked_secret(secret) {
+    if let Some(secret) = fields
+        .secret(secret)
+        .map_err(|e| CallError::invalid(e.into()))?
+    {
         return Ok(secret);
     }
     let saved = match id {
@@ -1918,7 +1923,7 @@ async fn entered_or_saved_key(
     id: Option<i64>,
     source: &model::Source,
 ) -> Result<String, CallError> {
-    if let Some(api_key) = model::checked_key(api_key) {
+    if let Some(api_key) = model::checked_key(api_key).map_err(|e| CallError::invalid(e.into()))? {
         return Ok(api_key);
     }
     let saved = match id {

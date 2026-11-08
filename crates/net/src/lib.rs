@@ -211,6 +211,27 @@ pub fn retry_after(response: &reqwest::Response) -> Option<Duration> {
     Some(wait.min(Duration::from_secs(24 * 60 * 60)))
 }
 
+/// A key a service made for apps to log in with, such as an API key or a mail authorization code,
+/// as pasted: without the spaces some services show between its groups, and the invisible
+/// characters and full-width forms that copying from a web page or a chat brings along. Such keys
+/// are ASCII, so anything else left means more than the key was copied.
+pub fn pasted_key(pasted: &str) -> String {
+    pasted
+        .chars()
+        .filter(|&c| {
+            !c.is_whitespace()
+                && !matches!(
+                    c,
+                    '\u{ad}' | '\u{200b}'..='\u{200d}' | '\u{2060}' | '\u{feff}'
+                )
+        })
+        .map(|c| match c {
+            '\u{ff01}'..='\u{ff5e}' => (c as u32 - 0xfee0) as u8 as char,
+            _ => c,
+        })
+        .collect()
+}
+
 /// Whether the server's certificate was the problem rather than the handshake, however deep the
 /// libraries wrapped the TLS error.
 pub fn untrusted(e: &(dyn Error + 'static)) -> bool {
@@ -269,5 +290,15 @@ mod tests {
         }
         // The app connects to mail bridges on the computer itself.
         assert!(Net::new(Vec::new()).unwrap().reaches(addr("127.0.0.1")));
+    }
+
+    #[test]
+    fn a_pasted_key_loses_what_copying_brought_along() {
+        assert_eq!(
+            pasted_key(" abcd efgh\u{a0}ijkl\nmnop "),
+            "abcdefghijklmnop"
+        );
+        assert_eq!(pasted_key("ＡＢｃ１\u{200b}－x\u{3000}"), "ABc1-x");
+        assert_eq!(pasted_key("授权码：abc"), "授权码:abc");
     }
 }

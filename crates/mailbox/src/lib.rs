@@ -113,11 +113,33 @@ fn checked_server(server: Server, role: &str) -> Result<Server, String> {
     })
 }
 
-/// A password or authorization code as the user typed it, trimmed; None when left blank.
-pub fn checked_secret(secret: &str) -> Option<String> {
-    Some(secret.trim())
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
+impl MailboxFields {
+    /// The password or authorization code typed in; None when left blank. One the provider made
+    /// is taken as pasted (`net::pasted_key`); a mailbox's own password only loses the spaces
+    /// around it.
+    pub fn secret(&self, typed: &str) -> Result<Option<String>, &'static str> {
+        let generated = providers::find(&self.provider).is_some_and(|p| {
+            matches!(
+                p.setup,
+                providers::Setup::Password {
+                    generated: true,
+                    ..
+                }
+            )
+        });
+        let secret = if generated {
+            let key = net::pasted_key(typed);
+            if !key.is_ascii() {
+                return Err(
+                    "授权码或密码里有中文或其他多余的字符。请重新复制，只粘贴生成的那一串。",
+                );
+            }
+            key
+        } else {
+            typed.trim().to_owned()
+        };
+        Ok((!secret.is_empty()).then_some(secret))
+    }
 }
 
 /// What logging in to a mailbox takes: sending, and receiving with the same address and secret.

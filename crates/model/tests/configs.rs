@@ -15,6 +15,16 @@ fn form(provider: &str, base_url: &str) -> ModelForm {
     }
 }
 
+#[test]
+fn a_key_pasted_with_more_than_the_key_is_refused() {
+    assert_eq!(
+        model::checked_key(" sk-ab\ncd ").unwrap().as_deref(),
+        Some("sk-abcd")
+    );
+    assert!(model::checked_key("密钥 sk-abcd").is_err());
+    assert_eq!(model::checked_key(" ").unwrap(), None);
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_saved_key_is_only_for_where_it_was_saved(db: SqlitePool) {
     let fields = form("deepseek", "").check().unwrap();
