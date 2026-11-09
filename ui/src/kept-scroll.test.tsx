@@ -7,7 +7,7 @@ import {
   createRouter,
   useRouterState,
 } from "@tanstack/react-router";
-import { StrictMode, act } from "react";
+import { Activity, StrictMode, act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it } from "vitest";
 import { useKeptScroll } from "./kept-scroll";
@@ -20,10 +20,20 @@ function List() {
   const scroller = useKeptScroll<HTMLDivElement>(rows, search.get("page") ?? "1");
   return <div data-testid="list" ref={scroller} />;
 }
+// A tab kept while another is on show, as `Tabs` keeps them.
+function Kept() {
+  const hidden = new URLSearchParams(useRouterState({ select: (s) => s.location.searchStr })).has("other");
+  return (
+    <Activity mode={hidden ? "hidden" : "visible"}>
+      <List />
+    </Activity>
+  );
+}
 const root = createRootRoute();
 const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/", component: List }),
   createRoute({ getParentRoute: () => root, path: "/mentor", component: () => <p>导师</p> }),
+  createRoute({ getParentRoute: () => root, path: "/tabs", component: Kept }),
 ]);
 
 let unmount = () => {};
@@ -97,4 +107,15 @@ it("returns to where a list was left when the sidebar goes back to its page", as
   await go((h) => h.push("/mentor"));
   await go((h) => h.push("/"));
   expect(list()?.scrollTop).toBe(0);
+});
+
+it("puts back where a list in a kept tab was, which the browser forgets while it is hidden", async () => {
+  const { go, list } = await app();
+  await go((h) => h.push("/tabs"));
+  list()?.scrollTo({ top: 450 });
+  await go((h) => h.push("/tabs?other"));
+  // As a browser does with what display: none hides.
+  list()?.scrollTo({ top: 0 });
+  await go((h) => h.push("/tabs"));
+  expect(list()?.scrollTop).toBe(450);
 });

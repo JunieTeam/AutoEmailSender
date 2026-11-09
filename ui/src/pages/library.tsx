@@ -68,11 +68,11 @@ function Library() {
   const client = useQueryClient();
   const orgs = useQuery({ queryKey: ["getLibraryOrgs"], queryFn: () => call("getLibraryOrgs", {}) });
   const list = useQuery({
-    queryKey: ["listLibraryMentors", s.org, s.q, s.page],
-    queryFn: () => call("listLibraryMentors", { org: s.org, q: s.q, page: s.page }),
+    queryKey: ["listLibraryMentors", s.org, s.q, s.libraryPage],
+    queryFn: () => call("listLibraryMentors", { org: s.org, q: s.q, page: s.libraryPage }),
     placeholderData: keepPreviousData,
   });
-  const scroller = useKeptScroll<HTMLDivElement>(list);
+  const scroller = useKeptScroll<HTMLDivElement>(list, `${s.org} ${s.q} ${s.libraryPage}`);
   const quota = useQuery({ queryKey: ["getLibraryQuota"], queryFn: () => call("getLibraryQuota", {}) });
   // Ticked records, and whether each was taken before and so does not count toward today's number.
   const [selected, setSelected] = useState<ReadonlyMap<string, boolean>>(new Map());
@@ -96,8 +96,8 @@ function Library() {
     onSuccess: (r) => (r.added ? done(r.added) : setChoosing(r)),
     onSettled: () => refreshLibrary(client),
   });
-  useLastPage(list.isSuccess && !list.isFetching ? list.data.total : undefined, s.page, (page) =>
-    navigate({ search: (old) => ({ ...old, page }), replace: true }),
+  useLastPage(list.isSuccess && !list.isFetching ? list.data.total : undefined, s.libraryPage, (page) =>
+    navigate({ search: (old) => ({ ...old, libraryPage: page }), replace: true }),
   );
   const byId = useMemo(() => new Map(orgs.data?.orgs.map((o) => [o.id, o])), [orgs.data]);
   const path = s.org ? pathOf(s.org, byId) : [];
@@ -119,7 +119,7 @@ function Library() {
   const choose = (org: string | undefined) => {
     setPicking(false);
     setExpanded(null);
-    void navigate({ search: (old) => ({ ...old, org, page: 1 }) });
+    void navigate({ search: (old) => ({ ...old, org, libraryPage: 1 }) });
   };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -146,7 +146,7 @@ function Library() {
               value={s.q ?? ""}
               onChange={(q) => {
                 setExpanded(null);
-                void navigate({ search: (old) => ({ ...old, q: q || undefined, page: 1 }) });
+                void navigate({ search: (old) => ({ ...old, q: q || undefined, libraryPage: 1 }) });
               }}
             />
             {list.data && (
@@ -207,11 +207,11 @@ function Library() {
             {list.data && (
               <div className="mt-3 flex justify-end empty:hidden">
                 <Pager
-                  page={s.page}
+                  page={s.libraryPage}
                   total={list.data.total}
                   onPage={(page) => {
                     setExpanded(null);
-                    void navigate({ search: (old) => ({ ...old, page }) });
+                    void navigate({ search: (old) => ({ ...old, libraryPage: page }) });
                   }}
                 />
               </div>

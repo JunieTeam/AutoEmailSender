@@ -35,6 +35,7 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@
 import { desktop } from "@/host";
 import { useKeptScroll } from "@/kept-scroll";
 import { SearchBox } from "@/components/search-box";
+import { Tabs } from "@/components/tabs";
 
 const FILTERS = {
   all: "全部",
@@ -76,7 +77,10 @@ export function findSearch(s: Record<string, unknown>) {
     filter,
     crawl: Number(s.crawl) || undefined,
     processed: s.processed === true,
+    /** Each tab has its own page, kept while another tab is on show. */
     page: Math.max(1, Number(s.page) || 1),
+    recordPage: Math.max(1, Number(s.recordPage) || 1),
+    libraryPage: Math.max(1, Number(s.libraryPage) || 1),
     detail: Number(s.detail) || undefined,
     org: typeof s.org === "string" && s.org !== "" ? s.org : undefined,
     q: typeof s.q === "string" && s.q !== "" ? s.q : undefined,
@@ -110,12 +114,12 @@ export function FindPage() {
           className="my-4"
           value={search.tab}
           options={TABS.map((tab) => [tab, TAB_NAMES[tab]] as const)}
-          onChange={(tab) => void navigate({ search: (s) => ({ ...s, tab, page: 1 }) })}
+          onChange={(tab) => void navigate({ search: (s) => ({ ...s, tab }) })}
         />
       </header>
-      <div key={search.tab} className="flex min-h-0 flex-1 animate-enter flex-col">
-        {search.tab === "crawl" ? <Crawls /> : search.tab === "library" ? <LibraryTab /> : <Candidates />}
-      </div>
+      <Tabs shown={search.tab}>
+        {(tab) => (tab === "crawl" ? <Crawls /> : tab === "library" ? <LibraryTab /> : <Candidates />)}
+      </Tabs>
     </>
   );
 }
@@ -142,11 +146,12 @@ function Crawls() {
       ? ((chosen.inputPrice ?? 0) * 4000 + (chosen.outputPrice ?? 0) * 1000) / 1_000_000
       : null;
   const records = useQuery({
-    queryKey: ["listCrawls", s.page],
-    queryFn: () => call("listCrawls", { page: s.page }),
+    queryKey: ["listCrawls", s.recordPage],
+    queryFn: () => call("listCrawls", { page: s.recordPage }),
     refetchInterval: 2000,
   });
-  const scroller = useKeptScroll<HTMLDivElement>(records);
+  // The address also holds the other tabs' state.
+  const scroller = useKeptScroll<HTMLDivElement>(records, String(s.recordPage));
   const start = useMutation({
     mutationFn: () => {
       if (!chosen) throw new UiError("请在设置中添加模型");
@@ -156,7 +161,7 @@ function Crawls() {
     onSuccess: (r) => {
       setUrls("");
       refreshCrawls(client);
-      void navigate({ search: (old) => ({ ...old, page: 1, detail: r.id }) });
+      void navigate({ search: (old) => ({ ...old, recordPage: 1, detail: r.id }) });
     },
   });
   return (
@@ -212,9 +217,9 @@ function Crawls() {
           ))}
       </div>
       <Pages
-        page={s.page}
+        page={s.recordPage}
         total={records.data?.total ?? 0}
-        onPage={(page) => void navigate({ search: (old) => ({ ...old, page }) })}
+        onPage={(recordPage) => void navigate({ search: (old) => ({ ...old, recordPage }) })}
       />
     </div>
   );
@@ -462,7 +467,7 @@ function Candidates() {
     queryFn: () => call("listCandidates", q),
     refetchInterval: 3000,
   });
-  const scroller = useKeptScroll<HTMLDivElement>(list);
+  const scroller = useKeptScroll<HTMLDivElement>(list, JSON.stringify(q));
   const crawls = useQuery({
     queryKey: ["crawlOptions"],
     queryFn: () => call("crawlOptions", {}),

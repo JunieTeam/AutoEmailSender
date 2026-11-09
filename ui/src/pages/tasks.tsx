@@ -40,6 +40,7 @@ import { ChangeSchedule, ScheduleActions, scheduleText, scheduledAt } from "@/co
 import { day } from "@/format";
 import { letterHtml, letterText } from "@/letter";
 import { Loading } from "@/components/loading";
+import { Tabs } from "@/components/tabs";
 
 export function tasksSearch(s: Record<string, unknown>): {
   page?: number;
@@ -127,14 +128,6 @@ function TaskStatus({ state, className }: { state: TaskState; className?: string
 export function TasksPage() {
   const search = useSearch({ from: "/tasks" });
   const navigate = useNavigate({ from: "/tasks" });
-  const page = search.page ?? 1;
-  const query = useQuery({
-    queryKey: ["listTasks", page],
-    queryFn: () => call("listTasks", { page }),
-    enabled: search.tab !== "plan",
-    refetchInterval: 3000,
-  });
-  const scroller = useKeptScroll<HTMLDivElement>(query);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="px-7 pt-6 pb-5 phone:px-4">
@@ -152,61 +145,71 @@ export function TasksPage() {
           onChange={(tab) => void navigate({ search: (s) => ({ ...s, tab }) })}
         />
       </div>
-      <div key={search.tab ?? "tasks"} className="flex min-h-0 flex-1 animate-enter flex-col">
-        {search.tab === "plan" ? (
-          <SendingPlan />
+      <Tabs shown={search.tab}>{(tab) => (tab === "plan" ? <SendingPlan /> : <TaskList />)}</Tabs>
+    </div>
+  );
+}
+
+function TaskList() {
+  const search = useSearch({ from: "/tasks" });
+  const navigate = useNavigate({ from: "/tasks" });
+  const page = search.page ?? 1;
+  const query = useQuery({
+    queryKey: ["listTasks", page],
+    queryFn: () => call("listTasks", { page }),
+    refetchInterval: 3000,
+  });
+  // Not the address, which also holds the sending plan's state.
+  const scroller = useKeptScroll<HTMLDivElement>(query, String(page));
+  return (
+    <>
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 phone:px-2">
+        {query.error ? (
+          <Notice title="任务列表未能加载" failure={failureOf(query.error)} />
+        ) : !query.data ? (
+          <Loading />
+        ) : query.data.total === 0 ? (
+          <Notice
+            icon={ListChecks}
+            title="尚未创建任务"
+            detail="在导师列表勾选导师，按“写信”或“追问”创建任务"
+            actions={
+              <Link to="/mentors" className={buttonVariants()}>
+                去导师列表
+              </Link>
+            }
+          />
         ) : (
-          <>
-            <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 phone:px-2">
-              {query.error ? (
-                <Notice title="任务列表未能加载" failure={failureOf(query.error)} />
-              ) : !query.data ? (
-                <Loading />
-              ) : query.data.total === 0 ? (
-                <Notice
-                  icon={ListChecks}
-                  title="尚未创建任务"
-                  detail="在导师列表勾选导师，按“写信”或“追问”创建任务"
-                  actions={
-                    <Link to="/mentors" className={buttonVariants()}>
-                      去导师列表
-                    </Link>
-                  }
-                />
-              ) : (
-                query.data?.tasks.map((t) => (
-                  <Link
-                    key={t.id}
-                    to="/tasks/$id"
-                    params={{ id: t.id }}
-                    className="mb-[3px] grid animate-fade-in grid-cols-[minmax(140px,1fr)_minmax(160px,1.5fr)_70px] items-center gap-5 rounded-md px-4 py-4 hover:bg-muted phone:grid-cols-[minmax(0,1fr)_64px] phone:gap-2"
-                  >
-                    <div className="min-w-0">
-                      <h2 className="truncate font-medium">{t.name}</h2>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {day(t.createdAt)} · {Object.values(t.progress).reduce((n, v) => n + v, 0)} 位导师
-                      </p>
-                    </div>
-                    <div className="phone:col-span-2 phone:row-start-2">
-                      <ProgressBar progress={t.progress} labels />
-                    </div>
-                    <TaskStatus state={t.state} />
-                  </Link>
-                ))
-              )}
-            </div>
-            <footer className="flex justify-end px-7 py-3 empty:hidden">
-              <Pager
-                page={page}
-                total={query.data?.total ?? 0}
-                pageSize={20}
-                onPage={(p) => navigate({ search: { page: p > 1 ? p : undefined } })}
-              />
-            </footer>
-          </>
+          query.data?.tasks.map((t) => (
+            <Link
+              key={t.id}
+              to="/tasks/$id"
+              params={{ id: t.id }}
+              className="mb-[3px] grid animate-fade-in grid-cols-[minmax(140px,1fr)_minmax(160px,1.5fr)_70px] items-center gap-5 rounded-md px-4 py-4 hover:bg-muted phone:grid-cols-[minmax(0,1fr)_64px] phone:gap-2"
+            >
+              <div className="min-w-0">
+                <h2 className="truncate font-medium">{t.name}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {day(t.createdAt)} · {Object.values(t.progress).reduce((n, v) => n + v, 0)} 位导师
+                </p>
+              </div>
+              <div className="phone:col-span-2 phone:row-start-2">
+                <ProgressBar progress={t.progress} labels />
+              </div>
+              <TaskStatus state={t.state} />
+            </Link>
+          ))
         )}
       </div>
-    </div>
+      <footer className="flex justify-end px-7 py-3 empty:hidden">
+        <Pager
+          page={page}
+          total={query.data?.total ?? 0}
+          pageSize={20}
+          onPage={(p) => navigate({ search: (s) => ({ ...s, page: p > 1 ? p : undefined }) })}
+        />
+      </footer>
+    </>
   );
 }
 const FILTERS: [DraftFilter, string][] = [
