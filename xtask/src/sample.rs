@@ -181,10 +181,11 @@ pub async fn fill(db: &SqlitePool, scale: Scale, now: i64) -> Result {
         .await?;
     sqlx::query(
         // A domain with no mail servers, so testing this mailbox reaches no one.
-        r#"INSERT INTO mailbox
+        r#"INSERT INTO mailbox (id, address, sender_name, provider, smtp_host, smtp_port,
+            smtp_security, imap_host, imap_port, imap_security, auth, secret, daily_limit,
+            min_interval_s, rotation_order, created_at)
         VALUES (1, 'linxiao@example.com', '林晓', 'custom', 'smtp.example.com', 465,
-            'tls', 'imap.example.com', 993, 'tls', 'password', 'sample', 100, 60, 1,
-            NULL, NULL, NULL, NULL, ?)"#,
+            'tls', 'imap.example.com', 993, 'tls', 'password', 'sample', 100, 60, 1, ?)"#,
     )
     .bind(now)
     .execute(&mut *tx)
