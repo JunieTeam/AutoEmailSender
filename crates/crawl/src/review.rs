@@ -50,6 +50,10 @@ pub struct CandidateQuery {
     pub crawl_id: Option<i64>,
     pub processed: bool,
     pub filter: CandidateFilter,
+    /// Every word must appear in the name, aliases, addresses, affiliations or research.
+    #[serde(default)]
+    #[ts(optional)]
+    pub keyword: Option<String>,
     pub page: u32,
 }
 #[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, TS, PartialEq, Eq)]
@@ -303,6 +307,14 @@ pub async fn list(db: &SqlitePool, q: &CandidateQuery) -> Result<CandidatePage, 
         _ => None,
     };
     let offset = i64::from(q.page.saturating_sub(1)) * 50;
+    // Lowercased as SQLite's lower() does, which leaves all but ASCII letters alone.
+    let words: Vec<String> = q
+        .keyword
+        .iter()
+        .flat_map(|k| k.split_whitespace())
+        .map(|w| w.to_ascii_lowercase())
+        .collect();
+    let words = (!words.is_empty()).then_some(Json(words));
     let selection = sqlx::query!(
         r#"WITH classified AS MATERIALIZED(
             SELECT c.id, CASE WHEN c.mentor_id IS NOT NULL
@@ -327,6 +339,17 @@ pub async fn list(db: &SqlitePool, q: &CandidateQuery) -> Result<CandidatePage, 
             FROM candidate c
             WHERE (?1 IS NULL OR c.crawl_id = ?1) AND (c.review != 'pending') = ?2
             AND (NOT ?4 OR coalesce(json_array_length(c.emails), 0) = 0)
+            AND (?6 IS NULL OR NOT EXISTS (
+                SELECT 1 FROM json_each(?6) w
+                WHERE instr(lower(c.name || ' ' || coalesce(c.aliases, '') || ' '
+                    || coalesce(c.emails, '') || ' ' || coalesce(c.research, '') || ' '
+                    || coalesce((
+                        SELECT group_concat(coalesce(a.value ->> 'university', '') || ' '
+                            || coalesce(a.value ->> 'school', '') || ' '
+                            || coalesce(a.value ->> 'department', ''), ' ')
+                        FROM json_each(c.affiliations) a
+                    ), '')), w.value) = 0
+            ))
         ), filtered AS MATERIALIZED(
             SELECT id, category
             FROM classified
@@ -347,7 +370,8 @@ pub async fn list(db: &SqlitePool, q: &CandidateQuery) -> Result<CandidatePage, 
         q.processed,
         category,
         missing,
-        offset
+        offset,
+        words
     )
     .fetch_one(&mut *tx)
     .await?;

@@ -394,6 +394,7 @@ async fn home_categories_pagination_profiles_evidence_and_retry_end_to_end() {
             crawl_id: Some(crawl),
             processed: false,
             filter: CandidateFilter::All,
+            keyword: None,
             page: 1,
         },
     )
@@ -661,6 +662,7 @@ async fn candidate_identity_person_limit_and_review_transactions(db: SqlitePool)
         crawl_id: Some(crawl),
         processed: false,
         filter: CandidateFilter::All,
+        keyword: None,
         page: 1,
     };
     let page = review::list(&db, &q).await.unwrap();
@@ -1080,6 +1082,7 @@ async fn late_results_restart_and_retry_after_preserve_work(db: SqlitePool) {
             crawl_id: Some(id),
             processed: false,
             filter: CandidateFilter::All,
+            keyword: None,
             page: 1,
         },
     )
@@ -3636,6 +3639,7 @@ async fn candidate_classification_pages_follow_normalized_names_schools_and_ment
         crawl_id: Some(c.crawl),
         processed: false,
         filter: CandidateFilter::Maybe,
+        keyword: None,
         page: 1,
     };
     let first = review::list(&db, &query).await.unwrap();
@@ -3678,6 +3682,7 @@ async fn candidate_categories_do_not_depend_on_other_rows_on_the_page(db: Sqlite
         crawl_id: Some(c.crawl),
         processed: false,
         filter: CandidateFilter::All,
+        keyword: None,
         page: 1,
     };
     let all = review::list(&db, &q).await.unwrap();

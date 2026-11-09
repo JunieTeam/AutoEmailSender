@@ -34,6 +34,7 @@ import { day, time } from "@/format";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { desktop } from "@/host";
 import { useKeptScroll } from "@/kept-scroll";
+import { SearchBox } from "@/components/search-box";
 
 const FILTERS = {
   all: "全部",
@@ -79,6 +80,8 @@ export function findSearch(s: Record<string, unknown>) {
     detail: Number(s.detail) || undefined,
     org: typeof s.org === "string" && s.org !== "" ? s.org : undefined,
     q: typeof s.q === "string" && s.q !== "" ? s.q : undefined,
+    /** The candidates' keyword; the library has its own. */
+    keyword: typeof s.keyword === "string" && s.keyword !== "" ? s.keyword : undefined,
   };
 }
 export function refreshCrawls(client: ReturnType<typeof useQueryClient>) {
@@ -446,7 +449,14 @@ function Candidates() {
   const [enrichResult, setEnrichResult] = useState<EnrichPlan | null>(null);
   const [review, setReview] = useState<number[] | null>(null);
   const [choices, setChoices] = useState<Record<number, Decisions>>({});
-  const q = { crawlId: s.crawl ?? null, filter: s.filter, processed: s.processed, page: s.page };
+  const q = { crawlId: s.crawl ?? null, filter: s.filter, processed: s.processed, keyword: s.keyword, page: s.page };
+  // Ticks belong to one filter: changing it, including by going back, starts over; pages keep them.
+  const criteria = JSON.stringify([q.crawlId, q.filter, q.processed, q.keyword]);
+  const [shownCriteria, setShownCriteria] = useState(criteria);
+  if (shownCriteria !== criteria) {
+    setShownCriteria(criteria);
+    setSelected([]);
+  }
   const list = useQuery({
     queryKey: ["listCandidates", q],
     queryFn: () => call("listCandidates", q),
@@ -467,7 +477,6 @@ function Candidates() {
     },
   });
   const change = (part: Partial<typeof s>) => {
-    setSelected([]);
     void navigate({ search: (old) => ({ ...old, ...part, page: 1 }) });
   };
   const items = list.data?.candidates ?? [];
@@ -484,6 +493,13 @@ function Candidates() {
             onChange={(filter) => change({ filter })}
           />
           <div className="grow" />
+          <SearchBox
+            label="搜索候选"
+            placeholder="搜索姓名、单位、研究方向或邮箱"
+            className="w-64 phone:order-last phone:w-full"
+            value={s.keyword ?? ""}
+            onChange={(keyword) => change({ keyword: keyword || undefined })}
+          />
           <NativeSelect
             aria-label="按整理记录筛选"
             className="max-w-full"
@@ -530,7 +546,7 @@ function Candidates() {
         )}
         {list.isPending && <Loading />}
         {list.data?.total === 0 &&
-          (s.filter !== "all" || s.crawl !== undefined ? (
+          (s.filter !== "all" || s.crawl !== undefined || s.keyword !== undefined ? (
             <Notice icon={SearchX} title="无符合条件的候选" detail="可更换筛选条件查看" />
           ) : s.processed ? (
             <Notice icon={Inbox} title="尚无已处理的候选" detail="接受或拒绝后的候选会列在这里" />

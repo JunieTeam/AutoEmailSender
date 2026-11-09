@@ -577,6 +577,7 @@ pub async fn run(path: &Path) -> Result {
         crawl_id: None,
         processed: false,
         filter: crawl::review::CandidateFilter::All,
+        keyword: None,
         page: 1,
     };
     report(
@@ -593,6 +594,7 @@ pub async fn run(path: &Path) -> Result {
             let query = crawl::review::CandidateQuery {
                 filter,
                 page,
+                keyword: None,
                 ..candidates
             };
             report(
@@ -602,6 +604,15 @@ pub async fn run(path: &Path) -> Result {
             );
         }
     }
+    let searched = crawl::review::CandidateQuery {
+        keyword: Some("学习".into()),
+        ..candidates
+    };
+    report(
+        "候选搜索关键词，第 1 页（1 万候选、10 万导师）",
+        median(async || crawl::review::list(&db, &searched).await.map(drop)).await?,
+        home,
+    );
     let enrich_ids: Vec<_> = sqlx::query_scalar("SELECT id FROM candidate ORDER BY id LIMIT 50")
         .fetch_all(&db)
         .await?;

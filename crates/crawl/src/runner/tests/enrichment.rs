@@ -107,6 +107,7 @@ async fn agent_submission_reopens_for_profile_and_child_enrichment(db: SqlitePoo
             crawl_id: Some(submitted.crawl_id),
             processed: false,
             filter: CandidateFilter::All,
+            keyword: None,
             page: 1,
         },
     )

@@ -76,7 +76,11 @@ export type CandidateIds = { ids: Array<number>, };
 
 export type CandidatePage = { candidates: Array<CandidateRow>, total: number, };
 
-export type CandidateQuery = { crawlId: number | null, processed: boolean, filter: CandidateFilter, page: number, };
+export type CandidateQuery = { crawlId: number | null, processed: boolean, filter: CandidateFilter,
+/**
+ * Every word must appear in the name, aliases, addresses, affiliations or research.
+ */
+keyword?: string, page: number, };
 
 export type CandidateRow = { id: number, crawlId: number | null, name: string, emails: Array<string>, affiliation: Affiliation | null, research: string | null, sourceUrl: string | null, review: string, mentorId: number | null, category: CandidateFilter, issue: string | null, enrich: EnrichState, enrichChanges: Array<EnrichChange>, enrichError: Failure | null, };
 

@@ -36,6 +36,7 @@ async fn list(db: &SqlitePool, crawl: i64) -> review::CandidatePage {
             crawl_id: Some(crawl),
             processed: false,
             filter: review::CandidateFilter::All,
+            keyword: None,
             page: 1,
         },
     )
@@ -419,4 +420,49 @@ async fn append_checks_kind_and_serializes_concurrent_submissions(db: SqlitePool
         submit(&db, Some(crawl), batch, 11).await,
         Err(SubmitError::Deleted)
     ));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn candidates_are_found_by_every_word_of_a_keyword(db: SqlitePool) {
+    let mut learning = candidate("张三", "Zhang.San@example.edu");
+    learning["affiliations"] = json!([{"university":"示例大学", "school":"计算机学院"}]);
+    learning["research"] = json!("机器学习与 Computer Vision");
+    let mut other = candidate("李四", "lisi@example.edu");
+    other["affiliations"] = json!([{"university":"另一大学", "title":"school"}]);
+    let crawl = submit(&db, None, vec![learning, other], 1)
+        .await
+        .unwrap()
+        .crawl_id;
+    let names = async |keyword: &str| {
+        let page = review::list(
+            &db,
+            &review::CandidateQuery {
+                crawl_id: Some(crawl),
+                processed: false,
+                filter: review::CandidateFilter::All,
+                keyword: Some(keyword.into()),
+                page: 1,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(page.total, page.candidates.len() as i64);
+        page.candidates
+            .into_iter()
+            .map(|c| c.name)
+            .collect::<Vec<_>>()
+    };
+    for found in [
+        "机器学习",
+        "computer vision",
+        "zhang.san",
+        "计算机 示例",
+        "张三",
+    ] {
+        assert_eq!(names(found).await, ["张三"], "{found}");
+    }
+    assert!(names("机器学习 另一").await.is_empty());
+    // The keys of stored affiliations are not text that a mentor has.
+    assert!(names("university").await.is_empty());
+    assert_eq!(names("  ").await.len(), 2);
 }
