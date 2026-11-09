@@ -262,4 +262,8 @@ declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;
   }
+  interface HistoryState {
+    /** Set when the sidebar returns to a page as it was left (docs/ui.md#交互). */
+    returning?: boolean;
+  }
 }

@@ -54,6 +54,30 @@ const SETTINGS = { to: "/settings", label: "设置", icon: Settings } as const;
  * sidebar becomes a tab bar under the page (docs/ui.md#布局).
  */
 const focusSearch = () => document.getElementById("mentor-search")?.focus();
+
+/** Where each section of the sidebar was left in this run, to return to (docs/ui.md#交互). */
+const left = new Map<string, string>();
+
+/**
+ * Remembers where the sections are left, and makes the click on a section's entry go back there,
+ * scrolled as it was. On the section itself the entry starts it afresh, as it does when not yet
+ * visited; with a key held down it opens as any link does.
+ */
+function useReturn() {
+  const navigate = useNavigate();
+  const pathname = useLocation({ select: (l) => l.pathname });
+  const shown = useRouterState({ select: (s) => s.resolvedLocation?.href });
+  useEffect(() => {
+    const section = NAV.find((n) => n.to === shown?.split("?")[0])?.to;
+    if (shown && section) left.set(section, shown);
+  }, [shown]);
+  return (to: string) => (e: React.MouseEvent) => {
+    const href = left.get(to);
+    if (pathname === to || href === undefined || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    void navigate({ href, state: { returning: true } });
+  };
+}
 // macOS keeps Ctrl+K for deleting to the end of the line; Windows takes Win+K for itself.
 const SEARCH_KEY = navigator.userAgent.includes("Mac") ? "metaKey" : "ctrlKey";
 
@@ -155,6 +179,7 @@ export function Shell() {
   }, [queryClient]);
   // docs/ui.md#动效: another page fades in.
   const page = useRouterState({ select: (s) => s.matches[1]?.routeId });
+  const returnTo = useReturn();
   if (failure.isPending) return null;
   if (failure.data) return <StartupFailure failure={failure.data} />;
   return (
@@ -166,7 +191,7 @@ export function Shell() {
         </div>
         <nav className="flex flex-col gap-0.5">
           {NAV.map((item) => (
-            <NavLink key={item.to} {...item} />
+            <NavLink key={item.to} {...item} onClick={returnTo(item.to)} />
           ))}
         </nav>
         <div className="grow" />
@@ -198,6 +223,7 @@ export function Shell() {
           <Link
             key={to}
             to={to}
+            onClick={returnTo(to)}
             className="flex flex-col items-center gap-0.5 py-1 text-[11px]"
             activeProps={{ className: "text-brand-text" }}
             inactiveProps={{ className: "text-muted-foreground" }}
@@ -217,10 +243,16 @@ export function Shell() {
   );
 }
 
-function NavLink({ to, label, icon: Icon }: Omit<(typeof NAV)[number] | typeof SETTINGS, "label"> & { label: string }) {
+function NavLink({
+  to,
+  label,
+  icon: Icon,
+  onClick,
+}: Omit<(typeof NAV)[number] | typeof SETTINGS, "label"> & { label: string; onClick?: React.MouseEventHandler }) {
   return (
     <Link
       to={to}
+      onClick={onClick}
       className="flex h-10 items-center gap-3 rounded-md px-3"
       activeProps={{ className: "bg-background font-medium text-brand-text" }}
       inactiveProps={{ className: "text-muted-foreground hover:bg-press" }}

@@ -86,3 +86,15 @@ it("waits for the rows of the new page before moving the list", async () => {
   await go((h) => h.replace("/?page=2"));
   expect(list()?.scrollTop).toBe(0);
 });
+
+it("returns to where a list was left when the sidebar goes back to its page", async () => {
+  const { go, list } = await app();
+  list()?.scrollTo({ top: 300 });
+  await go((h) => h.push("/mentor"));
+  // A step of its own, not back in the history.
+  await go((h) => h.push("/", { returning: true }));
+  expect(list()?.scrollTop).toBe(300);
+  await go((h) => h.push("/mentor"));
+  await go((h) => h.push("/"));
+  expect(list()?.scrollTop).toBe(0);
+});
