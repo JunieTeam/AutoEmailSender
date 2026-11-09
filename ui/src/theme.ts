@@ -13,13 +13,19 @@ export function savedTheme(): Theme {
 export function setTheme(theme: Theme) {
   if (theme === "system") localStorage.removeItem("theme");
   else localStorage.setItem("theme", theme);
-  apply();
+  change();
 }
 
 /** Applies the appearance now and again whenever the system's changes. */
 export function followTheme() {
   apply();
-  matchMedia(DARK).addEventListener("change", apply);
+  matchMedia(DARK).addEventListener("change", change);
+}
+
+/** docs/ui.md#动效: the window fades from one appearance to the other, where the system's web view can. */
+function change() {
+  if ("startViewTransition" in document) document.startViewTransition(apply);
+  else apply();
 }
 
 function apply() {

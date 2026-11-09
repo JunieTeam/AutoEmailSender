@@ -6,6 +6,7 @@ import type { Failure } from "@/api/types";
 import { FailureNote } from "@/components/failure";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { scrollsSideways } from "@/sideways";
 
 /**
  * docs/ui.md#交互: floats at the bottom middle of the table area while mentors are ticked, rising in
@@ -49,7 +50,7 @@ export function BatchBar({
             failure={e.failure}
           />
         ))}
-        <div className="flex items-center gap-1 overflow-x-auto p-1.5 [scrollbar-width:none]">
+        <div ref={scrollsSideways} className="flex items-center gap-1 overflow-x-auto p-1.5 [scrollbar-width:none]">
           <Button variant="ghost" size="icon" aria-label="取消选择" onClick={onClear}>
             <X strokeWidth={1.6} />
           </Button>

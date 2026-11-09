@@ -58,7 +58,7 @@ export function TagPicker({ mentorId, selected }: { mentorId: number; selected: 
             </Button>
           }
         />
-        <PopoverContent align="end">
+        <PopoverContent align="end" className="w-64">
           <TagChoices mentorId={mentorId} selected={selected} onManage={() => setManaging(true)} />
         </PopoverContent>
       </Popover>
@@ -236,7 +236,7 @@ export function AddTagButton({ mentorIds, add }: { mentorIds: number[]; add: Ret
           </Button>
         }
       />
-      <PopoverContent side="top" className="flex flex-col gap-1">
+      <PopoverContent side="top" className="flex w-64 flex-col gap-1">
         <TagsFailed error={tags.error} />
         {tags.data?.map((t) => (
           <button

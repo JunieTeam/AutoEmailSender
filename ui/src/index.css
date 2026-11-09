@@ -3,6 +3,11 @@
 /* docs/ui.md#布局: the window widths where the layout changes. */
 @custom-variant narrow (@media (width <= 1240px));
 @custom-variant phone (@media (width <= 760px));
+/*
+ * The content page is as narrow as on a phone: the sidebar and its margin take 240px. Pages split in
+ * panes show one at a time (src/layout.ts holds the same query).
+ */
+@custom-variant compact (@media (width <= 1000px));
 /* Where the mentor table's narrow-window columns no longer fit, its rows become cards. */
 @custom-variant cards (@container (width < 782px));
 /* src/theme.ts sets data-theme from the setting or the system. */
@@ -166,6 +171,34 @@
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+  }
+  /*
+   * docs/ui.md#控件: what can be clicked shows the pointing hand, which Tailwind no longer gives
+   * buttons; what is disabled does not.
+   */
+  :where(
+    button,
+    [role="button"],
+    [role="tab"],
+    [role="option"],
+    [role="menuitem"],
+    [role="menuitemradio"],
+    [role="menuitemcheckbox"],
+    [role="checkbox"],
+    [role="radio"],
+    [role="switch"],
+    label:has([role="checkbox"], [role="radio"], [role="switch"])
+  ) {
+    cursor: pointer;
+  }
+  :where(:disabled, [aria-disabled="true"], [data-disabled], label:has([data-disabled])) {
+    cursor: default;
+  }
+  /* docs/ui.md#动效: the whole window fades from one appearance to the other (src/theme.ts). */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 240ms;
+    animation-timing-function: var(--ease-out);
   }
   /* docs/ui.md#滚动条 */
   * {

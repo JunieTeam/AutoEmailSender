@@ -5,12 +5,12 @@ import { FailureNote } from "@/components/failure";
 import type { LetterFont, LetterStyle } from "@/api/types";
 import { Field } from "@/components/form";
 import { Checkbox } from "@/components/ui/checkbox";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Select } from "@/components/ui/select";
 import { letterHtml } from "@/letter";
 import { Section } from "./settings";
 
-const FONTS: [LetterFont | "", string][] = [
-  ["", "跟随收件人的邮箱"],
+const FONTS: [LetterFont | null, string][] = [
+  [null, "跟随收件人的邮箱"],
   ["song", "宋体"],
   ["hei", "黑体"],
 ];
@@ -90,22 +90,12 @@ function LetterStyleFields() {
   }
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-2 gap-x-4 gap-y-5 phone:grid-cols-1">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-x-4 gap-y-5">
         <Field label="字体" id="letter-font">
-          <NativeSelect
-            id="letter-font"
-            value={style.font ?? ""}
-            onChange={(e) => edit({ ...style, font: FONTS.find(([f]) => f === e.target.value)?.[0] || null })}
-          >
-            {FONTS.map(([font, label]) => (
-              <NativeSelectOption key={font} value={font}>
-                {label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+          <Select id="letter-font" value={style.font} options={FONTS} onChange={(font) => edit({ ...style, font })} />
         </Field>
         <Field label="字号" id="letter-size">
-          <Choice
+          <Select
             id="letter-size"
             value={style.fontSizePt}
             options={SIZES}
@@ -113,7 +103,7 @@ function LetterStyleFields() {
           />
         </Field>
         <Field label="行距" id="letter-line-height">
-          <Choice
+          <Select
             id="letter-line-height"
             value={style.lineHeight}
             options={LINE_HEIGHTS}
@@ -121,7 +111,7 @@ function LetterStyleFields() {
           />
         </Field>
         <Field label="段距" id="letter-spacing">
-          <Choice
+          <Select
             id="letter-spacing"
             value={style.paragraphSpacingEm}
             options={SPACINGS}
@@ -149,27 +139,5 @@ function LetterStyleFields() {
         {!style.font && <p className="text-sm text-muted-foreground">实际的字体由收件人的邮箱和设备决定</p>}
       </div>
     </div>
-  );
-}
-
-function Choice({
-  id,
-  value,
-  options,
-  onChange,
-}: {
-  id: string;
-  value: number;
-  options: [number, string][];
-  onChange: (value: number) => void;
-}) {
-  return (
-    <NativeSelect id={id} value={String(value)} onChange={(e) => onChange(Number(e.target.value))}>
-      {options.map(([v, label]) => (
-        <NativeSelectOption key={v} value={String(v)}>
-          {label}
-        </NativeSelectOption>
-      ))}
-    </NativeSelect>
   );
 }

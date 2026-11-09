@@ -8,7 +8,9 @@ import { formClose, Field, TestResult } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Autocomplete } from "@/components/ui/autocomplete";
+import { NumberField } from "@/components/ui/number-field";
+import { Select } from "@/components/ui/select";
 
 /** The provider table from the core; it never changes while the app runs. */
 export function useModelProviders() {
@@ -70,7 +72,7 @@ export function ModelDialog({
   });
   const test = useMutation({ mutationFn: (t: ModelTest) => call("testModel", t) });
   const models = useMutation({ mutationFn: (s: ModelSource) => call("listProviderModels", s) });
-  const providerRef = useRef<HTMLSelectElement>(null);
+  const providerRef = useRef<HTMLButtonElement>(null);
 
   const provider = providers.find((p) => p.id === form.provider);
   // The core only uses the saved key where it was saved for, and asks again for one a restore
@@ -111,22 +113,17 @@ export function ModelDialog({
           <DialogBody>
             <fieldset disabled={save.isPending} className="flex min-w-0 flex-col gap-3.5">
               <Field label="服务商" id="model-provider">
-                <NativeSelect
+                <Select
                   ref={providerRef}
                   id="model-provider"
                   value={form.provider}
-                  onChange={(e) => edit({ ...form, provider: e.target.value })}
-                >
-                  <NativeSelectOption value="" disabled>
-                    选择服务商
-                  </NativeSelectOption>
-                  {providers.map((p) => (
-                    <NativeSelectOption key={p.id} value={p.id}>
-                      {p.name}
-                    </NativeSelectOption>
-                  ))}
-                  <NativeSelectOption value={CUSTOM}>其他（OpenAI 兼容接口）</NativeSelectOption>
-                </NativeSelect>
+                  placeholder="选择服务商"
+                  options={[
+                    ...providers.map((p) => [p.id, p.name] as const),
+                    [CUSTOM, "其他（OpenAI 兼容接口）"] as const,
+                  ]}
+                  onChange={(id) => edit({ ...form, provider: id })}
+                />
               </Field>
               {form.provider === CUSTOM && (
                 <Field label="接口地址" id="model-base-url">
@@ -170,13 +167,13 @@ export function ModelDialog({
               </Field>
               <Field label="模型名" id="model-model">
                 <div className="flex gap-2">
-                  <Input
+                  <Autocomplete
                     id="model-model"
                     autoComplete="off"
                     spellCheck={false}
-                    list="model-models"
+                    items={models.data ?? []}
                     value={form.model}
-                    onChange={(e) => edit({ ...form, model: e.target.value })}
+                    onValueChange={(model) => edit({ ...form, model })}
                   />
                   <Button
                     type="button"
@@ -187,11 +184,6 @@ export function ModelDialog({
                     获取列表
                   </Button>
                 </div>
-                <datalist id="model-models">
-                  {models.data?.map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
                 <div className="mt-1.5 text-sm empty:hidden" aria-live="polite">
                   {models.isPending && <span className="text-muted-foreground">正在获取模型列表…</span>}
                   {models.isSuccess && (
@@ -212,14 +204,13 @@ export function ModelDialog({
                   ] as const
                 ).map(([key, label]) => (
                   <Field key={key} label={`${label}（元／百万 Token）`} id={`model-${key}`}>
-                    <Input
+                    <NumberField
                       id={`model-${key}`}
-                      type="number"
-                      min="0"
-                      step="any"
+                      min={0}
+                      decimals={6}
                       placeholder="选填"
-                      value={form[key] ?? ""}
-                      onChange={(e) => edit({ ...form, [key]: e.target.value === "" ? null : e.target.valueAsNumber })}
+                      value={form[key]}
+                      onValueChange={(price) => edit({ ...form, [key]: price })}
                     />
                   </Field>
                 ))}

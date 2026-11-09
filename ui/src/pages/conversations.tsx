@@ -103,9 +103,9 @@ export function ConversationsPage() {
   const mailboxes = useQuery({ queryKey: ["listMailboxes"], queryFn: () => call("listMailboxes", {}) });
   const { status, receive, receiving, receiveError, received } = useReceive();
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] phone:grid-cols-1">
+    <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] compact:grid-cols-1">
       <section
-        className={`flex min-h-0 flex-col border-r border-border phone:border-0 ${search.mentor ? "phone:hidden" : ""}`}
+        className={`flex min-h-0 flex-col border-r border-border compact:border-0 ${search.mentor ? "compact:hidden" : ""}`}
       >
         <header className="px-4 pt-6 pb-3 phone:pt-3.5">
           <div className="flex items-start justify-between gap-2">
@@ -212,7 +212,7 @@ export function ConversationsPage() {
           />
         </footer>
       </section>
-      <section className={`flex min-h-0 min-w-0 flex-col ${search.mentor ? "" : "phone:hidden"}`}>
+      <section className={`flex min-h-0 min-w-0 flex-col ${search.mentor ? "" : "compact:hidden"}`}>
         {search.mentor ? (
           <ConversationDetail key={search.mentor} id={search.mentor} />
         ) : (
@@ -265,7 +265,7 @@ function ConversationDetail({ id }: { id: number }) {
       to="/conversations"
       search={(s) => ({ ...s, mentor: undefined })}
       aria-label="返回往来列表"
-      className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hidden phone:inline-flex")}
+      className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hidden compact:inline-flex")}
     >
       <ChevronLeft strokeWidth={1.6} />
     </Link>

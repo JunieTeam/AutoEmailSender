@@ -112,8 +112,9 @@ function MailboxRow({ mailbox: m, providers }: { mailbox: Mailbox; providers: Pr
   const provider = providers.find((p) => p.id === m.provider)?.name ?? m.smtp.host;
   return (
     <li className="flex flex-col gap-1.5 py-3">
-      <div className="flex items-center gap-2 phone:flex-col phone:items-start">
-        <div className="min-w-0 grow">
+      {/* The buttons go under the text where both do not fit on a line. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0 grow basis-64">
           <p className="truncate font-medium">{m.address}</p>
           <p className="text-sm text-muted-foreground">
             {provider}，每天最多发 {m.dailyLimit} 封

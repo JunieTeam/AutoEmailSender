@@ -10,7 +10,7 @@ import { EMPTY_FORM, MentorDialog } from "@/components/mentor-dialog";
 import { MergeDialog } from "@/components/merge-dialog";
 import { ImportDialog } from "@/components/import-dialog";
 import { ExportDialog } from "@/components/export-dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { MENU_ITEM, Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { dropDrafts, OUTCOME_ORDER, OUTCOMES, refreshMentors } from "@/components/mentor";
 import { MentorTable, Pager, pageParam, useLastPage } from "@/components/mentor-table";
 import { AddTagButton, useAddTag } from "@/components/tags";
@@ -19,14 +19,14 @@ import { MatchingDialog, MatchingProgress } from "@/components/matching";
 import { AiIcon } from "@/components/ai-writing";
 import { EnrichMentorsDialog } from "@/pages/find";
 import { Checkbox } from "@/components/ui/checkbox";
-import { NativeSelect } from "@/components/ui/native-select";
-import { Input } from "@/components/ui/input";
+import { NumberField } from "@/components/ui/number-field";
+import { PillSelect } from "@/components/ui/pill";
 import { Loading } from "@/components/loading";
 import { Notice } from "@/components/notice";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { SearchBox } from "@/components/search-box";
 import { Segments } from "@/components/ui/segments";
-import { type FilterSearch, filterOf, filterSearch, filtered, MentorFilters, OneOf } from "@/components/mentor-filters";
+import { type FilterSearch, filterOf, filterSearch, filtered, MentorFilters } from "@/components/mentor-filters";
 import { desktop } from "@/host";
 import { useKeptScroll } from "@/kept-scroll";
 
@@ -105,6 +105,8 @@ export function MentorsPage() {
     const saved = Number(localStorage.getItem("unansweredDays"));
     return saved > 0 && saved <= 36500 && Number.isInteger(saved) ? saved : 7;
   });
+  // The list keeps the days while their field is emptied, and the field shows them again when left.
+  const [cleared, setCleared] = useState(false);
   const [matching, setMatching] = useState<number[] | null>(null);
   const [enriching, setEnriching] = useState<number[] | null>(null);
   const [adding, setAdding] = useState(false);
@@ -156,9 +158,10 @@ export function MentorsPage() {
   });
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center gap-4 px-7 pt-6 pb-4 phone:flex-wrap phone:gap-y-2.5 phone:px-4 phone:pt-3.5 phone:pb-2.5">
-        <div>
+    <div className="@container flex min-h-0 flex-1 flex-col">
+      {/* docs/ui.md#布局: where the search box no longer fits beside the title, it takes a line of its own. */}
+      <header className="flex items-center gap-4 px-7 pt-6 pb-4 phone:px-4 phone:pt-3.5 phone:pb-2.5 @max-[640px]:flex-wrap @max-[640px]:gap-y-2.5">
+        <div className="shrink-0">
           <h1 className="text-2xl font-semibold phone:text-[22px]">导师</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{query.data ? `共 ${total.toLocaleString()} 位` : " "}</p>
         </div>
@@ -167,7 +170,7 @@ export function MentorsPage() {
           id="mentor-search"
           label="搜索导师"
           placeholder="搜索姓名、邮箱、单位、研究方向或备注"
-          className="w-[320px] phone:order-3 phone:w-full"
+          className="w-[360px] @max-[640px]:order-3 @max-[640px]:w-full"
           value={search.q ?? ""}
           onChange={(q) => navigate({ search: (s) => ({ ...s, q: q || undefined, page: undefined }) })}
         />
@@ -204,7 +207,7 @@ export function MentorsPage() {
           已新增 {imported.created} 位导师，更新 {imported.updated} 位导师
         </p>
       )}
-      <div className="px-7 pb-3 phone:overflow-x-auto phone:px-4 phone:pb-2.5 phone:[scrollbar-width:none]">
+      <div className="px-7 pb-3 phone:px-4 phone:pb-2.5">
         <Segments
           label="联系状态"
           value={search.status}
@@ -228,7 +231,7 @@ export function MentorsPage() {
         filter={listFilter(search)}
         onChange={(next) => navigate({ search: (s) => ({ ...s, ...next, page: undefined }) })}
       >
-        <OneOf
+        <PillSelect
           label="排序"
           options={SORTS}
           value={search.sort ?? "added"}
@@ -240,28 +243,14 @@ export function MentorsPage() {
       </MentorFilters>
 
       {search.status === "replied" && (
-        <div className="px-7 pb-3 phone:px-4">
-          <NativeSelect
-            aria-label="回信结果"
-            className="w-40"
-            value={search.outcome ?? ""}
-            onChange={(e) =>
-              navigate({
-                search: (s) => ({
-                  ...s,
-                  outcome: OUTCOME_FILTERS.find(([o]) => o === e.target.value)?.[0],
-                  page: undefined,
-                }),
-              })
-            }
-          >
-            <option value="">全部回信结果</option>
-            {OUTCOME_FILTERS.map(([o, label]) => (
-              <option key={o} value={o}>
-                {label}
-              </option>
-            ))}
-          </NativeSelect>
+        <div className="flex px-7 pb-3 phone:px-4">
+          <PillSelect
+            label="回信结果"
+            options={[[undefined, "不限"], ...OUTCOME_FILTERS]}
+            value={search.outcome}
+            active={search.outcome !== undefined}
+            onChange={(outcome) => navigate({ search: (s) => ({ ...s, outcome, page: undefined }) })}
+          />
         </div>
       )}
       {search.status === "contacted" && (
@@ -275,43 +264,37 @@ export function MentorsPage() {
             />
             发出超过
           </label>
-          <Input
+          <NumberField
             aria-label="未回复的天数"
-            type="number"
             min={1}
             max={36500}
-            className="w-20"
-            value={search.unansweredDays ?? days}
-            onChange={(e) => {
-              const value = e.target.valueAsNumber;
-              if (Number.isInteger(value) && value > 0 && value <= 36500) {
+            className="h-8 w-20"
+            value={cleared ? null : (search.unansweredDays ?? days)}
+            onValueChange={(value) => {
+              setCleared(value === null);
+              if (value !== null) {
                 setDays(value);
                 localStorage.setItem("unansweredDays", String(value));
                 if (search.unansweredDays !== undefined)
                   void navigate({ search: (s) => ({ ...s, unansweredDays: value, page: undefined }) });
               }
             }}
+            onValueCommitted={() => setCleared(false)}
           />
           天未回复
           {tracked && (
-            <NativeSelect
-              aria-label="打开情况"
-              className="ml-4 w-32"
-              value={search.opened === undefined ? "" : String(search.opened)}
-              onChange={(e) =>
-                navigate({
-                  search: (s) => ({
-                    ...s,
-                    opened: e.target.value === "" ? undefined : e.target.value === "true",
-                    page: undefined,
-                  }),
-                })
-              }
-            >
-              <option value="">全部打开情况</option>
-              <option value="true">打开过</option>
-              <option value="false">未打开过</option>
-            </NativeSelect>
+            <PillSelect
+              label="打开情况"
+              className="ml-4"
+              options={[
+                [undefined, "不限"],
+                [true, "打开过"],
+                [false, "未打开过"],
+              ]}
+              value={search.opened}
+              active={search.opened !== undefined}
+              onChange={(opened) => navigate({ search: (s) => ({ ...s, opened, page: undefined }) })}
+            />
           )}
         </div>
       )}
@@ -484,41 +467,31 @@ function AddMentorMenu({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger render={trigger} />
-      <PopoverContent align={align} className="w-40 p-1.5">
-        <Link
-          to="/find"
-          search={findSearch({ tab: "crawl" })}
-          className={buttonVariants({ variant: "ghost", className: "w-full justify-start" })}
-        >
+      <PopoverContent align={align}>
+        <Link to="/find" search={findSearch({ tab: "crawl" })} className={MENU_ITEM}>
           智能整理
         </Link>
-        <Link
-          to="/find"
-          search={findSearch({ tab: "library" })}
-          className={buttonVariants({ variant: "ghost", className: "w-full justify-start" })}
-        >
+        <Link to="/find" search={findSearch({ tab: "library" })} className={MENU_ITEM}>
           从导师库添加
         </Link>
-        <Button
-          variant="ghost"
-          className="w-full justify-start"
+        <button
+          className={MENU_ITEM}
           onClick={() => {
             setOpen(false);
             onImport();
           }}
         >
           导入表格
-        </Button>
-        <Button
-          variant="ghost"
-          className="w-full justify-start"
+        </button>
+        <button
+          className={MENU_ITEM}
           onClick={() => {
             setOpen(false);
             onAdd();
           }}
         >
           手动添加
-        </Button>
+        </button>
       </PopoverContent>
     </Popover>
   );

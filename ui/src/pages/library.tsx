@@ -14,6 +14,7 @@ import { SearchBox } from "@/components/search-box";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, ExpandChevron } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { day } from "@/format";
 import { useKeptScroll } from "@/kept-scroll";
@@ -125,7 +126,7 @@ function Library() {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
         <aside
-          className={`flex w-64 shrink-0 flex-col gap-2 overflow-y-auto px-4 pb-6 phone:w-full ${picking ? "" : "phone:hidden"}`}
+          className={`flex w-64 shrink-0 flex-col gap-2 overflow-y-auto px-4 pb-6 compact:w-full ${picking ? "" : "compact:hidden"}`}
         >
           {orgs.error ? (
             <Retry error={orgs.error} onRetry={() => void orgs.refetch()} />
@@ -133,9 +134,9 @@ function Library() {
             orgs.data && <Orgs orgs={orgs.data.orgs} byId={byId} selected={s.org} onSelect={choose} />
           )}
         </aside>
-        <section className={`flex min-w-0 flex-1 flex-col ${picking ? "phone:hidden" : ""}`}>
+        <section className={`flex min-w-0 flex-1 flex-col ${picking ? "compact:hidden" : ""}`}>
           <div className="flex shrink-0 flex-wrap items-center gap-3 px-6 pb-3 phone:px-4">
-            <Button variant="ghost" className="hidden px-2 phone:inline-flex" onClick={() => setPicking(true)}>
+            <Button variant="ghost" className="hidden px-2 compact:inline-flex" onClick={() => setPicking(true)}>
               <ChevronLeft strokeWidth={1.6} />
               {path.at(-1)?.name ?? "全部学校"}
             </Button>
@@ -397,9 +398,9 @@ function Row({
           {local?.kind === "added" && <span className="text-xs text-muted-foreground">已添加</span>}
           {local?.kind === "trashed" && <span className="text-xs text-muted-foreground">在回收站</span>}
           {local?.kind === "maybeExisting" && (
-            <span className="text-xs text-warning" title={`导师列表里有同名、同校的${local.name}`}>
-              可能已有
-            </span>
+            <Tooltip content={`导师列表里有同名、同校的${local.name}`}>
+              <span className="text-xs text-warning">可能已有</span>
+            </Tooltip>
           )}
           {m.emailCount === 0 && <span className="text-xs text-warning">无邮箱</span>}
         </span>

@@ -38,7 +38,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger, ExpandChevron } fr
 import { Segments } from "@/components/ui/segments";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { NativeSelect } from "@/components/ui/native-select";
+import { PillSelect } from "@/components/ui/pill";
 import { day, time } from "@/format";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { desktop } from "@/host";
@@ -183,6 +183,8 @@ function Crawls() {
         </label>
         <Textarea
           id="crawl-urls"
+          // docs/ui.md#控件: on the panel's --muted, the field is white.
+          className="bg-background"
           rows={3}
           value={urls}
           placeholder="每行一个网址，也可以填写一位导师的个人页"
@@ -514,23 +516,22 @@ function Candidates() {
           <SearchBox
             label="搜索候选"
             placeholder="搜索姓名、单位、研究方向或邮箱"
-            className="w-64 phone:order-last phone:w-full"
+            className="w-80 phone:order-last phone:w-full"
             value={s.keyword ?? ""}
             onChange={(keyword) => change({ keyword: keyword || undefined })}
           />
-          <NativeSelect
-            aria-label="按整理记录筛选"
-            className="max-w-full"
-            value={s.crawl ?? ""}
-            onChange={(e) => change({ crawl: Number(e.target.value) || undefined })}
-          >
-            <option value="">全部整理记录</option>
-            {crawls.data?.map((c) => (
-              <option key={c.id} value={c.id}>
-                {day(c.createdAt)} {time(c.createdAt)} · {crawlName(c)}
-              </option>
-            ))}
-          </NativeSelect>
+          <PillSelect
+            label="整理记录"
+            options={[
+              [undefined, "不限"],
+              ...(crawls.data ?? []).map(
+                (c) => [c.id, `${day(c.createdAt)} ${time(c.createdAt)} · ${crawlName(c)}`] as const,
+              ),
+            ]}
+            value={s.crawl}
+            active={s.crawl !== undefined}
+            onChange={(crawl) => change({ crawl })}
+          />
           <Button
             variant={s.processed ? "quiet" : "ghost"}
             aria-pressed={s.processed}

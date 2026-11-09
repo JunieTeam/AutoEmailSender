@@ -1,6 +1,7 @@
 import { Tabs } from "@base-ui/react/tabs";
 import type { ReactNode } from "react";
 import { cn } from "cn";
+import { scrollsSideways } from "@/sideways";
 
 /**
  * Pills that pick one of a few values, such as a page's tab, a list's filter or a time range; the
@@ -34,6 +35,7 @@ export function Segments<T>({
       }}
     >
       <Tabs.List
+        ref={scrollsSideways}
         aria-label={label}
         className={cn(
           "relative z-0 inline-flex max-w-full gap-0.5 overflow-x-auto rounded-full bg-muted p-[3px] [scrollbar-width:none]",

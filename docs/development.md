@@ -351,7 +351,7 @@ GitHub 账号受限、Actions 或 Releases 用不了时，在本机打包，只�
   - 批量审核时切换草稿前先保存。
   - 列表的筛选、排序和翻页放进网址（TanStack Router 的 search 参数），返回时还在。
 - 界面在 WebKit（macOS 的 WKWebView、iOS Safari）和 Chromium（Windows 的 WebView2、Android）上都要测。
-- 组件用 shadcn/ui：`pnpm --dir ui exec shadcn add <组件>` 加到 `ui/src/components/ui`，再按 [ui.md](ui.md#样式) 改样式，只留用得上的变体。不运行 `shadcn init`：它会换掉 ui.md 定的颜色变量，还会打包字体。
+- 组件用 shadcn/ui 的 Base UI 版：`pnpm --dir ui exec shadcn add <组件>` 加到 `ui/src/components/ui`，再按 [ui.md](ui.md#样式) 改样式，只留用得上的部分；它没有的（数字框、时间选择、输入提示）照同样的写法直接用 Base UI 写在这里。各处用法都一样的组合包成一个组件，比如下拉直接传选项（`Select`、`PillSelect`）；菜单和列表项的样式用 `popover.tsx` 里的常量。不运行 `shadcn init`：它会换掉 ui.md 定的颜色变量，还会打包字体。
 
 ## 数据库
 

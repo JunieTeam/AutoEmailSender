@@ -6,6 +6,7 @@ import { Avatar, ContactLabel, contactDetail, BASIS_CHANGED, Missing } from "@/c
 import { TagChip } from "@/components/tags";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip } from "@/components/ui/tooltip";
 
 const PAGE_SIZE = 50;
 
@@ -156,7 +157,9 @@ function Match({ state: { result, state } }: { state: MatchSummary }) {
             {result.score}
           </span>
           {result.basisChanged && (
-            <span className="size-1.5 rounded-full bg-faint" title={BASIS_CHANGED} aria-label={BASIS_CHANGED} />
+            <Tooltip content={BASIS_CHANGED}>
+              <span className="size-1.5 rounded-full bg-faint" aria-label={BASIS_CHANGED} />
+            </Tooltip>
           )}
           {!state && (
             <span className="h-1 w-12 overflow-hidden rounded-full bg-muted cards:hidden">
@@ -166,12 +169,11 @@ function Match({ state: { result, state } }: { state: MatchSummary }) {
         </div>
       )}
       {state ? (
-        <span
-          title={state.state === "failed" ? state.error.message : undefined}
-          className={state.state === "failed" ? "text-warning" : "text-muted-foreground"}
-        >
-          {state.state === "queued" ? "排队中" : state.state === "running" ? "分析中" : "失败"}
-        </span>
+        <Tooltip content={state.state === "failed" ? state.error.message : undefined}>
+          <span className={state.state === "failed" ? "text-warning" : "text-muted-foreground"}>
+            {state.state === "queued" ? "排队中" : state.state === "running" ? "分析中" : "失败"}
+          </span>
+        </Tooltip>
       ) : (
         !result && <Missing>未分析</Missing>
       )}

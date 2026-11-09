@@ -23,6 +23,7 @@ import { UpdateDialog, useUpdate } from "@/components/update";
 import { Button } from "@/components/ui/button";
 import { Segments } from "@/components/ui/segments";
 import { desktop } from "@/host";
+import { COMPACT } from "@/layout";
 import { LegalLink } from "@/legal";
 import { savedTheme, setTheme } from "@/theme";
 
@@ -61,29 +62,31 @@ const GROUPS = [
   },
 ] as const;
 
-/** The `phone` breakpoint in index.css. */
-const PHONE = "(width <= 760px)";
-
-/** The group list beside the open section; on a phone, the list first and then one section. */
+/** The group list beside the open section; in a narrow window, the list first and then one section. */
 export function SettingsPage() {
-  // A section is open unless this is the bare /settings, which on a phone is the group list.
+  // A section is open unless this is the bare /settings, which in a narrow window is the group list.
   const open = useChildMatches({ select: (matches) => matches.some((m) => m.routeId !== "/settings/") });
   const section = useChildMatches({ select: (matches) => matches[0]?.routeId });
-  // docs/ui.md#页面: a wider window opens the first section, including when a phone-width one widens.
+  // docs/ui.md#页面: a wider window opens the first section, including when a narrow one widens.
   const navigate = useNavigate();
   useEffect(() => {
-    const phone = matchMedia(PHONE);
+    const compact = matchMedia(COMPACT);
     const openFirst = () => {
-      if (!open && !phone.matches) void navigate({ to: GROUPS[0].sections[0].to, replace: true });
+      if (!open && !compact.matches) void navigate({ to: GROUPS[0].sections[0].to, replace: true });
     };
     openFirst();
-    phone.addEventListener("change", openFirst);
-    return () => phone.removeEventListener("change", openFirst);
+    compact.addEventListener("change", openFirst);
+    return () => compact.removeEventListener("change", openFirst);
   }, [open, navigate]);
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)] phone:grid-cols-1">
-      <nav className={`flex flex-col gap-5 overflow-y-auto px-3 py-6 ${open ? "phone:hidden" : ""}`}>
-        <h1 className="hidden px-3 text-[22px] font-semibold phone:block">设置</h1>
+    <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)] compact:grid-cols-1">
+      <nav className={`flex flex-col gap-5 overflow-y-auto px-3 py-6 ${open ? "compact:hidden" : ""}`}>
+        <h1 className="hidden px-3 text-[22px] font-semibold compact:block">设置</h1>
+        {/* docs/ui.md#页面: the first-run guide, at hand after it is done or skipped. */}
+        <Link to="/welcome" className="flex h-10 items-center justify-between rounded-md px-3 hover:bg-muted">
+          开始使用
+          <ChevronRight className="hidden size-[18px] text-muted-foreground compact:block" strokeWidth={1.6} />
+        </Link>
         {GROUPS.map((g) => (
           <div key={g.label} className="flex flex-col gap-0.5">
             <h2 className="px-3 pb-1 text-sm text-muted-foreground">{g.label}</h2>
@@ -98,13 +101,15 @@ export function SettingsPage() {
                   inactiveProps={{ className: "hover:bg-muted" }}
                 >
                   {s.label}
-                  <ChevronRight className="hidden size-[18px] text-muted-foreground phone:block" strokeWidth={1.6} />
+                  <ChevronRight className="hidden size-[18px] text-muted-foreground compact:block" strokeWidth={1.6} />
                 </Link>
               ))}
           </div>
         ))}
       </nav>
-      <div className={`min-h-0 overflow-y-auto border-l border-border phone:border-0 ${open ? "" : "phone:hidden"}`}>
+      <div
+        className={`min-h-0 overflow-y-auto border-l border-border compact:border-0 ${open ? "" : "compact:hidden"}`}
+      >
         {/* docs/ui.md#动效: another section fades in. */}
         <div key={section} className="animate-enter">
           <Outlet />
@@ -114,15 +119,15 @@ export function SettingsPage() {
   );
 }
 
-/** A settings section: its title, with the way back to the list on a phone. */
+/** A settings section: its title, with the way back to the list in a narrow window. */
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="flex max-w-[640px] flex-col gap-6 px-8 py-6 phone:px-4 phone:py-3">
+    <section className="mx-auto flex w-full max-w-[640px] flex-col gap-6 px-8 py-6 phone:px-4 phone:py-3">
       <header className="flex items-center gap-1">
         <Link
           to="/settings"
           aria-label="返回设置"
-          className="-ml-2 hidden size-10 place-items-center rounded-md text-muted-foreground phone:grid"
+          className="-ml-2 hidden size-10 place-items-center rounded-md text-muted-foreground compact:grid"
         >
           <ChevronLeft className="size-[18px]" strokeWidth={1.6} />
         </Link>

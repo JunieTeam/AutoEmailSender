@@ -6,6 +6,7 @@ import { FailureNote } from "@/components/failure";
 import type { MentorSort, Scope, TableFormat } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 
 /** The table lists the mentors in the order of the list, `sort`. */
@@ -34,14 +35,16 @@ export function ExportDialog({
         <DialogHeader>导出表格</DialogHeader>
         <DialogBody className="space-y-5">
           <p>导出 {count.toLocaleString()} 位导师</p>
-          <fieldset className="flex gap-5 text-sm">
+          <fieldset className="text-sm">
             <legend className="mb-2 text-muted-foreground">格式</legend>
-            {(["xlsx", "csv"] as const).map((f) => (
-              <label key={f} className="flex items-center gap-2">
-                <input type="radio" name="format" value={f} checked={format === f} onChange={() => setFormat(f)} />
-                {f.toUpperCase()}
-              </label>
-            ))}
+            <RadioGroup value={format} onValueChange={setFormat} className="flex gap-5">
+              {(["xlsx", "csv"] as const).map((f) => (
+                <label key={f} className="flex items-center gap-2">
+                  <RadioGroupItem value={f} />
+                  {f.toUpperCase()}
+                </label>
+              ))}
+            </RadioGroup>
           </fieldset>
           <div>
             <label className="flex items-center gap-2.5 text-sm">

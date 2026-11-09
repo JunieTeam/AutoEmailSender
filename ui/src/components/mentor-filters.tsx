@@ -1,16 +1,17 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { cn } from "cn";
-import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 import { call, failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
 import type { MentorFilter, Missing } from "@/api/types";
 import { Loading } from "@/components/loading";
 import { useTags } from "@/components/tags";
+import { scrollsSideways } from "@/sideways";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { PillLabel, pillClass, PillSelect } from "@/components/ui/pill";
+import { MENU_ITEM, Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 /** docs/ui.md#交互: the filters under the contact states, as they are kept in the URL. */
 export type FilterSearch = {
@@ -121,8 +122,11 @@ export function MentorFilters({
 }) {
   const tags = useTags();
   return (
-    <div className="flex flex-wrap items-center gap-2 px-7 pb-3 phone:flex-nowrap phone:overflow-x-auto phone:px-4 phone:pb-2.5 phone:[scrollbar-width:none]">
-      <OneOf
+    <div
+      ref={scrollsSideways}
+      className="flex flex-wrap items-center gap-2 px-7 pb-3 phone:flex-nowrap phone:overflow-x-auto phone:px-4 phone:pb-2.5 phone:[scrollbar-width:none]"
+    >
+      <PillSelect
         label="匹配度"
         options={MATCHES}
         value={search.match}
@@ -166,7 +170,7 @@ export function MentorFilters({
         }}
         onChange={(values) => onChange({ ...search, tag: values.length > 0 ? values : undefined })}
       />
-      <OneOf
+      <PillSelect
         label="资料"
         options={MISSING}
         value={search.missing}
@@ -182,79 +186,6 @@ export function MentorFilters({
         {children}
       </div>
     </div>
-  );
-}
-
-const ROW = "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left hover:bg-press";
-
-/** A pill showing what is chosen, opening a menu under it; marked while it narrows the list. */
-function Menu({
-  label,
-  shown,
-  active,
-  children,
-}: {
-  label: string;
-  shown?: string;
-  active: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <button
-            className={cn(
-              "flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-sm whitespace-nowrap",
-              active
-                ? "bg-selected font-medium text-brand-text"
-                : "bg-muted text-muted-foreground hover:text-foreground",
-            )}
-          />
-        }
-      >
-        <span className="max-w-60 truncate">{shown ? `${label}：${shown}` : label}</span>
-        <ChevronDownIcon className="size-3.5" strokeWidth={1.6} />
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-1.5">
-        {children}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/** One of a few choices, written out unless it is undefined, which is no choice. */
-export function OneOf<T>({
-  label,
-  options,
-  value,
-  active,
-  onChange,
-}: {
-  label: string;
-  options: [T, string][];
-  value: T;
-  active: boolean;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <Menu
-      label={label}
-      shown={value === undefined ? undefined : options.find(([o]) => o === value)?.[1]}
-      active={active}
-    >
-      {options.map(([o, name]) => (
-        <button
-          key={name}
-          role="menuitemradio"
-          aria-checked={value === o}
-          className={cn(ROW, "aria-checked:font-medium aria-checked:text-brand-text")}
-          onClick={() => onChange(o)}
-        >
-          {name}
-        </button>
-      ))}
-    </Menu>
   );
 }
 
@@ -277,9 +208,15 @@ function Choices<T extends string | number>(props: ChoicesProps<T>) {
   const shown =
     first === undefined ? undefined : selected.length > 1 ? `${name(first)} 等 ${selected.length} 个` : name(first);
   return (
-    <Menu label={label} shown={shown} active={shown !== undefined}>
-      <ChoiceList {...props} />
-    </Menu>
+    <Popover>
+      <PopoverTrigger render={<button className={pillClass(shown !== undefined)} />}>
+        <PillLabel label={label} shown={shown} />
+      </PopoverTrigger>
+      {/* Of a set width, so that it keeps its size while its search box narrows the list. */}
+      <PopoverContent align="start" className="w-72">
+        <ChoiceList {...props} />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -316,7 +253,7 @@ function ChoiceList<T extends string | number>({ label, selected, name, queryKey
       <div className="max-h-72 overflow-y-auto">
         {words.length > 0 && listed.length > 1 && unticked.length > 0 && (
           <button
-            className={cn(ROW, "text-brand-text")}
+            className={cn(MENU_ITEM, "text-brand-text")}
             onClick={() => onChange([...selected, ...unticked.map((c) => c.value)])}
           >
             全选搜到的 {listed.length} 项
@@ -375,7 +312,7 @@ function Option({
   className?: string;
 }) {
   return (
-    <label className={cn(ROW, "cursor-pointer", className)}>
+    <label className={cn(MENU_ITEM, className)}>
       <Checkbox checked={checked} onCheckedChange={onToggle} />
       <span className="min-w-0 grow truncate">{label}</span>
       <span className="text-xs text-muted-foreground">{count}</span>

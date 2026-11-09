@@ -27,6 +27,7 @@ import { refreshMentors, refreshReplyOutcomes } from "@/components/mentor";
 import { refreshTodos } from "@/components/todos";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip } from "@/components/ui/tooltip";
 import { StartupFailure } from "@/components/startup-failure";
 import { showsFeedbackLog } from "@/components/feedback";
 import { AgentRequests } from "@/components/agent-requests";
@@ -269,12 +270,11 @@ function UnreadBadge({ className }: { className?: string }) {
   const unread = useQuery({ queryKey: ["unreadCount"], queryFn: () => call("unreadCount", {}) });
   if (!unread.isError && !unread.data) return null;
   return (
-    <span
-      title={unread.isError ? `新回信数量读取失败：${errorMessage(unread.error)}` : undefined}
-      className={cn("min-w-5 rounded-full bg-unread px-1.5 text-center text-xs leading-5 text-white", className)}
-    >
-      {unread.isError ? "!" : unread.data > 99 ? "99+" : unread.data}
-    </span>
+    <Tooltip content={unread.isError ? `新回信数量读取失败：${errorMessage(unread.error)}` : undefined}>
+      <span className={cn("min-w-5 rounded-full bg-unread px-1.5 text-center text-xs leading-5 text-white", className)}>
+        {unread.isError ? "!" : unread.data > 99 ? "99+" : unread.data}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -489,12 +489,11 @@ function Background({ className }: { className?: string }) {
         )}
         后台
         {work.waiting > 0 && (
-          <span
-            title={`${work.waiting} 项待处理`}
-            className="ml-auto min-w-5 rounded-full bg-warning-soft px-1.5 text-center text-xs leading-5 text-warning"
-          >
-            {work.waiting}
-          </span>
+          <Tooltip content={`${work.waiting} 项待处理`}>
+            <span className="ml-auto min-w-5 rounded-full bg-warning-soft px-1.5 text-center text-xs leading-5 text-warning">
+              {work.waiting}
+            </span>
+          </Tooltip>
         )}
       </PopoverTrigger>
       <PopoverContent side="top" align="start" className="max-h-96 w-80 space-y-4 overflow-y-auto p-4 text-sm">

@@ -9,7 +9,8 @@ import { formClose, Field, TestResult } from "@/components/form";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { NumberField } from "@/components/ui/number-field";
+import { Select } from "@/components/ui/select";
 
 /** The provider table from the core; it never changes while the app runs. */
 export function useProviders() {
@@ -233,24 +234,22 @@ export function MailboxDialog({
                   <Field label="发信限制" id="mailbox-daily">
                     <div className="flex flex-wrap items-center gap-2 text-sm">
                       每天最多发
-                      <Input
+                      <NumberField
                         id="mailbox-daily"
-                        type="number"
                         min={1}
                         className="w-16"
                         aria-invalid={!whole(form.dailyLimit, 1, U32)}
-                        value={Number.isNaN(form.dailyLimit) ? "" : form.dailyLimit}
-                        onChange={(e) => edit({ ...form, dailyLimit: e.target.valueAsNumber })}
+                        value={Number.isNaN(form.dailyLimit) ? null : form.dailyLimit}
+                        onValueChange={(v) => edit({ ...form, dailyLimit: v ?? NaN })}
                       />
                       封，两封至少隔
-                      <Input
+                      <NumberField
                         aria-label="两封之间至少隔几秒"
-                        type="number"
                         min={0}
                         className="w-16"
                         aria-invalid={!whole(form.minIntervalS, 0, U32)}
-                        value={Number.isNaN(form.minIntervalS) ? "" : form.minIntervalS}
-                        onChange={(e) => edit({ ...form, minIntervalS: e.target.valueAsNumber })}
+                        value={Number.isNaN(form.minIntervalS) ? null : form.minIntervalS}
+                        onValueChange={(v) => edit({ ...form, minIntervalS: v ?? NaN })}
                       />
                       秒
                     </div>
@@ -331,25 +330,13 @@ function ProviderField({
   const hosted = providers.filter((p) => p.domains.length === 0);
   return (
     <Field label="服务商" id="mailbox-provider">
-      <NativeSelect
+      <Select
         id="mailbox-provider"
         value={form.provider}
-        onChange={(e) => {
-          const id = e.target.value;
-          const p = hosted.find((h) => h.id === id);
-          onChange(p ?? CUSTOM);
-        }}
-      >
-        <NativeSelectOption value="" disabled>
-          选择服务商
-        </NativeSelectOption>
-        {hosted.map((p) => (
-          <NativeSelectOption key={p.id} value={p.id}>
-            {p.name}
-          </NativeSelectOption>
-        ))}
-        <NativeSelectOption value={CUSTOM}>其他（自己填服务器）</NativeSelectOption>
-      </NativeSelect>
+        placeholder="选择服务商"
+        options={[...hosted.map((p) => [p.id, p.name] as const), [CUSTOM, "其他（自己填服务器）"] as const]}
+        onChange={(id) => onChange(hosted.find((h) => h.id === id) ?? CUSTOM)}
+      />
       {form.provider === "" && (
         <p className="mt-1.5 text-sm text-muted-foreground">
           未能识别这个邮箱的服务商。学校和公司的邮箱用的是腾讯、网易或阿里企业邮的，选对应的一项；都不是的选“其他”，在服务器设置里填写。
@@ -386,30 +373,21 @@ function ServerFields({
         value={server.host}
         onChange={(e) => onChange({ ...server, host: e.target.value })}
       />
-      <Input
+      <NumberField
         aria-label={`${label}端口`}
-        type="number"
         min={1}
-        max={65535}
+        max={U16}
         aria-invalid={!whole(server.port, 1, U16)}
-        value={Number.isNaN(server.port) ? "" : server.port}
-        onChange={(e) => onChange({ ...server, port: e.target.valueAsNumber })}
+        value={Number.isNaN(server.port) ? null : server.port}
+        onValueChange={(port) => onChange({ ...server, port: port ?? NaN })}
       />
-      <NativeSelect
+      <Select
         aria-label={`${label}加密方式`}
         className="phone:col-span-full"
         value={server.security}
-        onChange={(e) => {
-          const security = SECURITY.find(([value]) => value === e.target.value)?.[0];
-          if (security) onChange({ ...server, security });
-        }}
-      >
-        {SECURITY.map(([value, name]) => (
-          <NativeSelectOption key={value} value={value}>
-            {name}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
+        options={SECURITY}
+        onChange={(security) => onChange({ ...server, security })}
+      />
     </fieldset>
   );
 }

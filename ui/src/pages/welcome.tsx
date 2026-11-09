@@ -166,7 +166,7 @@ export function WelcomePage() {
   ];
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="flex max-w-[760px] flex-col px-7 pt-6 pb-10 phone:px-4">
+      <div className="mx-auto flex w-full max-w-[760px] flex-col px-7 pt-6 pb-10 phone:px-4">
         <header className="flex items-start gap-4 pb-6">
           <div className="grow">
             <h1 className="text-2xl font-semibold">开始使用</h1>
@@ -175,9 +175,12 @@ export function WelcomePage() {
               {askFirst && "结束引导时会请求系统通知权限，用于提醒回信、待办和完成的工作。"}
             </p>
           </div>
-          <Button variant="quiet" disabled={finish.isPending} onClick={end}>
-            跳过引导
-          </Button>
+          {/* Opened again from the settings, the guide is no longer something to skip. */}
+          {!profile.data.onboarded && (
+            <Button variant="quiet" disabled={finish.isPending} onClick={end}>
+              跳过引导
+            </Button>
+          )}
         </header>
         <Steps steps={steps} />
         <div className="mt-6 flex items-center justify-end gap-3">

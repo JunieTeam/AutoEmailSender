@@ -29,8 +29,18 @@ vi.mock("@/api/call", async (importOriginal) => ({
   errorMessage: (error: Error) => error.message,
 }));
 
-function select(id: string) {
-  return document.querySelector<HTMLSelectElement>(`#${id}`);
+/** Opens the list of the field with that id and picks the option so named, as a click does. */
+async function choose(id: string, option: string) {
+  await act(async () => document.querySelector<HTMLElement>(`#${id}`)?.click());
+  const item = await vi.waitFor(() => {
+    const found = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) => o.textContent === option);
+    if (!found) throw new Error(`no option ${option}`);
+    return found;
+  });
+  await act(async () => {
+    item.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    item.click();
+  });
 }
 
 it("shows what an Agent saved and does not save the old style back", async () => {
@@ -54,13 +64,8 @@ it("shows what an Agent saved and does not save the old style back", async () =>
     // An Agent saves while the page is open.
     remote.style = { ...remote.style, fontSizePt: 14 };
     await act(async () => client.setQueryData(["getLetterStyle"], remote.style));
-    await vi.waitFor(() => expect(select("letter-size")?.value).toBe("14"));
-    await act(async () => {
-      const spacing = select("letter-spacing");
-      if (!spacing) throw new Error("no spacing choice");
-      spacing.value = "0.8";
-      spacing.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await vi.waitFor(() => expect(document.querySelector("#letter-size")?.textContent).toBe("四号（14 磅）"));
+    await choose("letter-spacing", "中");
     expect(remote.save).toHaveBeenLastCalledWith(expect.objectContaining({ fontSizePt: 14, paragraphSpacingEm: 0.8 }));
   } finally {
     await act(async () => root.unmount());

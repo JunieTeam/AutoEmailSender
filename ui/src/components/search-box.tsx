@@ -35,7 +35,7 @@ export function SearchBox({
   return (
     <label
       className={cn(
-        "flex h-10 items-center gap-2 rounded-full bg-muted px-4 text-muted-foreground focus-within:ring-2 focus-within:ring-ring",
+        "flex h-10 items-center gap-2 rounded-full bg-muted px-4 text-muted-foreground focus-within:ring-1 focus-within:ring-primary focus-within:ring-inset",
         className,
       )}
     >

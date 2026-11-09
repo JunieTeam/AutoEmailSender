@@ -15,6 +15,7 @@ import type { DraftKind, FirstDraft, Material, Problem, ReplyDraft, FollowUpDraf
 import { Confirm } from "@/components/batch-bar";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip } from "@/components/ui/tooltip";
 import { fileSize } from "@/format";
 import { uploadMaterial } from "@/material";
 
@@ -269,7 +270,7 @@ export function AttachMenu({
         <Paperclip strokeWidth={1.8} />
         {last?.status === "pending" ? "正在添加附件…" : "添加附件"}
       </PopoverTrigger>
-      <PopoverContent align="start" className="flex max-h-[70dvh] w-72 flex-col overflow-y-auto p-1.5">
+      <PopoverContent align="start" className="flex max-h-[70dvh] flex-col">
         {materials.length === 0 ? (
           <p className="p-1.5 text-sm text-muted-foreground">
             尚未添加材料，可当场添加，或在
@@ -289,9 +290,9 @@ export function AttachMenu({
                 className="flex flex-col rounded-md px-3 py-2 text-left enabled:hover:bg-muted disabled:opacity-40"
                 onClick={() => onAttach(m)}
               >
-                <span className="truncate" title={m.fileName}>
-                  {m.fileName}
-                </span>
+                <Tooltip content={m.fileName}>
+                  <span className="truncate">{m.fileName}</span>
+                </Tooltip>
                 <span className="text-sm text-muted-foreground">
                   {taken === m ? "已附上" : taken ? "已附上同名文件" : fileSize(m.size)}
                 </span>

@@ -21,7 +21,7 @@ import {
 } from "@/components/mentor";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { MENU_ITEM, Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScheduleActions, refreshSchedule, scheduledAt } from "@/components/schedule";
 import { AddTodo, TodoItem } from "@/components/todos";
 import { TrackingNote } from "@/components/tracking";
@@ -618,12 +618,11 @@ function ReplyOutcomeMenu({
         >
           {outcome ? <OutcomeChip outcome={outcome} /> : marking ? "AI 正在标记…" : "标记结果"}
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-36 p-1.5">
+        <PopoverContent align="start">
           {OUTCOME_ORDER.map((o) => (
-            <Button
+            <button
               key={o}
-              variant="ghost"
-              className="w-full justify-between"
+              className={`${MENU_ITEM} justify-between`}
               onClick={() => {
                 setOpen(false);
                 if (o !== outcome) set.mutate(o);
@@ -631,7 +630,7 @@ function ReplyOutcomeMenu({
             >
               {OUTCOMES[o]}
               {o === outcome && <Check className="size-4" strokeWidth={1.8} />}
-            </Button>
+            </button>
           ))}
         </PopoverContent>
       </Popover>

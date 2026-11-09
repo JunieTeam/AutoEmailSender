@@ -6,7 +6,8 @@ import type { Schedule, TaskSummary } from "@/api/types";
 import { Field, formClose } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Input } from "@/components/ui/input";
+import { NumberField } from "@/components/ui/number-field";
+import { TimeSelect } from "@/components/ui/time-select";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Confirm } from "@/components/batch-bar";
 import { day, time } from "@/format";
@@ -113,28 +114,17 @@ export function ScheduleFields({
             </div>
             <div className="min-w-[100px] flex-1 space-y-3">
               <Field id="window-start" label="开始时间">
-                <Input
-                  id="window-start"
-                  type="time"
-                  value={value.start}
-                  onChange={(e) => onChange({ ...value, start: e.target.value })}
-                />
+                <TimeSelect id="window-start" value={value.start} onChange={(start) => onChange({ ...value, start })} />
               </Field>
               <Field id="window-end" label="结束时间">
-                <Input
-                  id="window-end"
-                  type="time"
-                  value={value.end}
-                  onChange={(e) => onChange({ ...value, end: e.target.value })}
-                />
+                <TimeSelect id="window-end" value={value.end} onChange={(end) => onChange({ ...value, end })} />
               </Field>
               <Field id="window-count" label="每个窗口最多几封">
-                <Input
+                <NumberField
                   id="window-count"
-                  type="number"
                   min={1}
-                  value={value.perWindow}
-                  onChange={(e) => onChange({ ...value, perWindow: Number(e.target.value) })}
+                  value={value.perWindow || null}
+                  onValueChange={(perWindow) => onChange({ ...value, perWindow: perWindow ?? 0 })}
                 />
               </Field>
             </div>
@@ -245,7 +235,7 @@ export function DateTimeDialog({
         <DialogBody className="space-y-4 py-4">
           <Calendar mode="single" selected={date} onSelect={setDate} disabled={{ before: today }} />
           <Field id="send-time" label="发送时间">
-            <Input id="send-time" type="time" value={clock} onChange={(e) => setClock(e.target.value)} />
+            <TimeSelect id="send-time" value={clock} onChange={setClock} />
           </Field>
           {date && clock && !Number.isFinite(at) && (
             <p className="text-sm text-warning">所选日期的这个时间不存在，请选择其他时间</p>

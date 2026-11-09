@@ -14,7 +14,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
+import { Select } from "@/components/ui/select";
 import { ScheduleFields, scheduleValid, useScheduleCapacity } from "@/components/schedule";
 import { day, fileSize, sentFor } from "@/format";
 
@@ -283,26 +283,18 @@ function TaskSteps({
                 ))}
               </div>
               <Field id="task-template" label={form.writer === "ai" ? "底稿模板（可以不选）" : "模板"}>
-                <NativeSelect
+                <Select<"snapshot" | number | null>
                   id="task-template"
-                  value={form.templateSourceId !== null ? "snapshot" : (form.templateId ?? "")}
-                  onChange={(e) => {
-                    if (e.target.value !== "snapshot")
-                      setForm({
-                        ...form,
-                        templateSourceId: null,
-                        templateId: e.target.value ? Number(e.target.value) : null,
-                      });
+                  value={form.templateSourceId !== null ? "snapshot" : form.templateId}
+                  options={[
+                    ...(form.templateSourceId !== null ? [["snapshot", "原任务保存的模板"] as const] : []),
+                    [null, form.writer === "ai" ? "从头起草" : "请选择模板"],
+                    ...templates.map((t) => [t.id, t.name] as const),
+                  ]}
+                  onChange={(templateId) => {
+                    if (templateId !== "snapshot") setForm({ ...form, templateSourceId: null, templateId });
                   }}
-                >
-                  {form.templateSourceId !== null && <option value="snapshot">原任务保存的模板</option>}
-                  <option value="">{form.writer === "ai" ? "从头起草" : "请选择模板"}</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </NativeSelect>
+                />
               </Field>
               {kind === "follow_up" && (
                 <p className="text-muted-foreground">

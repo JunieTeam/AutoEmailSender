@@ -1,4 +1,5 @@
 import { Paperclip, X } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
 import { fileSize } from "@/format";
 
 /** The files an email carries, with their total when there are several; removable while writing. */
@@ -18,9 +19,9 @@ export function Attachments<T extends { fileName: string; size: number }>({
           className={`flex min-w-0 items-center gap-1.5 rounded-md border border-border py-1 pl-2 ${onRemove ? "pr-1" : "pr-2.5"}`}
         >
           <Paperclip className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.8} />
-          <span className="truncate" title={f.fileName}>
-            {f.fileName}
-          </span>
+          <Tooltip content={f.fileName}>
+            <span className="truncate">{f.fileName}</span>
+          </Tooltip>
           <span className="shrink-0 text-muted-foreground">{fileSize(f.size)}</span>
           {onRemove && (
             <button

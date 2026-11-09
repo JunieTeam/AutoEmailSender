@@ -10,6 +10,7 @@ import { Pager } from "@/components/mentor-table";
 import { findSearch } from "@/pages/find";
 import { mentorSearch } from "@/pages/mentors";
 import { Segments } from "@/components/ui/segments";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Loading } from "@/components/loading";
 
 // docs/ui.md 统计. Only the contact progress and token sections follow the range.
@@ -67,7 +68,7 @@ export function StatsPage() {
   const usage = useQuery({ queryKey: ["stats", "tokens", period], queryFn: () => call("tokenStats", period) });
   return (
     <div className="@container flex-1 overflow-y-auto">
-      <header className="flex max-w-[1120px] flex-wrap items-center gap-x-4 gap-y-3 px-7 pt-6 pb-2 phone:px-4 phone:pt-3.5">
+      <header className="mx-auto flex w-full max-w-[1120px] flex-wrap items-center gap-x-4 gap-y-3 px-7 pt-6 pb-2 phone:px-4 phone:pt-3.5">
         <h1 className="grow text-2xl font-semibold phone:text-[22px]">统计</h1>
         <Segments
           label="时间范围"
@@ -81,7 +82,7 @@ export function StatsPage() {
           }}
         />
       </header>
-      <div className="max-w-[1120px] space-y-12 px-7 pt-4 pb-12 phone:space-y-10 phone:px-4">
+      <div className="mx-auto w-full max-w-[1120px] space-y-12 px-7 pt-4 pb-12 phone:space-y-10 phone:px-4">
         <Section
           title="联系进度"
           note={range === "all" ? "全部时间" : `最近 ${RANGES.find(([r]) => r === range)?.[1]}`}
@@ -392,9 +393,9 @@ function Bars({
             after ? "grid-cols-[minmax(4.5rem,8rem)_1fr_auto_4.5rem]" : "grid-cols-[minmax(4.5rem,8rem)_1fr_auto]",
           )}
         >
-          <span className="truncate text-muted-foreground" title={r.label}>
-            {r.label}
-          </span>
+          <Tooltip content={r.label}>
+            <span className="truncate text-muted-foreground">{r.label}</span>
+          </Tooltip>
           <span className="h-2 rounded-full bg-muted">
             <span
               className="block h-full rounded-full bg-muted-foreground/60 transition-[width] duration-240"

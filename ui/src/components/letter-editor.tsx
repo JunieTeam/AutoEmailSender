@@ -7,7 +7,7 @@ import { Bold, Braces, Italic, Link, List, ListOrdered } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FIELD, Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { MENU_ITEM, Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LETTER_BODY } from "@/letter";
 import { linkable, toHtml, toMarkdown } from "@/markdown";
 
@@ -398,12 +398,12 @@ function PlaceholderMenu({
         <Braces strokeWidth={1.8} />
         插入占位符
       </PopoverTrigger>
-      <PopoverContent align="start" className="flex w-44 flex-col" finalFocus={false}>
+      <PopoverContent align="start" finalFocus={false}>
         {placeholders.map((name) => (
           <button
             key={name}
             type="button"
-            className="h-9 rounded-md px-3 text-left hover:bg-muted"
+            className={MENU_ITEM}
             onClick={() => {
               setOpen(false);
               editor

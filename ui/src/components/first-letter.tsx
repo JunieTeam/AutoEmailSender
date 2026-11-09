@@ -38,7 +38,7 @@ import { dropDrafts } from "@/components/mentor";
 import { usePlaceholders } from "@/components/template-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { MENU_ITEM, Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DateTimeDialog, refreshSchedule } from "@/components/schedule";
 import { letterHtml, letterText } from "@/letter";
 
@@ -408,10 +408,10 @@ function Composer({
                 >
                   <ChevronDown />
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-44 p-1.5">
-                  <Button variant="ghost" onClick={() => setScheduleOpen(true)}>
+                <PopoverContent align="end">
+                  <button className={MENU_ITEM} onClick={() => setScheduleOpen(true)}>
                     定时发送…
-                  </Button>
+                  </button>
                 </PopoverContent>
               </Popover>
             </>
@@ -496,7 +496,7 @@ export function TemplateMenu({
         <FileText strokeWidth={1.8} />
         使用模板
       </PopoverTrigger>
-      <PopoverContent align="start" className="flex w-72 flex-col p-1.5">
+      <PopoverContent align="start" className="flex flex-col">
         {chosen ? (
           <div className="p-1.5">
             <p>

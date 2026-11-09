@@ -26,7 +26,7 @@ import { MatchButton } from "@/components/matching";
 import { EnrichMentorsDialog } from "@/pages/find";
 import { Notice } from "@/components/notice";
 import { Button } from "@/components/ui/button";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { day } from "@/format";
 import { Loading } from "@/components/loading";
@@ -62,8 +62,8 @@ export function MentorPage() {
   }
   const m = query.data;
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_340px] phone:grid-cols-1">
-      <section className={`flex min-h-0 min-w-0 flex-col ${profile ? "phone:hidden" : ""}`}>
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_340px] compact:grid-cols-1">
+      <section className={`flex min-h-0 min-w-0 flex-col ${profile ? "compact:hidden" : ""}`}>
         <Header mentor={m} onProfile={() => setProfile(true)} onTrash={() => trash.mutate("trashMentors")} />
         {(m.trashed || trash.isError) && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-muted px-5 py-2 text-sm phone:px-3">
@@ -104,9 +104,13 @@ export function MentorPage() {
         </div>
       </section>
       <aside
-        className={`flex min-h-0 flex-col gap-[18px] overflow-y-auto px-5 py-[22px] text-sm ${profile ? "" : "phone:hidden"}`}
+        className={`flex min-h-0 flex-col gap-[18px] overflow-y-auto px-5 py-[22px] text-sm ${profile ? "" : "compact:hidden"}`}
       >
-        <Button variant="ghost" className="hidden self-start px-2 phone:inline-flex" onClick={() => setProfile(false)}>
+        <Button
+          variant="ghost"
+          className="hidden self-start px-2 compact:inline-flex"
+          onClick={() => setProfile(false)}
+        >
           <ChevronLeft strokeWidth={1.6} />
           返回往来
         </Button>
@@ -183,7 +187,7 @@ function Header({
         </p>
       </div>
       <ContactLabel contact={m.contact} className="text-sm phone:hidden" />
-      <Button variant="ghost" className="hidden px-3 phone:inline-flex" onClick={onProfile}>
+      <Button variant="ghost" className="hidden px-3 compact:inline-flex" onClick={onProfile}>
         <UserRound strokeWidth={1.6} />
         资料
       </Button>
@@ -371,19 +375,13 @@ function SendingMailbox({ mentor: m }: { mentor: MentorDetail }) {
       <dt>发件邮箱</dt>
       <dd>
         {choosing && (
-          <NativeSelect
+          <Select
             aria-label="发件邮箱"
-            value={m.mailboxId ?? ""}
+            value={m.mailboxId}
             disabled={saving}
-            onChange={(e) => save.mutate(e.target.value ? Number(e.target.value) : null)}
-          >
-            <NativeSelectOption value="">自动</NativeSelectOption>
-            {mailboxes.data.map((b) => (
-              <NativeSelectOption key={b.id} value={b.id}>
-                {b.address}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+            options={[[null, "自动"], ...mailboxes.data.map((b) => [b.id, b.address] as const)]}
+            onChange={(mailboxId) => save.mutate(mailboxId)}
+          />
         )}
         {choosing && m.contact.status !== "none" && (
           <p className="mt-1 text-xs text-muted-foreground">更换发件邮箱后，导师看到的发件地址会随之改变</p>

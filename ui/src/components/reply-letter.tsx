@@ -24,6 +24,7 @@ import { TemplateMenu } from "@/components/first-letter";
 import { Confirm } from "@/components/batch-bar";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Attachments } from "@/components/attachments";
 import {
   AttachMenu,
@@ -386,10 +387,12 @@ function Composer({
                 {label} {mentor.name}
               </p>
               {shownTarget && (
-                <p className="truncate text-xs text-muted-foreground" title={shownTarget.subject ?? undefined}>
-                  “{shownTarget.subject ?? "无主题"}” · {shownTarget.fromAddress} · {day(shownTarget.sentAt)}{" "}
-                  {time(shownTarget.sentAt)}
-                </p>
+                <Tooltip content={shownTarget.subject ?? undefined}>
+                  <p className="truncate text-xs text-muted-foreground">
+                    “{shownTarget.subject ?? "无主题"}” · {shownTarget.fromAddress} · {day(shownTarget.sentAt)}{" "}
+                    {time(shownTarget.sentAt)}
+                  </p>
+                </Tooltip>
               )}
             </div>
             {!held && (

@@ -2,6 +2,7 @@ import type { Decisions, IntakePreview, ImportProfile, Addition } from "@/api/ty
 import { Differences, FIELD_NAMES } from "@/components/differences";
 import { placeOf } from "@/components/mentor";
 import { Button } from "@/components/ui/button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 export function IntakeChoices({
   preview,
@@ -60,42 +61,36 @@ export function IntakeChoices({
                     </span>
                     <ProfileDetails profile={m.incoming} />
                   </div>
-                  <fieldset className="min-w-0 space-y-3">
+                  <fieldset className="min-w-0">
                     <legend className="mb-1 text-xs text-muted-foreground">选择并入哪一位，或新建</legend>
-                    {m.candidates.map((candidate) => (
-                      <label key={candidate.id} className="flex items-start gap-2">
-                        <input
-                          type="radio"
-                          name={`same-${m.row}`}
-                          className="mt-1"
-                          checked={m.selected === candidate.id}
-                          onChange={() =>
-                            choose((d) => ({
-                              ...d,
-                              matches: [...d.matches.filter((c) => c.row !== m.row), { row: m.row, id: candidate.id }],
-                            }))
-                          }
-                        />
-                        <span className="min-w-0">
-                          <span className="mb-1 block text-xs text-muted-foreground">并入 · 编号 {candidate.id}</span>
-                          <ProfileDetails profile={candidate.profile} />
-                        </span>
+                    <RadioGroup<number | "new">
+                      // Not null, which the group takes for no choice, sending Tab to its first radio.
+                      value={m.selected ?? "new"}
+                      onValueChange={(id) =>
+                        choose((d) => ({
+                          ...d,
+                          matches: [
+                            ...d.matches.filter((c) => c.row !== m.row),
+                            { row: m.row, id: id === "new" ? null : id },
+                          ],
+                        }))
+                      }
+                      className="space-y-3"
+                    >
+                      {m.candidates.map((candidate) => (
+                        <label key={candidate.id} className="flex items-start gap-2">
+                          <RadioGroupItem value={candidate.id} className="mt-1" />
+                          <span className="min-w-0">
+                            <span className="mb-1 block text-xs text-muted-foreground">并入 · 编号 {candidate.id}</span>
+                            <ProfileDetails profile={candidate.profile} />
+                          </span>
+                        </label>
+                      ))}
+                      <label className="flex items-center gap-2">
+                        <RadioGroupItem value="new" />
+                        新建
                       </label>
-                    ))}
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name={`same-${m.row}`}
-                        checked={m.selected === null}
-                        onChange={() =>
-                          choose((d) => ({
-                            ...d,
-                            matches: [...d.matches.filter((c) => c.row !== m.row), { row: m.row, id: null }],
-                          }))
-                        }
-                      />
-                      新建
-                    </label>
+                    </RadioGroup>
                   </fieldset>
                 </div>
               </div>
@@ -122,22 +117,24 @@ export function IntakeChoices({
             {preview.trashed.map((m) => (
               <div key={m.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-3 text-sm">
                 <p className="mr-auto">{numbered ? `${m.name} · 第 ${m.rows.join("、")} 项` : m.name}</p>
-                {[false, true].map((restore) => (
-                  <label key={String(restore)} className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name={`restore-${m.id}`}
-                      checked={decisions.restore.includes(m.id) === restore}
-                      onChange={() =>
-                        choose((d) => ({
-                          ...d,
-                          restore: [...d.restore.filter((id) => id !== m.id), ...(restore ? [m.id] : [])],
-                        }))
-                      }
-                    />
-                    {restore ? "恢复并更新" : "跳过"}
-                  </label>
-                ))}
+                <RadioGroup
+                  aria-label={`${m.name}：恢复并更新或跳过`}
+                  value={decisions.restore.includes(m.id)}
+                  onValueChange={(restore) =>
+                    choose((d) => ({
+                      ...d,
+                      restore: [...d.restore.filter((id) => id !== m.id), ...(restore ? [m.id] : [])],
+                    }))
+                  }
+                  className="flex items-center gap-3"
+                >
+                  {[false, true].map((restore) => (
+                    <label key={String(restore)} className="flex items-center gap-2">
+                      <RadioGroupItem value={restore} />
+                      {restore ? "恢复并更新" : "跳过"}
+                    </label>
+                  ))}
+                </RadioGroup>
               </div>
             ))}
           </div>

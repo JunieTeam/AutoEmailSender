@@ -33,8 +33,10 @@ import { StatusLabel, type Tone } from "@/components/ui/status-dot";
 import { Segments } from "@/components/ui/segments";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
-import { NativeSelect } from "@/components/ui/native-select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select } from "@/components/ui/select";
+import { COMPACT } from "@/layout";
+import { MENU_ITEM, Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip } from "@/components/ui/tooltip";
 import { SendingPlan } from "@/components/sending-plan";
 import { ChangeSchedule, ScheduleActions, scheduleText, scheduledAt } from "@/components/schedule";
 import { day } from "@/format";
@@ -89,12 +91,12 @@ function ProgressBar({ progress, labels = false }: { progress: Progress; labels?
         {SEGMENTS.map(
           ([k, label, color]) =>
             progress[k] > 0 && (
-              <div
-                key={k}
-                className={`${color} transition-[width] duration-240`}
-                style={{ width: `${(progress[k] / total) * 100}%` }}
-                title={`${label} ${progress[k]} 封`}
-              />
+              <Tooltip key={k} content={`${label} ${progress[k]} 封`}>
+                <div
+                  className={`${color} transition-[width] duration-240`}
+                  style={{ width: `${(progress[k] / total) * 100}%` }}
+                />
+              </Tooltip>
             ),
         )}
       </div>
@@ -290,14 +292,14 @@ export function TaskReviewPage() {
   });
   const current = search.email ?? list.data?.drafts[0]?.id;
   useEffect(() => {
-    const phone = matchMedia("(max-width: 760px)");
+    const compact = matchMedia(COMPACT);
     function openFirst() {
-      if (!search.email && current !== undefined && !phone.matches)
+      if (!search.email && current !== undefined && !compact.matches)
         void navigate({ search: (s) => ({ ...s, email: current }), replace: true });
     }
     openFirst();
-    phone.addEventListener("change", openFirst);
-    return () => phone.removeEventListener("change", openFirst);
+    compact.addEventListener("change", openFirst);
+    return () => compact.removeEventListener("change", openFirst);
   }, [current, search.email, navigate]);
   async function flush() {
     await composer.current?.flush();
@@ -416,48 +418,51 @@ export function TaskReviewPage() {
             <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="更多" />}>
               <MoreHorizontal />
             </PopoverTrigger>
-            <PopoverContent align="end" className="flex w-64 flex-col gap-2 p-2">
-              <Button
-                variant="ghost"
+            <PopoverContent align="end">
+              <button
+                className={MENU_ITEM}
                 disabled={!restart.data?.ids.length || prepareRestart.isPending}
                 onClick={() => prepareRestart.mutate()}
               >
                 重新发起未成功的
-              </Button>
+              </button>
+              {/* Notes wrap within the menu's width rather than widen it. */}
               {restart.data?.ids.length === 0 && (
-                <p className="px-2 text-xs text-muted-foreground">无已取消、发送失败、生成失败或退信的导师</p>
+                <p className="w-0 min-w-full px-3 pb-2 text-xs text-muted-foreground">
+                  无已取消、发送失败、生成失败或退信的导师
+                </p>
               )}
               {(restart.error ?? prepareRestart.error) && (
                 <FailureNote
-                  className="px-2 text-sm text-destructive"
+                  className="w-0 min-w-full px-3 pb-2 text-sm text-destructive"
                   failure={failureOf(restart.error ?? prepareRestart.error)}
                 />
               )}
               {t.state !== "stopped" && (
-                <Button
-                  variant="ghost"
+                <button
+                  className={MENU_ITEM}
                   onClick={() => {
                     setMoreOpen(false);
                     setChangingSchedule(true);
                   }}
                 >
                   修改发送时间
-                </Button>
+                </button>
               )}
               {t.state !== "stopped" && t.kind === "first" && t.schedule.kind === "window" && (
-                <Button
-                  variant="ghost"
+                <button
+                  className={MENU_ITEM}
                   onClick={() => {
                     setMoreOpen(false);
                     setHandingOff(true);
                   }}
                 >
                   交给云端发送
-                </Button>
+                </button>
               )}
               {t.state !== "stopped" && (
                 <Confirm
-                  trigger={<Button variant="ghost">停止任务</Button>}
+                  trigger={<button className={MENU_ITEM}>停止任务</button>}
                   message={`停止后，未发出的邮件全部取消，任务无法继续。正在发送的邮件会完成发送。${
                     t.progress.cloud > 0
                       ? `已交给云端的 ${t.progress.cloud} 封会去云端撤回；无法连接服务器时，到点仍可能发出。`
@@ -468,7 +473,7 @@ export function TaskReviewPage() {
                 />
               )}
               <Confirm
-                trigger={<Button variant="danger">删除任务</Button>}
+                trigger={<button className={`${MENU_ITEM} hover:text-destructive`}>删除任务</button>}
                 message={
                   t.progress.cloud > 0
                     ? `有 ${t.progress.cloud} 封邮件已交给云端，请先把它们撤回到本地再删除任务`
@@ -501,25 +506,19 @@ export function TaskReviewPage() {
           </p>
         )}
       </header>
-      <div className="grid min-h-0 flex-1 grid-cols-[250px_minmax(0,1fr)_280px] max-[1240px]:grid-cols-[230px_minmax(0,1fr)] phone:grid-cols-1">
+      <div className="grid min-h-0 flex-1 grid-cols-[250px_minmax(0,1fr)_280px] max-[1240px]:grid-cols-[230px_minmax(0,1fr)] compact:grid-cols-1">
         <section
-          className={`flex min-h-0 flex-col border-r border-border phone:border-0 ${search.email ? "phone:hidden" : ""}`}
+          className={`flex min-h-0 flex-col border-r border-border compact:border-0 ${search.email ? "compact:hidden" : ""}`}
         >
           <div className="space-y-2 p-3">
-            <NativeSelect
+            <Select
               aria-label="筛选草稿"
               value={filter}
-              onChange={(e) => {
-                const next = FILTERS.find(([v]) => v === e.target.value)?.[0];
-                void navigate({ search: { filter: next === "all" ? undefined : next, page: undefined } });
-              }}
-            >
-              {FILTERS.map(([v, label]) => (
-                <option key={v} value={v}>
-                  {label}
-                </option>
-              ))}
-            </NativeSelect>
+              options={FILTERS}
+              onChange={(next) =>
+                void navigate({ search: { filter: next === "all" ? undefined : next, page: undefined } })
+              }
+            />
             {t.progress.review > 0 && t.state !== "stopped" && (
               <Button
                 variant="quiet"
@@ -583,7 +582,7 @@ export function TaskReviewPage() {
             id={current}
             task={t}
             composer={composer}
-            mobileOpen={search.email !== undefined}
+            chosen={search.email !== undefined}
             onBack={() => choose(undefined)}
             onApproved={() => {
               refreshTasks(client);
@@ -604,14 +603,15 @@ function DraftDetail({
   id,
   task,
   composer,
-  mobileOpen,
+  chosen,
   onBack,
   onApproved,
 }: {
   id: number;
   task: TaskSummary;
   composer: RefObject<ComposerHandle | null>;
-  mobileOpen: boolean;
+  /** Whether the user chose this letter, which a narrow window then shows in place of the list. */
+  chosen: boolean;
   onBack: () => void;
   onApproved: () => void;
 }) {
@@ -656,13 +656,13 @@ function DraftDetail({
   const editable = d.state === "review" && task.state !== "stopped";
   return (
     <>
-      <section className={`min-h-0 min-w-0 overflow-y-auto ${mobileOpen ? "" : "phone:hidden"}`}>
+      <section className={`min-h-0 min-w-0 overflow-y-auto ${chosen ? "" : "compact:hidden"}`}>
         <div className="flex items-center gap-2 px-5 pt-4 phone:px-3">
           <Button
             variant="ghost"
             size="icon"
             aria-label="返回草稿列表"
-            className="hidden phone:inline-flex"
+            className="hidden compact:inline-flex"
             onClick={onBack}
           >
             <ChevronLeft />

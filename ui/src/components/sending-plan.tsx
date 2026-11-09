@@ -70,7 +70,7 @@ function PlanList({ column, label, hidden }: { column: PlanColumn; label: string
         {query.data && <span className="ml-2 text-sm text-muted-foreground">{query.data.total}</span>}
       </h2>
       {column === "upcoming" && (
-        <div className="flex items-center gap-2 px-3 pb-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-2">
           <CloudSendButton />
           <span className="text-xs text-muted-foreground">电脑关机也按时发出</span>
         </div>

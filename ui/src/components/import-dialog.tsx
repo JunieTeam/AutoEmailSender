@@ -16,6 +16,8 @@ import type {
 import { FIELD_NAMES } from "@/components/differences";
 import { refreshMentors } from "@/components/mentor";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { base64, MAX_UPLOAD } from "@/file";
 import { reconcileChoices, reconcileMatches } from "@/import-decisions";
@@ -25,7 +27,6 @@ type ImportFile = Omit<PreviewImport, "decisions">;
 
 const EMPTY: Decisions = { take: [], matches: [], restore: [] };
 const fields = Object.keys(FIELD_NAMES).filter((value): value is Field => value in FIELD_NAMES);
-const SELECT = "h-9 max-w-full rounded-md border border-border bg-background px-2 text-sm";
 
 export function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported: (result: Imported) => void }) {
   const queryClient = useQueryClient();
@@ -184,49 +185,41 @@ export function ImportDialog({ onClose, onImported }: { onClose: () => void; onI
           {preview && (
             <div className={`space-y-5 ${read.isPending ? "pointer-events-none opacity-50" : ""}`}>
               {preview.sheets.length > 1 && (
-                <label className="flex items-center gap-3 text-sm">
+                <div className="flex items-center gap-3 text-sm">
                   工作表
-                  <select
+                  <Select
                     aria-label="工作表"
-                    className={SELECT}
+                    className="h-9 w-56"
                     value={preview.sheet}
-                    onChange={(e) => remap({ sheet: Number(e.target.value), columns: null })}
-                  >
-                    {preview.sheets.map((name, n) => (
-                      <option key={n} value={n}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    options={preview.sheets.map((name, n) => [n, name] as const)}
+                    onChange={(sheet) => remap({ sheet, columns: null })}
+                  />
+                </div>
               )}
               <section>
                 <h3 className="mb-2 text-sm font-medium">列的对应</h3>
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {preview.columns.map((c, n) => (
-                    <label key={n} className="flex w-36 shrink-0 flex-col gap-1.5 rounded-md bg-muted p-2.5 text-sm">
-                      <span className="truncate" title={c.header}>
-                        {c.header || `第 ${n + 1} 列`}
-                      </span>
-                      <select
+                    <div key={n} className="flex w-36 shrink-0 flex-col gap-1.5 rounded-md bg-muted p-2.5 text-sm">
+                      {c.header ? (
+                        <Tooltip content={c.header}>
+                          <span className="truncate">{c.header}</span>
+                        </Tooltip>
+                      ) : (
+                        <span>第 {n + 1} 列</span>
+                      )}
+                      <Select
                         aria-label={`第 ${n + 1} 列对应`}
-                        className={`${SELECT} ${c.field ? "" : "text-muted-foreground"}`}
-                        value={c.field ?? ""}
-                        onChange={(e) => {
+                        className={`h-9 bg-background px-2.5 ${c.field ? "" : "text-muted-foreground"}`}
+                        value={c.field}
+                        options={[[null, "不导入"], ...fields.map((f) => [f, FIELD_NAMES[f]] as const)]}
+                        onChange={(field) => {
                           const columns = preview.columns.map((column) => column.field);
-                          const field = fields.find((f) => f === e.target.value);
-                          columns[n] = field ?? null;
+                          columns[n] = field;
                           remap({ sheet: preview.sheet, columns });
                         }}
-                      >
-                        <option value="">不导入</option>
-                        {Object.entries(FIELD_NAMES).map(([f, name]) => (
-                          <option key={f} value={f}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                      />
+                    </div>
                   ))}
                 </div>
               </section>

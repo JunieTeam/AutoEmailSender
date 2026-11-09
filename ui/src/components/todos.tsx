@@ -11,6 +11,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { TimeSelect } from "@/components/ui/time-select";
 import { composing } from "@/composing";
 
 type Due = Pick<Todo, "dueDate" | "dueTime">;
@@ -215,13 +216,13 @@ export function TodoEditor({
           </PopoverContent>
         </Popover>
         {dueDate && (
-          <Input
-            type="time"
+          <TimeSelect
+            none="不设时间"
             disabled={pending}
             aria-label="截止时间"
-            className="h-8 w-28"
+            className="h-8 w-32"
             value={dueTime}
-            onChange={(e) => setDueTime(e.target.value)}
+            onChange={setDueTime}
           />
         )}
         <span className="grow" />
