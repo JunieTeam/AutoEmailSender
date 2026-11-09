@@ -347,6 +347,43 @@ async fn rate_limit_waits_for_retry_after_on_controlled_time(db: SqlitePool) {
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_dropped_connection_is_tried_again_a_minute_later_without_pausing(db: SqlitePool) {
+    let mut p = Provider::start().await.unwrap();
+    setup(&db, &p.address, 1).await;
+    let mut runner = Runner::start(&db);
+    let req = request(&mut p).await;
+    // Keep the runtime busy so SQLite I/O cannot auto-advance the paused clock.
+    let clock_guard = tokio::spawn(async {
+        loop {
+            tokio::task::yield_now().await;
+        }
+    });
+    tokio::time::pause();
+    while runner.changes.try_recv().is_ok() {}
+    // Closes the connection without answering, as when the network drops.
+    drop(req);
+    runner.changes.recv().await.unwrap();
+    assert!(queue::progress(&db).await.unwrap().pause.is_none());
+    tokio::time::advance(Duration::from_secs(59)).await;
+    runner.matcher.wake();
+    for _ in 0..20 {
+        tokio::task::yield_now().await;
+    }
+    assert!(p.requests.try_recv().is_err());
+    tokio::time::advance(Duration::from_millis(1001)).await;
+    tokio::time::resume();
+    clock_guard.abort();
+    request(&mut p)
+        .await
+        .respond
+        .send(Response::answer(VALID))
+        .ok()
+        .unwrap();
+    let finished = runner.finished().await;
+    assert_eq!((finished.analyzed, finished.failed), (1, 0));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_rate_limit_lasting_past_ten_minutes_pauses_with_the_providers_words(db: SqlitePool) {
     let mut p = Provider::start().await.unwrap();
     setup(&db, &p.address, 1).await;

@@ -16,8 +16,8 @@ use tokio::{
 
 pub const CONCURRENCY: usize = 3;
 
-/// Rate limits lasting longer than this with nothing getting through are taken as limits that
-/// will not lift by themselves, such as a used-up plan, and pause the work.
+/// Rate limits or network failures lasting longer than this with nothing getting through are
+/// taken as ones that will not lift by themselves, such as a used-up plan, and pause the work.
 pub const LASTING: Duration = Duration::from_secs(10 * 60);
 
 #[derive(Clone)]
@@ -46,8 +46,8 @@ pub fn same_config(current: &Chosen, expected: &Chosen) -> bool {
         && current.access.api_key == expected.access.api_key
 }
 
-/// What a failure means for background work: pause all of it, wait out a rate limit, or fail
-/// only this item.
+/// What a failure means for background work: pause all of it, wait out a rate limit or the
+/// network being down, or fail only this item.
 pub enum Effect {
     Pause(Failure),
     RateLimit(RateLimit),
@@ -206,8 +206,17 @@ impl Limited {
 pub fn classify(error: ModelError, access: &Access) -> Effect {
     let failure = error.failure();
     let (cause, status, retry_after, words) = match &error {
-        ModelError::MissingKey | ModelError::Unreachable { .. } | ModelError::TimedOut { .. } => {
+        ModelError::MissingKey => return Effect::Pause(failure),
+        ModelError::Unreachable { source, .. } if net::untrusted(source) => {
             return Effect::Pause(failure);
+        }
+        // A network that dropped or a provider that stalled often comes back by itself: waited out
+        // like a rate limit, a short outage does not stop work left running unattended.
+        ModelError::Unreachable { .. } | ModelError::TimedOut { .. } => {
+            return Effect::RateLimit(RateLimit {
+                wait: Duration::from_secs(60),
+                lasting: failure,
+            });
         }
         ModelError::Refused {
             status,

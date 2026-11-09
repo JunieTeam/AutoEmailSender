@@ -393,7 +393,7 @@ impl Reader<'_> {
                 match failure {
                     Effect::Pause(r) => ReadError::Pause(r),
                     Effect::RateLimit(limit) => {
-                        tracing::info!(wait_ms = limit.wait.as_millis(), "model rate limited");
+                        tracing::info!(wait_ms = limit.wait.as_millis(), "model cooldown");
                         ReadError::RateLimit(limit, round)
                     }
                     Effect::Failed(r) => ReadError::Failed(r),
