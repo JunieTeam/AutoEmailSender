@@ -12,7 +12,7 @@ pub mod output;
 pub mod providers;
 pub mod usage;
 
-pub use client::{Access, Answer, Finish, ask, list_models, test};
+pub use client::{Access, Answer, CUT_OFF, Finish, ask, list_models, test};
 pub use error::ModelError;
 
 /// A model configuration as the settings show it. Its API key never leaves the core.

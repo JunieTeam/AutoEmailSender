@@ -284,9 +284,7 @@ async fn analyze(
             ));
         }
         if answer.finish_reason == Some(model::Finish::Length) {
-            return Ok(Outcome::Failed(Failure::new(
-                "模型的回答过长，已被截断。请重试或更换模型。",
-            )));
+            return Ok(Outcome::Failed(Failure::new(model::CUT_OFF)));
         }
         match parse(&answer.text) {
             Ok(answer) => return Ok(Outcome::Done(answer, chosen.model, started_at)),

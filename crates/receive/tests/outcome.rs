@@ -1304,3 +1304,31 @@ async fn disabling_one_reply_action_preserves_the_other_actions_pause(db: Sqlite
     queue::set_enabled(&db, false).await.unwrap();
     assert!(queue::progress(&db).await.unwrap().pause.is_none());
 }
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_outcome_cut_off_by_the_length_limit_is_not_taken_even_if_it_parses(db: SqlitePool) {
+    let m = setup(&db).await;
+    let id = message(&db, m, "reply", 1, "答复").await;
+    let mut p = Provider::start().await.unwrap();
+    config(&db, &p.address).await;
+    queue::set_enabled(&db, true).await.unwrap();
+    let mut runner = Runner::start(&db, Default::default());
+    request(&mut p)
+        .await
+        .respond
+        .send(Response::Answer {
+            text: VALID.into(),
+            finish_reason: "length".into(),
+        })
+        .ok()
+        .unwrap();
+    runner.until(&db, |p| p.failed == 1).await;
+    assert_eq!(outcome(&db, id).await, None);
+    assert!(matches!(
+        &receive::list(&db, m).await.unwrap()[0].kind,
+        receive::MessageKind::Reply {
+            marking: Some(queue::OutcomeMarking::Failed { reason }),
+            ..
+        } if reason.message == model::CUT_OFF
+    ));
+}

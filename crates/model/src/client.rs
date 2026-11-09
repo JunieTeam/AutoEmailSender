@@ -87,6 +87,10 @@ pub enum Finish {
     Other,
 }
 
+/// What the user is told of an answer cut off at `Finish::Length`, which callers turn down: it may
+/// hold no more than the model's thinking, or a JSON that happens to parse.
+pub const CUT_OFF: &str = "模型的回答过长，已被截断。请重试，或换用能写更长回答的模型。";
+
 /// Asks the model for a one-word answer, which proves the address, the key and the model name.
 pub async fn test(net: &Net, access: &Access, model: &str) -> Result<(), ModelError> {
     let prompt = Prompt {

@@ -2442,7 +2442,7 @@ impl From<writing::Error> for CallError {
             writing::Error::Model(e) => e.into(),
             writing::Error::NotALetter { finish_reason } => {
                 let message = match finish_reason {
-                    Some(model::Finish::Length) => "模型的回答过长，已被截断。请重试或更换模型。",
+                    Some(model::Finish::Length) => model::CUT_OFF,
                     _ => "模型未按要求的格式回答，请重试或更换模型",
                 };
                 CallError::external(

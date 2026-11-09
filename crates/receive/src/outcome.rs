@@ -159,6 +159,9 @@ async fn analyze(
                 })
                 .await;
         }
+        if answer.finish_reason == Some(model::Finish::Length) {
+            return Ok(Outcome::Failed(Failure::new(model::CUT_OFF)));
+        }
         let parsed = if let Some(date) = &reply_date {
             super::todos::parse(&answer.text, date).map(Outcome::Todos)
         } else {
