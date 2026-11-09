@@ -48,9 +48,9 @@ Auto Email Sender 是一个本地运行的导师联系工具。从导师信息�
 
 ## 入口
 
-- [官网](https://juniexd.github.io/AutoEmailSender/)
-- [文档](https://juniexd.github.io/AutoEmailSender/docs/getting-started)
-- [导师整理 Skill](https://juniexd.github.io/AutoEmailSender/docs/mentor-crawler-skill)
+- [官网](https://junieteam.github.io/AutoEmailSender/)
+- [文档](https://junieteam.github.io/AutoEmailSender/docs/getting-started)
+- [导师整理 Skill](https://junieteam.github.io/AutoEmailSender/docs/mentor-crawler-skill)
 - [下载桌面版](https://github.com/JunieTeam/AutoEmailSender/releases)
 - [问题反馈](https://github.com/JunieTeam/AutoEmailSender/issues)
 - QQ 交流群：`952383261`
