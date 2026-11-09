@@ -151,7 +151,11 @@ pub async fn check_follow_up_draft(
         &m.aliases,
         "",
         &input.body_md,
-        !input.attachments.is_empty(),
+        &email::select_attachments(&mut *ctx.db.acquire().await?, &input.attachments)
+            .await?
+            .into_iter()
+            .map(|a| a.size)
+            .collect::<Vec<_>>(),
     );
     if let Some(draft) = email::follow_up::draft(&ctx.db, input.mentor_id).await? {
         let subject = draft

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT e.id, e.mentor_id, m.name, e.kind AS \"kind: Kind\",\n            (SELECT address FROM mentor_email WHERE mentor_id = m.id AND position = 0) AS address,\n            e.state AS \"state: DraftState\", e.subject, e.body_md,\n            e.fact_check AS \"fact_check: Json<email::fact_check::FactCheck>\", (\n            SELECT json_group_array(name)\n            FROM mentor_alias\n            WHERE mentor_id = m.id\n        ) AS \"aliases!: Json<Vec<String>>\", (\n            SELECT json_group_array(material_id)\n            FROM email_attachment\n            WHERE email_id = e.id AND material_id IS NOT NULL\n        ) AS \"attachments!: Json<Vec<i64>>\", c.contact_count, c.last_out_at\n        FROM email e\n        JOIN mentor m ON m.id = e.mentor_id\n        LEFT JOIN mentor_contact c ON c.mentor_id = m.id\n        WHERE e.task_id = ?1 AND (?2 IS NULL OR e.state = ?2)\n        ORDER BY m.name, e.id\n        LIMIT ?3\n        OFFSET ?4",
+  "query": "SELECT e.id, e.mentor_id, m.name, e.kind AS \"kind: Kind\",\n            (SELECT address FROM mentor_email WHERE mentor_id = m.id AND position = 0) AS address,\n            e.state AS \"state: DraftState\", e.subject, e.body_md,\n            e.fact_check AS \"fact_check: Json<email::fact_check::FactCheck>\", (\n            SELECT json_group_array(name)\n            FROM mentor_alias\n            WHERE mentor_id = m.id\n        ) AS \"aliases!: Json<Vec<String>>\", (\n            SELECT json_group_array(material_id)\n            FROM email_attachment\n            WHERE email_id = e.id AND material_id IS NOT NULL\n        ) AS \"attachments!: Json<Vec<i64>>\", (\n            SELECT json_group_array(size)\n            FROM email_attachment\n            WHERE email_id = e.id AND material_id IS NOT NULL\n        ) AS \"attachment_sizes!: Json<Vec<i64>>\", c.contact_count, c.last_out_at\n        FROM email e\n        JOIN mentor m ON m.id = e.mentor_id\n        LEFT JOIN mentor_contact c ON c.mentor_id = m.id\n        WHERE e.task_id = ?1 AND (?2 IS NULL OR e.state = ?2)\n        ORDER BY m.name, e.id\n        LIMIT ?3\n        OFFSET ?4",
   "describe": {
     "columns": [
       {
@@ -115,8 +115,14 @@
         "origin": "Expression"
       },
       {
-        "name": "contact_count",
+        "name": "attachment_sizes!: Json<Vec<i64>>",
         "ordinal": 11,
+        "type_info": "Null",
+        "origin": "Expression"
+      },
+      {
+        "name": "contact_count",
+        "ordinal": 12,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -127,7 +133,7 @@
       },
       {
         "name": "last_out_at",
-        "ordinal": 12,
+        "ordinal": 13,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -153,8 +159,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "b8ef1d7ac1458dc739a931731bf2943ce9b82934768ff1d7fc8c7626f1e195e2"
+  "hash": "9feab1c78add44abb42720877889d6151a4e1b34816fb16cde8389657267fc83"
 }

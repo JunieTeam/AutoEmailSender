@@ -957,7 +957,7 @@ opened: boolean | null, };
 
 export type PreviousPreview = { subject: string | null, sentAt: number, attribution: string, bodyText: string | null, };
 
-export type Problem = { "kind": "placeholder", name: string, } | { "kind": "no_salutation", salutation: string, } | { "kind": "no_attachment" } | { "kind": "other_mentor", name: string, } | { "kind": "recently_contacted", count: number, lastAt: number, } | { "kind": "unsupported_claim", quote: string, reason: string, } | { "kind": "no_mail_server", domain: string, };
+export type Problem = { "kind": "placeholder", name: string, } | { "kind": "no_salutation", salutation: string, } | { "kind": "no_attachment" } | { "kind": "large_attachments", size: number, } | { "kind": "other_mentor", name: string, } | { "kind": "recently_contacted", count: number, lastAt: number, } | { "kind": "unsupported_claim", quote: string, reason: string, } | { "kind": "no_mail_server", domain: string, };
 
 export type Profile = { name: string | null, researchInterests: string | null, rewritePreference: string | null, onboarded: boolean, };
 

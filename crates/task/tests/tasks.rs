@@ -1692,6 +1692,54 @@ async fn stale_generation_results_cannot_revive_removed_or_regenerated_items(db:
     );
 }
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn files_of_one_name_count_once_toward_the_attachment_size(db: SqlitePool) {
+    let a = mentor(&db, 1, true).await;
+    let task = create(&db, &form(&db, vec![a]).await, T).await.unwrap();
+    let draft = items(&db, task).await.remove(0);
+    let mut cvs = Vec::new();
+    for _ in 0..2 {
+        cvs.push(
+            sqlx::query_scalar::<_, i64>(
+                r#"INSERT INTO material (file_name, size, for_matching, for_writing,
+                    attach_by_default, created_at)
+                VALUES ('简历.pdf', 1500000, 0, 0, 0, 0)
+                RETURNING id"#,
+            )
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        );
+    }
+    let edit = DraftEdit {
+        task_id: task,
+        id: draft.id,
+        subject: "申请".into(),
+        body_md: "导师1老师：您好。".into(),
+        attachments: cvs,
+    };
+    // Only the first goes out, so the letter is 1.5 MB.
+    let large = |p: &[check::Problem]| {
+        p.iter()
+            .any(|p| matches!(p, check::Problem::LargeAttachments { .. }))
+    };
+    assert!(!large(&check(&db, &edit, T).await.unwrap()));
+    save(&db, &edit, T).await.unwrap();
+    let page = drafts(
+        &db,
+        &DraftQuery {
+            task_id: task,
+            filter: DraftFilter::Problems,
+            page: std::num::NonZeroU32::MIN,
+        },
+        T,
+        |_| None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(page.total, 0);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn task_name_checks_and_problem_counts_agree(db: SqlitePool) {
     sqlx::query("UPDATE profile SET name='林晓'")
         .execute(&db)
@@ -1701,12 +1749,21 @@ async fn task_name_checks_and_problem_counts_agree(db: SqlitePool) {
     let b = mentor(&db, 2, true).await;
     let task = create(&db, &form(&db, vec![a, b]).await, T).await.unwrap();
     let ds = items(&db, task).await;
+    let scan = sqlx::query_scalar::<_, i64>(
+        r#"INSERT INTO material (file_name, size, for_matching, for_writing,
+            attach_by_default, created_at)
+        VALUES ('扫描件.pdf', 3000000, 0, 0, 0, 0)
+        RETURNING id"#,
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
     let edit = DraftEdit {
         task_id: task,
         id: ds[0].id,
         subject: "致导师2".into(),
         body_md: "导师1老师：您好。【请补充：时间】".into(),
-        attachments: vec![],
+        attachments: vec![scan],
     };
     save(&db, &edit, T).await.unwrap();
     let p = check(&db, &edit, T).await.unwrap();
@@ -1714,6 +1771,7 @@ async fn task_name_checks_and_problem_counts_agree(db: SqlitePool) {
         p.iter()
             .any(|p| matches!(p,check::Problem::OtherMentor{name} if name=="导师2"))
     );
+    assert!(p.contains(&check::Problem::LargeAttachments { size: 3_000_000 }));
     assert!(
         p.iter().any(
             |p| matches!(p, check::Problem::Placeholder { name } if name == "【请补充：时间】")

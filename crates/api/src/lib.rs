@@ -2346,7 +2346,11 @@ async fn check_first_draft(
         &m.aliases,
         &input.subject,
         &input.body_md,
-        !input.attachments.is_empty(),
+        &email::select_attachments(&mut *ctx.db.acquire().await?, &input.attachments)
+            .await?
+            .into_iter()
+            .map(|a| a.size)
+            .collect::<Vec<_>>(),
     );
     let (count, last) = match m.contact {
         mentor::Contact::None => (0, None),
@@ -2620,7 +2624,11 @@ async fn check_reply_draft(
         &m.aliases,
         "",
         &input.body_md,
-        !input.attachments.is_empty(),
+        &email::select_attachments(&mut *ctx.db.acquire().await?, &input.attachments)
+            .await?
+            .into_iter()
+            .map(|a| a.size)
+            .collect::<Vec<_>>(),
     );
     if let Some(draft) = email::reply_draft(&ctx.db, input.mentor_id).await? {
         let subject = draft

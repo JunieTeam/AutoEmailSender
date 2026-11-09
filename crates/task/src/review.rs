@@ -409,6 +409,8 @@ struct ReviewRow {
     fact_check: Option<Json<email::fact_check::FactCheck>>,
     aliases: Json<Vec<String>>,
     attachments: Json<Vec<i64>>,
+    /// In bytes.
+    attachment_sizes: Json<Vec<i64>>,
     contact_count: Option<i64>,
     last_out_at: Option<i64>,
 }
@@ -432,7 +434,11 @@ async fn review_rows(
             SELECT json_group_array(material_id)
             FROM email_attachment
             WHERE email_id = e.id AND material_id IS NOT NULL
-        ) AS "attachments!: Json<Vec<i64>>", c.contact_count, c.last_out_at
+        ) AS "attachments!: Json<Vec<i64>>", (
+            SELECT json_group_array(size)
+            FROM email_attachment
+            WHERE email_id = e.id AND material_id IS NOT NULL
+        ) AS "attachment_sizes!: Json<Vec<i64>>", c.contact_count, c.last_out_at
         FROM email e
         JOIN mentor m ON m.id = e.mentor_id
         LEFT JOIN mentor_contact c ON c.mentor_id = m.id
@@ -464,7 +470,7 @@ fn problems(
             aliases: &r.aliases,
             subject: r.subject.as_deref().unwrap_or_default(),
             body: r.body_md.as_deref().unwrap_or_default(),
-            attached: !r.attachments.is_empty(),
+            attached: &r.attachment_sizes,
             contact_count: r.contact_count.unwrap_or(0),
             last_out_at: r.last_out_at,
             fact_check: r.fact_check.as_deref(),
@@ -482,7 +488,8 @@ struct ReviewLetter<'a> {
     aliases: &'a [String],
     subject: &'a str,
     body: &'a str,
-    attached: bool,
+    /// The sizes of the attachments, in bytes.
+    attached: &'a [i64],
     contact_count: i64,
     last_out_at: Option<i64>,
     fact_check: Option<&'a email::fact_check::FactCheck>,
@@ -648,6 +655,12 @@ pub async fn check(db: &SqlitePool, edit: &DraftEdit, now: i64) -> Result<Vec<ch
     )
     .fetch_optional(&mut *tx)
     .await?;
+    // As the letter will go: of several files with one name, the first.
+    let attached: Vec<_> = email::select_attachments(&mut tx, &edit.attachments)
+        .await?
+        .into_iter()
+        .map(|a| a.size)
+        .collect();
     let subject = if row.kind == "follow_up" {
         row.subject.as_deref().unwrap_or_default()
     } else {
@@ -660,7 +673,7 @@ pub async fn check(db: &SqlitePool, edit: &DraftEdit, now: i64) -> Result<Vec<ch
             aliases: &m.aliases,
             subject,
             body: &edit.body_md,
-            attached: !edit.attachments.is_empty(),
+            attached: &attached,
             contact_count: c.as_ref().map_or(0, |c| c.contact_count),
             last_out_at: c.and_then(|c| c.last_out_at),
             fact_check: row.fact_check.as_deref(),

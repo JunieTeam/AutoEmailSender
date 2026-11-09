@@ -194,6 +194,8 @@ function problemText(p: Problem): string {
   if (p.kind === "other_mentor") return `草稿里出现了任务中另一位导师的姓名“${p.name}”，请核对`;
   if (p.kind === "recently_contacted") return "最近 7 天内已联系过这位导师，请确认是否需要再次联系";
   if (p.kind === "no_attachment") return "正文提到附件，但尚未添加附件";
+  if (p.kind === "large_attachments")
+    return `附件共 ${fileSize(p.size)}，超过 2 MB 容易被邮箱限流或拦下，建议压缩后再附上`;
   if (p.kind === "unsupported_claim") return `材料里找不到依据：“${p.quote}”`;
   return `查不到 ${p.domain} 的收信服务器，请核对导师的邮箱地址`;
 }

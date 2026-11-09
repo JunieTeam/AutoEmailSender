@@ -23,6 +23,10 @@ pub enum Problem {
     },
     /// The body speaks of an attachment, but there is none.
     NoAttachment,
+    /// The attachments add up to more than `LARGE_ATTACHMENTS` bytes.
+    LargeAttachments {
+        size: i64,
+    },
     OtherMentor {
         name: String,
     },
@@ -39,6 +43,10 @@ pub enum Problem {
         domain: String,
     },
 }
+
+/// Attachments larger than this in all are more often held back by the sender's provider or turned
+/// away by the mentor's mailbox.
+pub const LARGE_ATTACHMENTS: i64 = 2 * 1024 * 1024;
 
 /// What follows a surname when addressing a mentor, as in 雷老师.
 const TITLES: [&str; 9] = [
@@ -59,13 +67,14 @@ const COMPOUND_SURNAMES: [&str; 20] = [
     "夏侯", "轩辕", "令狐", "钟离", "端木", "南宫", "独孤", "呼延",
 ];
 
-/// What is wrong with a letter to the mentor named `mentor`, who also goes by `aliases`.
+/// What is wrong with a letter to the mentor named `mentor`, who also goes by `aliases`, with
+/// attachments of the sizes `attached`, in bytes.
 pub fn letter(
     mentor: &str,
     aliases: &[String],
     subject: &str,
     body_md: &str,
-    attached: bool,
+    attached: &[i64],
 ) -> Vec<Problem> {
     let mut problems: Vec<Problem> = template::PLACEHOLDERS
         .into_iter()
@@ -103,8 +112,12 @@ pub fn letter(
             salutation: salutation(mentor),
         });
     }
-    if !attached && mentions_attachment(body_md) {
+    if attached.is_empty() && mentions_attachment(body_md) {
         problems.push(Problem::NoAttachment);
+    }
+    let size = attached.iter().sum();
+    if size > LARGE_ATTACHMENTS {
+        problems.push(Problem::LargeAttachments { size });
     }
     problems
 }
@@ -404,7 +417,7 @@ mod tests {
                 &[],
                 "{学院}申请",
                 "雷老师：\n\n我在{学院}，{我的姓名}。",
-                false
+                &[]
             ),
             [
                 Problem::Placeholder {
@@ -426,14 +439,14 @@ mod tests {
                 &[],
                 marker,
                 &format!("王老师：{marker}，{marker}"),
-                false
+                &[]
             ),
             [Problem::Placeholder {
                 name: marker.into()
             }]
         );
-        assert!(letter("王伟", &[], "", "王老师：周五下午方便面谈。", false).is_empty());
-        assert!(letter("王伟", &[], "", "王老师：【请补充：尚未闭合", false).is_empty());
+        assert!(letter("王伟", &[], "", "王老师：周五下午方便面谈。", &[]).is_empty());
+        assert!(letter("王伟", &[], "", "王老师：【请补充：尚未闭合", &[]).is_empty());
     }
 
     #[test]
@@ -457,7 +470,7 @@ mod tests {
                 .map(|name| Problem::Placeholder { name: name.into() })
                 .into_iter()
                 .collect();
-            assert_eq!(letter("王伟", &[], "", body, false), expected, "{body}");
+            assert_eq!(letter("王伟", &[], "", body, &[]), expected, "{body}");
         }
     }
 
@@ -478,13 +491,10 @@ mod tests {
             // Nothing to send yet, so nothing to address.
             ("雷娜", " \n"),
         ] {
-            assert_eq!(letter(name, &[], "申请", body, false), [], "{body}");
+            assert_eq!(letter(name, &[], "申请", body, &[]), [], "{body}");
         }
         let aliases = ["Na Lei".to_owned()];
-        assert_eq!(
-            letter("雷娜", &aliases, "申请", "Dear Prof. Lei,", false),
-            []
-        );
+        assert_eq!(letter("雷娜", &aliases, "申请", "Dear Prof. Lei,", &[]), []);
     }
 
     #[test]
@@ -504,7 +514,7 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                letter(name, &[], "申请", body, false),
+                letter(name, &[], "申请", body, &[]),
                 [Problem::NoSalutation {
                     salutation: salutation.into()
                 }],
@@ -517,19 +527,29 @@ mod tests {
     fn a_letter_that_speaks_of_an_attachment_has_one() {
         let body = "雷老师：\n\n随信附上我的简历。";
         assert_eq!(
-            letter("雷娜", &[], "申请", body, false),
+            letter("雷娜", &[], "申请", body, &[]),
             [Problem::NoAttachment]
         );
-        assert_eq!(letter("雷娜", &[], "申请", body, true), []);
+        assert_eq!(letter("雷娜", &[], "申请", body, &[300_000]), []);
         assert_eq!(
             letter(
                 "John Smith",
                 &[],
                 "Application",
                 "Dear Prof. Smith, my CV is Attached.",
-                false
+                &[]
             ),
             [Problem::NoAttachment]
         );
+    }
+
+    #[test]
+    fn attachments_over_two_megabytes_in_all_are_a_problem() {
+        let body = "雷老师：\n\n附件是我的简历和成绩单。";
+        assert_eq!(
+            letter("雷娜", &[], "申请", body, &[1_500_000, 700_000]),
+            [Problem::LargeAttachments { size: 2_200_000 }]
+        );
+        assert_eq!(letter("雷娜", &[], "申请", body, &[LARGE_ATTACHMENTS]), []);
     }
 }
