@@ -21,7 +21,9 @@ import {
 } from "@/components/mentor";
 import { TagChip, TagPicker, TagSaveError } from "@/components/tags";
 import { LIBRARY_STATUS } from "@/components/library";
+import { AiIcon } from "@/components/ai-writing";
 import { MatchButton } from "@/components/matching";
+import { EnrichMentorsDialog } from "@/pages/find";
 import { Notice } from "@/components/notice";
 import { Button } from "@/components/ui/button";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -218,18 +220,33 @@ function Profile({ mentor: m }: { mentor: MentorDetail }) {
   const queryClient = useQueryClient();
   // The mentor as the edit began; the core refuses the edit if it has changed since.
   const [editing, setEditing] = useState<MentorDetail | null>(null);
-  const edit = (
-    <Button
-      variant="quiet"
-      size="sm"
-      className="text-muted-foreground hover:text-foreground"
-      onClick={() => setEditing(m)}
-    >
-      编辑
-    </Button>
+  const [enriching, setEnriching] = useState(false);
+  const actions = (
+    <div className="flex gap-1">
+      {!m.trashed && (
+        <Button
+          variant="quiet"
+          size="sm"
+          className="text-muted-foreground hover:text-foreground"
+          onClick={() => setEnriching(true)}
+        >
+          <AiIcon />
+          补全资料
+        </Button>
+      )}
+      <Button
+        variant="quiet"
+        size="sm"
+        className="text-muted-foreground hover:text-foreground"
+        onClick={() => setEditing(m)}
+      >
+        编辑
+      </Button>
+    </div>
   );
   return (
-    <Section title="资料" action={edit}>
+    <Section title="资料" action={actions}>
+      {enriching && <EnrichMentorsDialog ids={[m.id]} onClose={() => setEnriching(false)} />}
       {editing && (
         <MentorDialog
           title="编辑资料"

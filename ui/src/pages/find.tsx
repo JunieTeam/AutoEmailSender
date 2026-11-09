@@ -1,22 +1,31 @@
-import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  skipToken,
+  type UseMutationResult,
+  type UseQueryResult,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Inbox, SearchX } from "lucide-react";
 import { Loading } from "@/components/loading";
 import { Notice } from "@/components/notice";
 import { FailureDetails, FailureNote } from "@/components/failure";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { exportCrawlLog } from "@/api/app";
 import { call, failureOf, UiError } from "@/api/call";
 import type {
   CandidateDetail,
   CandidateFilter,
   CandidateRow,
+  CrawlOption,
   CrawlStage,
   CrawlSummary,
   Decisions,
   EnrichField,
   EnrichPlan,
+  EnrichSkipReason,
 } from "@/api/types";
 import { ModelAction, AiIcon } from "@/components/ai-writing";
 import { BatchBar, Confirm } from "@/components/batch-bar";
@@ -57,7 +66,8 @@ const STAGES: Record<CrawlStage, string> = {
   canceled: "已取消",
 };
 /** A crawl by where it started, or an Agent submission by its school, short enough for a menu or a line. */
-export function crawlName(c: { url: string | null; university: string | null; school: string | null }): string {
+export function crawlName(c: Pick<CrawlOption, "kind" | "url" | "university" | "school">): string {
+  if (c.kind === "mentors") return "补全已有导师";
   if (c.url === null) {
     const unit = [c.university, c.school].filter(Boolean).join(" ");
     return unit ? `Agent 提交：${unit}` : "Agent 提交";
@@ -98,6 +108,7 @@ export function refreshCrawls(client: ReturnType<typeof useQueryClient>) {
     "getCandidate",
     "previewCandidates",
     "previewEnrich",
+    "previewEnrichMentors",
     "stats",
   ])
     void client.invalidateQueries({ queryKey: [key] });
@@ -250,14 +261,16 @@ function CrawlRecord({ crawl: c, expanded }: { crawl: CrawlSummary; expanded: bo
           <strong className="break-all">{c.url ?? crawlName(c)}</strong>
           <ExpandChevron className="ml-1 inline" />
           <span className="mt-1 block text-sm text-muted-foreground">
-            {(c.url === null
-              ? [c.stage !== "done" && STAGES[c.stage], `收到 ${c.candidates} 位导师`]
-              : [
-                  STAGES[c.stage],
-                  `找到 ${c.candidates} 位导师`,
-                  `读完 ${c.profiles} 位的个人页`,
-                  c.remaining > 0 && `还有 ${c.remaining} 页未读`,
-                ]
+            {(c.kind === "mentors"
+              ? [c.stage !== "done" && STAGES[c.stage], `共 ${c.candidates} 位导师`]
+              : c.kind === "agent"
+                ? [c.stage !== "done" && STAGES[c.stage], `收到 ${c.candidates} 位导师`]
+                : [
+                    STAGES[c.stage],
+                    `找到 ${c.candidates} 位导师`,
+                    `读完 ${c.profiles} 位的个人页`,
+                    c.remaining > 0 && `还有 ${c.remaining} 页未读`,
+                  ]
             )
               .concat(c.enrichRemaining > 0 && `补全还剩 ${c.enrichRemaining} 位`)
               .filter(Boolean)
@@ -473,7 +486,7 @@ function Candidates() {
     queryFn: () => call("crawlOptions", {}),
   });
   // docs/design.md: candidates from an Agent are marked, the app did not read their pages itself.
-  const agentCrawls = new Set(crawls.data?.filter((c) => c.url === null).map((c) => c.id));
+  const agentCrawls = new Set(crawls.data?.filter((c) => c.kind === "agent").map((c) => c.id));
   const reject = useMutation({
     mutationFn: (ids: number[]) => call("rejectCandidates", { ids }),
     onSuccess: () => {
@@ -668,7 +681,7 @@ function Candidates() {
         </BatchBar>
       )}
       {enrich && (
-        <EnrichDialog
+        <EnrichCandidatesDialog
           ids={enrich}
           onClose={() => setEnrich(null)}
           onDone={(result) => {
@@ -707,12 +720,15 @@ const ENRICH_FIELDS: Record<EnrichField, string> = {
   department: "系所",
   title: "职称",
 };
-const ENRICH_SKIP = {
+const ENRICH_SKIP: Record<EnrichSkipReason, string> = {
   missing_profile: "无个人页",
   deleted_crawl: "原整理记录已删除",
   complete: "资料已全",
   active: "正在补全",
   reviewed: "已处理或已删除",
+  trashed: "在回收站里",
+  pending: "候选里有待审核的",
+  shared: "和另一位是同一个页面",
 };
 function SkippedEnrich({ plan }: { plan: EnrichPlan }) {
   const count = plan.skipped.reduce((sum, group) => sum + group.ids.length, 0);
@@ -724,7 +740,7 @@ function SkippedEnrich({ plan }: { plan: EnrichPlan }) {
     </>
   ) : null;
 }
-function EnrichDialog({
+function EnrichCandidatesDialog({
   ids,
   onClose,
   onDone,
@@ -733,15 +749,76 @@ function EnrichDialog({
   onClose: () => void;
   onDone: (result: EnrichPlan) => void;
 }) {
-  const client = useQueryClient();
   const preview = useQuery({ queryKey: ["previewEnrich", ids], queryFn: () => call("previewEnrich", { ids }) });
+  const start = useMutation({ mutationFn: () => call("enrichCandidates", { ids }), onSuccess: onDone });
+  return (
+    <EnrichDialog
+      title="补全候选信息"
+      preview={preview}
+      start={start}
+      note="只补空着的资料，保留已有值。网页内容和候选姓名、别名、已有单位将发给模型服务商。可在后台暂停或取消；所属整理已暂停时，补全也会等待继续。"
+      onClose={onClose}
+    />
+  );
+}
+/** docs/design.md#导师: what is found for mentors already in the list waits as candidates for review. */
+export function EnrichMentorsDialog({ ids, onClose }: { ids: number[]; onClose: () => void }) {
+  const client = useQueryClient();
+  const preview = useQuery({
+    queryKey: ["previewEnrichMentors", ids],
+    queryFn: () => call("previewEnrichMentors", { ids }),
+  });
+  const start = useMutation({
+    mutationFn: () => call("enrichMentors", { ids }),
+    onSuccess: () => refreshCrawls(client),
+  });
+  const started = start.data;
+  return (
+    <EnrichDialog
+      title="补全导师资料"
+      preview={preview}
+      start={start}
+      note="只补空着的资料，补到的先放进候选，审核后才并进导师。网页内容和导师姓名、别名、已有单位将发给模型服务商，个人备注和标签不会发送。可在后台暂停或取消。"
+      onClose={onClose}
+    >
+      {started && (
+        <p role="status">
+          {started.crawlId === null ? "没有需要补全的导师" : `已开始补全 ${started.ids.length} 位`}
+          <SkippedEnrich plan={started} />
+          {started.crawlId !== null && (
+            <Link
+              to="/find"
+              search={findSearch({ crawl: started.crawlId })}
+              className="ml-2 text-brand-text"
+              onClick={onClose}
+            >
+              去审核
+            </Link>
+          )}
+        </p>
+      )}
+    </EnrichDialog>
+  );
+}
+/** Once started, `children` tells how it went in place of the plan, which then no longer holds. */
+function EnrichDialog({
+  title,
+  preview,
+  start,
+  note,
+  onClose,
+  children,
+}: {
+  title: string;
+  preview: UseQueryResult<EnrichPlan>;
+  start: UseMutationResult<EnrichPlan, Error, void>;
+  note: string;
+  onClose: () => void;
+  children?: ReactNode;
+}) {
+  const client = useQueryClient();
   const models = useQuery({ queryKey: ["listModelConfigs"], queryFn: () => call("listModelConfigs", {}) });
   const chosen = models.data?.find((m) => m.isDefault);
-  const start = useMutation({
-    mutationFn: () => call("enrichCandidates", { ids }),
-    onSuccess: onDone,
-    onError: () => client.invalidateQueries({ queryKey: ["listModelConfigs"] }),
-  });
   const count = preview.data?.ids.length ?? 0;
   const cost =
     chosen && (chosen.inputPrice !== null || chosen.outputPrice !== null)
@@ -755,30 +832,37 @@ function EnrichDialog({
       }}
     >
       <DialogContent className="w-[520px]">
-        <DialogHeader>补全候选信息</DialogHeader>
+        <DialogHeader>{title}</DialogHeader>
         <DialogBody className="space-y-4 text-sm">
-          {preview.data && (
-            <p>
-              补全 {count} 位<SkippedEnrich plan={preview.data} />
-            </p>
+          {children ?? (
+            <>
+              {preview.data && (
+                <p>
+                  补全 {count} 位<SkippedEnrich plan={preview.data} />
+                </p>
+              )}
+              <p>模型：{chosen ? `${chosen.name || chosen.model}（${chosen.model}）` : "尚未添加默认模型"}</p>
+              <p className="text-muted-foreground">
+                每位预计读取 1～4 页，约 5000～20000 Token；本次约 {(count * 5000).toLocaleString()}～
+                {(count * 20000).toLocaleString()} Token
+                {cost !== null && `，约 ${cost.toFixed(2)}～${(cost * 4).toFixed(2)} 元`}
+                。仅为估算，以实际页面和服务商报告为准。
+              </p>
+            </>
           )}
-          <p>模型：{chosen ? `${chosen.name || chosen.model}（${chosen.model}）` : "尚未添加默认模型"}</p>
-          <p className="text-muted-foreground">
-            每位预计读取 1～4 页，约 5000～20000 Token；本次约 {(count * 5000).toLocaleString()}～
-            {(count * 20000).toLocaleString()} Token
-            {cost !== null && `，约 ${cost.toFixed(2)}～${(cost * 4).toFixed(2)} 元`}
-            。仅为估算，以实际页面和服务商报告为准。
-          </p>
-          <p className="text-muted-foreground">
-            只补空着的资料，保留已有值。网页内容和候选姓名、别名、已有单位将发给模型服务商。可在后台暂停或取消；所属整理已暂停时，补全也会等待继续。
-          </p>
+          <p className="text-muted-foreground">{note}</p>
           <ErrorText error={preview.error ?? models.error ?? start.error} />
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" disabled={start.isPending} onClick={onClose}>
             关闭
           </Button>
-          <ModelAction disabled={!preview.data || count === 0 || start.isPending} onWrite={() => start.mutate()}>
+          <ModelAction
+            disabled={!preview.data || count === 0 || start.isPending || start.isSuccess}
+            onWrite={() =>
+              start.mutate(undefined, { onError: () => client.invalidateQueries({ queryKey: ["listModelConfigs"] }) })
+            }
+          >
             {start.isPending ? "正在安排…" : "开始补全"}
           </ModelAction>
         </DialogFooter>

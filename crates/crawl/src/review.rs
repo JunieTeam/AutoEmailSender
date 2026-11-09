@@ -431,6 +431,21 @@ pub(crate) enum Source {
     },
 }
 
+/// The names and schools a candidate is matched to mentors and other candidates by.
+pub(crate) fn match_keys(fields: &MentorFields) -> (Json<Vec<String>>, Json<Vec<String>>) {
+    let names = std::iter::once(&fields.name)
+        .chain(&fields.aliases)
+        .map(|n| intake::comparable(n))
+        .collect();
+    let schools = fields
+        .affiliations
+        .iter()
+        .filter_map(|a| a.university.as_deref())
+        .map(intake::comparable)
+        .collect();
+    (Json(names), Json(schools))
+}
+
 /// Returns whether this person added a candidate rather than merging into existing candidates.
 pub(crate) async fn save(
     conn: &mut SqliteConnection,
@@ -582,20 +597,7 @@ pub(crate) async fn save(
     }
     let mismatched = mismatched_links(conn, &ids).await?;
     fields.homepages.retain(|url| !mismatched.contains(url));
-    let names = Json(
-        std::iter::once(&fields.name)
-            .chain(&fields.aliases)
-            .map(|n| intake::comparable(n))
-            .collect::<Vec<_>>(),
-    );
-    let schools = Json(
-        fields
-            .affiliations
-            .iter()
-            .filter_map(|a| a.university.as_deref())
-            .map(intake::comparable)
-            .collect::<Vec<_>>(),
-    );
+    let (names, schools) = match_keys(&fields);
     let profile_fields = profile_fields.map(Json);
     let known_profiles = sqlx::query!(
         r#"SELECT url AS "url!: String", mismatched_at

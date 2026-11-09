@@ -6,7 +6,7 @@ use crate::{
     store::{PageKind, PageStatus},
 };
 use failure::Failure;
-use mentor::{Affiliation, intake::comparable};
+use mentor::{Affiliation, export::Profile, intake::comparable};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{SqliteConnection, SqlitePool, types::Json};
@@ -48,7 +48,7 @@ pub struct Enrichment {
     pub enrich_changes: Vec<EnrichChange>,
     pub enrich_error: Option<Failure>,
 }
-#[derive(Debug, Serialize, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EnrichSkipReason {
     MissingProfile,
@@ -56,6 +56,13 @@ pub enum EnrichSkipReason {
     Complete,
     Active,
     Reviewed,
+    /// A mentor in the trash.
+    Trashed,
+    /// A mentor with a candidate still to be reviewed, which enriching again would duplicate.
+    Pending,
+    /// A mentor whose pages are all those of others enriched with them: one crawl reads a page
+    /// for one candidate.
+    Shared,
 }
 #[derive(Debug, Serialize, TS)]
 pub struct EnrichSkip {
@@ -66,6 +73,18 @@ pub struct EnrichSkip {
 pub struct EnrichPlan {
     pub ids: Vec<i64>,
     pub skipped: Vec<EnrichSkip>,
+}
+impl EnrichPlan {
+    fn skip(&mut self, reason: EnrichSkipReason, id: i64) {
+        if let Some(group) = self.skipped.iter_mut().find(|g| g.reason == reason) {
+            group.ids.push(id);
+        } else {
+            self.skipped.push(EnrichSkip {
+                reason,
+                ids: vec![id],
+            });
+        }
+    }
 }
 async fn plan(conn: &mut SqliteConnection, ids: &[i64]) -> Result<EnrichPlan, sqlx::Error> {
     let rows = sqlx::query!(
@@ -101,17 +120,9 @@ async fn plan(conn: &mut SqliteConnection, ids: &[i64]) -> Result<EnrichPlan, sq
             }
             Some(_) => None,
         };
-        if let Some(reason) = reason {
-            if let Some(group) = result.skipped.iter_mut().find(|g| g.reason == reason) {
-                group.ids.push(id);
-            } else {
-                result.skipped.push(EnrichSkip {
-                    reason,
-                    ids: vec![id],
-                });
-            }
-        } else {
-            result.ids.push(id);
+        match reason {
+            Some(reason) => result.skip(reason, id),
+            None => result.ids.push(id),
         }
     }
     Ok(result)
@@ -176,6 +187,142 @@ pub async fn start(
         crate::span(id).in_scope(|| tracing::info!(candidates, "enrichment queued"));
     }
     Ok((result, reopened))
+}
+/// Which of the mentors among `ids` can be enriched and the page to read for each: the first
+/// homepage, else where they were found, that no other of them is to have read.
+async fn mentor_plan(
+    conn: &mut SqliteConnection,
+    ids: &[i64],
+) -> Result<(EnrichPlan, Vec<(Profile, PageUrl)>), sqlx::Error> {
+    let pending: Vec<i64> = sqlx::query_scalar!(
+        r#"SELECT mentor_id AS "mentor_id!" FROM candidate
+        WHERE review = 'pending' AND mentor_id IN (SELECT value FROM json_each(?))"#,
+        Json(ids)
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut plan = EnrichPlan {
+        ids: vec![],
+        skipped: vec![],
+    };
+    let mut pages = Vec::new();
+    // In order of ID, as the profiles come.
+    for (id, profile) in mentor::export::profiles(conn, ids).await? {
+        let f = &profile.fields;
+        let own: Vec<PageUrl> = f
+            .homepages
+            .iter()
+            .chain(&profile.source_url)
+            .filter_map(|url| PageUrl::parse(url).ok())
+            .collect();
+        let page = own
+            .iter()
+            .find(|url| pages.iter().all(|(_, taken)| taken != *url))
+            .cloned();
+        let reason = if profile.trashed {
+            Some(EnrichSkipReason::Trashed)
+        } else if pending.contains(&id) {
+            Some(EnrichSkipReason::Pending)
+        } else if !f.emails.is_empty() && f.research.is_some() && !profile.papers.is_empty() {
+            Some(EnrichSkipReason::Complete)
+        } else {
+            None
+        };
+        match (reason, page) {
+            (Some(reason), _) => plan.skip(reason, id),
+            (None, None) if own.is_empty() => plan.skip(EnrichSkipReason::MissingProfile, id),
+            (None, None) => plan.skip(EnrichSkipReason::Shared, id),
+            (None, Some(page)) => {
+                plan.ids.push(id);
+                pages.push((profile, page));
+            }
+        }
+    }
+    Ok((plan, pages))
+}
+pub async fn preview_mentors(db: &SqlitePool, ids: &[i64]) -> Result<EnrichPlan, sqlx::Error> {
+    Ok(mentor_plan(&mut *db.acquire().await?, ids).await?.0)
+}
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct MentorEnrichment {
+    #[serde(flatten)]
+    pub plan: EnrichPlan,
+    /// Where their candidates are, when any are enriched.
+    pub crawl_id: Option<i64>,
+}
+/// Enriches mentors already in the list through candidates copied from them, in a crawl of their
+/// own, which are reviewed like any other (docs/design.md#导师). The mentor's note and tags stay out.
+pub async fn start_mentors(
+    db: &SqlitePool,
+    ids: &[i64],
+    at: i64,
+) -> Result<MentorEnrichment, sqlx::Error> {
+    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    let (plan, pages) = mentor_plan(&mut tx, ids).await?;
+    if pages.is_empty() {
+        return Ok(MentorEnrichment {
+            plan,
+            crawl_id: None,
+        });
+    }
+    let crawl = sqlx::query_scalar!(
+        "INSERT INTO crawl (kind, state, created_at) VALUES ('mentors', 'running', ?) RETURNING id",
+        at
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    queue::open_run(&mut tx, crawl, at).await?;
+    for (profile, page) in &pages {
+        let f = &profile.fields;
+        let (names, schools) = review::match_keys(f);
+        let candidate = sqlx::query_scalar!(
+            r#"INSERT INTO candidate (crawl_id, profile_url, review, mentor_id, enrich,
+                enrich_changes, name, aliases, emails, affiliations, homepages, source_url,
+                research, papers, match_names, match_schools)
+            VALUES (?, ?, 'pending', ?, 'queued', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id AS "id!: i64""#,
+            crawl,
+            page,
+            profile.id,
+            f.name,
+            Json(&f.aliases),
+            Json(&f.emails),
+            Json(&f.affiliations),
+            Json(&f.homepages),
+            profile.source_url,
+            f.research,
+            Json(&profile.papers),
+            names,
+            schools
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::query!(
+            "INSERT INTO candidate_profile (candidate_id, crawl_id, url) VALUES (?, ?, ?)",
+            candidate,
+            crawl,
+            page
+        )
+        .execute(&mut *tx)
+        .await?;
+        enqueue(
+            &mut tx,
+            crawl,
+            candidate,
+            page,
+            page,
+            PageKind::EnrichProfile,
+        )
+        .await?;
+    }
+    tx.commit().await?;
+    crate::span(crawl)
+        .in_scope(|| tracing::info!(mentors = pages.len(), "mentor enrichment queued"));
+    Ok(MentorEnrichment {
+        plan,
+        crawl_id: Some(crawl),
+    })
 }
 pub(crate) async fn enqueue(
     conn: &mut SqliteConnection,
@@ -304,19 +451,7 @@ pub(crate) async fn apply(
             }
         }
     }
-    let names = Json(
-        std::iter::once(&f.name)
-            .chain(&f.aliases)
-            .map(|n| comparable(n))
-            .collect::<Vec<_>>(),
-    );
-    let schools = Json(
-        f.affiliations
-            .iter()
-            .filter_map(|a| a.university.as_deref())
-            .map(comparable)
-            .collect::<Vec<_>>(),
-    );
+    let (names, schools) = review::match_keys(f);
     let Json(mut evidence) = sqlx::query_scalar!(
         r#"SELECT evidence AS "evidence: Json<Vec<review::Evidence>>" FROM candidate WHERE id=?"#,
         id

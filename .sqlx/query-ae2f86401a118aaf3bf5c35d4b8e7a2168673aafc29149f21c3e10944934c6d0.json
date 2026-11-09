@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, json_extract(start_urls, '$[0]') AS \"url: String\",\n            university, school, created_at\n        FROM crawl\n        ORDER BY created_at DESC, id DESC",
+  "query": "SELECT id, kind AS \"kind: CrawlKind\", json_extract(start_urls, '$[0]') AS \"url: String\",\n            university, school, created_at\n        FROM crawl\n        ORDER BY created_at DESC, id DESC",
   "describe": {
     "columns": [
       {
@@ -15,14 +15,25 @@
         }
       },
       {
-        "name": "url: String",
+        "name": "kind: CrawlKind",
         "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "url: String",
+        "ordinal": 2,
         "type_info": "Null",
         "origin": "Expression"
       },
       {
         "name": "university",
-        "ordinal": 2,
+        "ordinal": 3,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -33,7 +44,7 @@
       },
       {
         "name": "school",
-        "ordinal": 3,
+        "ordinal": 4,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -44,7 +55,7 @@
       },
       {
         "name": "created_at",
-        "ordinal": 4,
+        "ordinal": 5,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -59,11 +70,12 @@
     },
     "nullable": [
       false,
+      false,
       null,
       true,
       true,
       false
     ]
   },
-  "hash": "73fe4e72e688ac78ec4ca529c503c4335564c06cea248d0448ccc4c455a26fd8"
+  "hash": "ae2f86401a118aaf3bf5c35d4b8e7a2168673aafc29149f21c3e10944934c6d0"
 }

@@ -1376,7 +1376,7 @@ async fn enrichment_deleting_crawl_clears_queued_and_running_candidates(db: Sqli
         let (plan, _) = enrich::start(&db, &[id], 3).await.unwrap();
         assert!(plan.ids.is_empty());
         assert_eq!(
-            serde_json::to_value(&plan.skipped[0].reason).unwrap(),
+            serde_json::to_value(plan.skipped[0].reason).unwrap(),
             json!("deleted_crawl")
         );
         assert!(queue::work(&db, 0, i64::MAX).await.unwrap().is_empty());
@@ -1827,4 +1827,180 @@ async fn enrichment_model_receives_existing_affiliations(db: SqlitePool) {
         detail(&db, id).await.candidate.fields.emails,
         vec!["a@example.edu"]
     );
+}
+
+async fn mentor_on(db: &SqlitePool, name: &str, homepages: Vec<String>) -> i64 {
+    mentor::create(
+        db,
+        &MentorFields {
+            name: name.into(),
+            homepages,
+            ..Default::default()
+        },
+        1,
+    )
+    .await
+    .unwrap()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn mentors_are_enriched_through_candidates_reviewed_before_they_change(db: SqlitePool) {
+    let site = Site::new().await;
+    site.page(
+        "/p",
+        "<title>张三</title><p>张三 a@example.edu 机器学习</p>",
+    );
+    let mut provider = Provider::start().await.unwrap();
+    config(&db, &provider.address).await;
+    let page = site.url("/p").as_str().to_owned();
+    let lacking = mentor_on(&db, "张三", vec![page.clone()]).await;
+    let trashed = mentor_on(&db, "李四", vec![site.url("/l").as_str().into()]).await;
+    mentor::trash::trash(&db, &[trashed], 1).await.unwrap();
+    let complete = mentor::create(
+        &db,
+        &MentorFields {
+            name: "王五".into(),
+            emails: vec!["w@example.edu".into()],
+            research: Some("视觉".into()),
+            homepages: vec![site.url("/w").as_str().into()],
+            ..Default::default()
+        },
+        1,
+    )
+    .await
+    .unwrap();
+    sqlx::query("UPDATE mentor_detail SET papers = '[\"论文\"]' WHERE mentor_id = ?")
+        .bind(complete)
+        .execute(&db)
+        .await
+        .unwrap();
+    let pageless = mentor_on(&db, "赵六", vec![]).await;
+    // One crawl reads a page for one of them; another page of theirs still serves.
+    let sharing = mentor_on(&db, "钱七", vec![page.clone()]).await;
+    let other = site.url("/q").as_str().to_owned();
+    let sharing_more = mentor_on(&db, "孙八", vec![page.clone(), other.clone()]).await;
+    let ids = [lacking, trashed, complete, pageless, sharing, sharing_more];
+    let skipped = |plan: &enrich::EnrichPlan| {
+        plan.skipped
+            .iter()
+            .map(|g| (g.reason, g.ids.clone()))
+            .collect::<Vec<_>>()
+    };
+    let plan = enrich::preview_mentors(&db, &ids).await.unwrap();
+    assert_eq!(plan.ids, [lacking, sharing_more]);
+    assert_eq!(
+        skipped(&plan),
+        [
+            (EnrichSkipReason::Trashed, vec![trashed]),
+            (EnrichSkipReason::Complete, vec![complete]),
+            (EnrichSkipReason::MissingProfile, vec![pageless]),
+            (EnrichSkipReason::Shared, vec![sharing]),
+        ]
+    );
+    let started = enrich::start_mentors(&db, &[lacking, pageless], 2)
+        .await
+        .unwrap();
+    assert_eq!(started.plan.ids, [lacking]);
+    let crawl = started.crawl_id.unwrap();
+    // Enriching them again before their candidate is reviewed would make a second.
+    let again = enrich::preview_mentors(&db, &[lacking]).await.unwrap();
+    assert_eq!(
+        skipped(&again),
+        [(EnrichSkipReason::Pending, vec![lacking])]
+    );
+    let listed = review::list(
+        &db,
+        &CandidateQuery {
+            crawl_id: Some(crawl),
+            processed: false,
+            filter: CandidateFilter::Supplement,
+            keyword: None,
+            page: 1,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(listed.total, 1);
+    let candidate = &listed.candidates[0];
+    assert_eq!(candidate.mentor_id, Some(lacking));
+    assert_eq!(candidate.enrichment.enrich, EnrichState::Queued);
+
+    let claim = queue::next(&db).await.unwrap().unwrap();
+    assert_eq!(claim.kind, PageKind::EnrichProfile);
+    let result = process_answer(
+        &db,
+        &site,
+        &mut provider,
+        &claim,
+        answer("a@example.edu", json!([])),
+    )
+    .await;
+    save(&db, &claim, &result).await.unwrap();
+    assert_eq!(finish(&db, 3).await.unwrap().len(), 1);
+    // Nothing reaches the mentor until the candidate is accepted.
+    let saved = |id| {
+        let db = db.clone();
+        async move {
+            let mut conn = db.acquire().await.unwrap();
+            mentor::export::profiles(&mut conn, &[id])
+                .await
+                .unwrap()
+                .remove(&id)
+                .unwrap()
+        }
+    };
+    assert!(saved(lacking).await.fields.emails.is_empty());
+    review::accept(
+        &db,
+        &review::ReviewInput {
+            ids: vec![candidate.id],
+            decisions: Decisions::default(),
+        },
+        4,
+    )
+    .await
+    .unwrap();
+    let after = saved(lacking).await;
+    assert_eq!(after.fields.emails, ["a@example.edu"]);
+    assert_eq!(after.fields.research.as_deref(), Some("机器学习"));
+    assert_eq!(after.papers, ["论文一"]);
+    assert_eq!(after.fields.homepages, [page]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_mentors_unreviewed_candidates_go_with_their_record_or_the_mentor(db: SqlitePool) {
+    let site = Site::new().await;
+    let first = mentor_on(&db, "张三", vec![site.url("/a").as_str().into()]).await;
+    let second = mentor_on(&db, "李四", vec![site.url("/b").as_str().into()]).await;
+    let pending = |id| {
+        let db = db.clone();
+        async move {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM candidate WHERE mentor_id = ? AND review = 'pending'",
+            )
+            .bind(id)
+            .fetch_one(&db)
+            .await
+            .unwrap()
+        }
+    };
+    let crawl = enrich::start_mentors(&db, &[first, second], 1)
+        .await
+        .unwrap()
+        .crawl_id
+        .unwrap();
+    // Deleted for good, the mentor takes their candidate along, else accepting it would add them
+    // back as new.
+    mentor::trash::trash(&db, &[second], 2).await.unwrap();
+    mentor::trash::delete(&db, &[second]).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM candidate WHERE crawl_id = ?")
+            .bind(crawl)
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        1
+    );
+    queue::delete(&db, crawl).await.unwrap();
+    assert_eq!(pending(first).await, 0);
 }

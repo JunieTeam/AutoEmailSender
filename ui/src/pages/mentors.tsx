@@ -17,6 +17,7 @@ import { AddTagButton, useAddTag } from "@/components/tags";
 import { CreateTaskDialog } from "@/components/create-task";
 import { MatchingDialog, MatchingProgress } from "@/components/matching";
 import { AiIcon } from "@/components/ai-writing";
+import { EnrichMentorsDialog } from "@/pages/find";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Input } from "@/components/ui/input";
@@ -105,6 +106,7 @@ export function MentorsPage() {
     return saved > 0 && saved <= 36500 && Number.isInteger(saved) ? saved : 7;
   });
   const [matching, setMatching] = useState<number[] | null>(null);
+  const [enriching, setEnriching] = useState<number[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
   const [imported, setImported] = useState<Imported | null>(null);
@@ -392,6 +394,10 @@ export function MentorsPage() {
             <AiIcon />
             分析匹配度
           </Button>
+          <Button variant="ghost" onClick={() => setEnriching([...selected])}>
+            <AiIcon />
+            补全资料
+          </Button>
           <AddTagButton mentorIds={[...selected]} add={addTag} />
           {desktop && (
             <Button
@@ -424,6 +430,7 @@ export function MentorsPage() {
         </BatchBar>
         {task && <CreateTaskDialog {...task} onClose={() => setTask(null)} />}
         {matching && <MatchingDialog ids={matching} onClose={() => setMatching(null)} />}
+        {enriching && <EnrichMentorsDialog ids={enriching} onClose={() => setEnriching(null)} />}
         {merging && <MergeDialog ids={merging} onClose={() => setMerging(null)} />}
       </div>
 

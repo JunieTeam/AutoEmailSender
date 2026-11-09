@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO candidate (crawl_id, profile_url, review, mentor_id, enrich,\n                enrich_changes, name, aliases, emails, affiliations, homepages, source_url,\n                research, papers, match_names, match_schools)\n            VALUES (?, ?, 'pending', ?, 'queued', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n            RETURNING id AS \"id!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "candidate",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 13
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4c91320464ad7b84c91328543104d4c0d6657cc4e2f44aca974578877654cce4"
+}

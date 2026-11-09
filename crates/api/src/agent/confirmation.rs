@@ -860,12 +860,15 @@ async fn describe(
         "deleteCrawl" => {
             let input: crate::CrawlId = parse(input)?;
             let row = sqlx::query!(
-                r#"SELECT university, school,
+                // Which candidates go as the crawl_delete_candidates trigger says.
+                r#"SELECT kind AS "kind: crawl::queue::CrawlKind", university, school,
                     (SELECT count(*) FROM candidate WHERE crawl_id = crawl.id
-                        AND review = 'pending' AND mentor_id IS NULL) AS "candidates!: i64",
+                        AND review = 'pending' AND (mentor_id IS NULL OR crawl.kind = 'mentors'))
+                        AS "candidates!: i64",
                     (SELECT count(*) FROM crawl_page WHERE crawl_id = crawl.id
                         OR candidate_id IN (SELECT id FROM candidate WHERE crawl_id = crawl.id
-                            AND review = 'pending' AND mentor_id IS NULL)) AS "pages!: i64",
+                            AND review = 'pending'
+                            AND (mentor_id IS NULL OR crawl.kind = 'mentors'))) AS "pages!: i64",
                     (SELECT count(*) FROM crawl_run WHERE crawl_id = crawl.id) AS "runs!: i64"
                 FROM crawl WHERE id = ?"#,
                 input.id
@@ -879,7 +882,9 @@ async fn describe(
                         .into_iter()
                         .chain(row.school)
                         .collect::<Vec<_>>();
-                    let name = if parts.is_empty() {
+                    let name = if row.kind == crawl::queue::CrawlKind::Mentors {
+                        "补全已有导师".into()
+                    } else if parts.is_empty() {
                         "智能整理".into()
                     } else {
                         parts.join(" ")

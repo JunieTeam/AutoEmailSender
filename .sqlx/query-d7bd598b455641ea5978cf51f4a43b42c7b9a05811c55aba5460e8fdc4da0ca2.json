@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT mentor_id AS \"mentor_id!\" FROM candidate\n        WHERE review = 'pending' AND mentor_id IN (SELECT value FROM json_each(?))",
+  "describe": {
+    "columns": [
+      {
+        "name": "mentor_id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "candidate",
+            "name": "mentor_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "d7bd598b455641ea5978cf51f4a43b42c7b9a05811c55aba5460e8fdc4da0ca2"
+}

@@ -464,10 +464,20 @@ pub async fn recover(db: &SqlitePool) -> Result<(), sqlx::Error> {
     }
     Ok(())
 }
+/// A crawl of school pages, an Agent's submission, or enriching mentors already in the list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS, sqlx::Type)]
+#[serde(rename_all = "snake_case")]
+#[sqlx(rename_all = "snake_case")]
+pub enum CrawlKind {
+    Site,
+    Agent,
+    Mentors,
+}
 #[derive(Debug, Serialize, TS, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct CrawlSummary {
     pub id: i64,
+    pub kind: CrawlKind,
     pub url: Option<String>,
     pub university: Option<String>,
     pub school: Option<String>,
@@ -492,6 +502,7 @@ pub struct CrawlSummary {
 #[serde(rename_all = "camelCase")]
 pub struct CrawlOption {
     pub id: i64,
+    pub kind: CrawlKind,
     pub url: Option<String>,
     pub university: Option<String>,
     pub school: Option<String>,
@@ -500,7 +511,7 @@ pub struct CrawlOption {
 pub async fn options(db: &SqlitePool) -> Result<Vec<CrawlOption>, sqlx::Error> {
     sqlx::query_as!(
         CrawlOption,
-        r#"SELECT id, json_extract(start_urls, '$[0]') AS "url: String",
+        r#"SELECT id, kind AS "kind: CrawlKind", json_extract(start_urls, '$[0]') AS "url: String",
             university, school, created_at
         FROM crawl
         ORDER BY created_at DESC, id DESC"#
@@ -556,7 +567,7 @@ pub(crate) async fn summaries(
 ) -> Result<Vec<CrawlSummary>, sqlx::Error> {
     sqlx::query_as!(
         CrawlSummary,
-        r#"SELECT c.id, json_extract(c.start_urls, '$[0]') AS "url: String",
+        r#"SELECT c.id, c.kind AS "kind: CrawlKind", json_extract(c.start_urls, '$[0]') AS "url: String",
             c.university, c.school, c.model_config_id, c.state AS "state: CrawlState",
             c.error AS "error: Json<Failure>", c.created_at, c.finished_at, (
             SELECT count(*)

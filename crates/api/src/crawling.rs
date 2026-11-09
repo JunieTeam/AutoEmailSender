@@ -214,6 +214,21 @@ pub(super) async fn enrich_candidates(
     ctx.crawler.wake();
     Ok(plan)
 }
+pub(super) async fn preview_enrich_mentors(
+    ctx: &Context,
+    input: crate::MentorIds,
+) -> Result<crawl::enrich::EnrichPlan, CallError> {
+    Ok(crawl::enrich::preview_mentors(&ctx.db, &input.ids).await?)
+}
+pub(super) async fn enrich_mentors(
+    ctx: &Context,
+    input: crate::MentorIds,
+) -> Result<crawl::enrich::MentorEnrichment, CallError> {
+    crawl_ready(ctx, None).await?;
+    let started = crawl::enrich::start_mentors(&ctx.db, &input.ids, now()).await?;
+    ctx.crawler.wake();
+    Ok(started)
+}
 pub(super) async fn list_candidates(
     ctx: &Context,
     input: review::CandidateQuery,

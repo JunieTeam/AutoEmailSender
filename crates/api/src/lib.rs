@@ -689,6 +689,10 @@ operations! {
         "previewEnrich" [none] => preview_enrich(CandidateIds) -> crawl::enrich::EnrichPlan;
         /// 为指定候选导师补充资料并返回处理计划。
         "enrichCandidates" [none] => enrich_candidates(CandidateIds) -> crawl::enrich::EnrichPlan;
+        /// 预览给指定导师补全资料：补全几位、跳过哪些和原因。
+        "previewEnrichMentors" [none] => preview_enrich_mentors(MentorIds) -> crawl::enrich::EnrichPlan;
+        /// 按指定导师现有的资料生成候选并补全，补到的在候选里审核后才并进导师。
+        "enrichMentors" [none] => enrich_mentors(MentorIds) -> crawl::enrich::MentorEnrichment;
         /// 按筛选条件分页列出候选导师。
         "listCandidates" [none] => list_candidates(crawl::review::CandidateQuery)
             -> crawl::review::CandidatePage;

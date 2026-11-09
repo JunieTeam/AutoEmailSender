@@ -244,9 +244,11 @@ export type CrawlFinished = { id: number, message: string, };
 
 export type CrawlId = { id: number, };
 
+export type CrawlKind = "site" | "agent" | "mentors";
+
 export type CrawlList = { crawls: Array<CrawlSummary>, total: number, };
 
-export type CrawlOption = { id: number, url: string | null, university: string | null, school: string | null, createdAt: number, };
+export type CrawlOption = { id: number, kind: CrawlKind, url: string | null, university: string | null, school: string | null, createdAt: number, };
 
 export type CrawlPage = { id: number, url: string, kind: PageKind, state: PageState, status: PageStatus, error: Failure | null, };
 
@@ -262,7 +264,7 @@ export type CrawlStart = { urls: string, modelId: number, };
 
 export type CrawlState = "running" | "paused" | "done" | "failed" | "canceled";
 
-export type CrawlSummary = { id: number, url: string | null, university: string | null, school: string | null, modelConfigId: number | null, state: CrawlState, error: Failure | null, createdAt: number, finishedAt: number | null, pages: number, remaining: number, enrichRemaining: number, modelIds: Array<number>, profiles: number, candidates: number, failed: number, tokens: number | null, stage: CrawlStage, };
+export type CrawlSummary = { id: number, kind: CrawlKind, url: string | null, university: string | null, school: string | null, modelConfigId: number | null, state: CrawlState, error: Failure | null, createdAt: number, finishedAt: number | null, pages: number, remaining: number, enrichRemaining: number, modelIds: Array<number>, profiles: number, candidates: number, failed: number, tokens: number | null, stage: CrawlStage, };
 
 export type CrawlUrls = { urls: string, };
 
@@ -344,7 +346,7 @@ export type EnrichPlan = { ids: Array<number>, skipped: Array<EnrichSkip>, };
 
 export type EnrichSkip = { reason: EnrichSkipReason, ids: Array<number>, };
 
-export type EnrichSkipReason = "missing_profile" | "deleted_crawl" | "complete" | "active" | "reviewed";
+export type EnrichSkipReason = "missing_profile" | "deleted_crawl" | "complete" | "active" | "reviewed" | "trashed" | "pending" | "shared";
 
 export type EnrichState = "none" | "queued" | "running" | "done";
 
@@ -650,6 +652,12 @@ export type MentorEdit = { id: number,
  * The fields as they were when editing began.
  */
 before: MentorFields, name: string, aliases: Array<string>, emails: Array<string>, affiliations: Array<Affiliation>, homepages: Array<string>, research: string, };
+
+export type MentorEnrichment = {
+/**
+ * Where their candidates are, when any are enriched.
+ */
+crawlId: number | null, ids: Array<number>, skipped: Array<EnrichSkip>, };
 
 export type MentorFields = { name: string, aliases: Array<string>, emails: Array<string>, affiliations: Array<Affiliation>, homepages: Array<string>, research: string | null, };
 
@@ -1363,6 +1371,8 @@ export interface Operations {
   deleteCrawl: { input: CrawlId; output: null };
   previewEnrich: { input: CandidateIds; output: EnrichPlan };
   enrichCandidates: { input: CandidateIds; output: EnrichPlan };
+  previewEnrichMentors: { input: MentorIds; output: EnrichPlan };
+  enrichMentors: { input: MentorIds; output: MentorEnrichment };
   listCandidates: { input: CandidateQuery; output: CandidatePage };
   getCandidate: { input: CrawlId; output: CandidateDetail };
   previewCandidates: { input: ReviewInput; output: IntakePreview };

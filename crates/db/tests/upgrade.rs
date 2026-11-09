@@ -154,3 +154,42 @@ async fn reasons_kept_as_text_become_failures_without_details() {
         )
     );
 }
+
+#[tokio::test]
+async fn rebuilding_the_crawl_table_gives_no_deleted_crawls_id_again() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("rebuild-crawl");
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("app.db");
+    let options = SqliteConnectOptions::new()
+        .filename(&path)
+        .create_if_missing(true)
+        .foreign_keys(true);
+    let old = SqlitePoolOptions::new()
+        .connect_with(options)
+        .await
+        .unwrap();
+    db::MIGRATOR.run_to(24, &old).await.unwrap();
+    sqlx::raw_sql(
+        r#"INSERT INTO crawl (kind, start_urls, state, created_at)
+          VALUES ('site', '["https://example.edu/a"]', 'running', 0),
+            ('site', '["https://example.edu/b"]', 'running', 0),
+            ('agent', NULL, 'running', 0);
+        DELETE FROM crawl WHERE id > 1;"#,
+    )
+    .execute(&old)
+    .await
+    .unwrap();
+    old.close().await;
+
+    let db = db::open(&path).await.unwrap();
+    let id: i64 = sqlx::query_scalar(
+        "INSERT INTO crawl (kind, state, created_at) VALUES ('mentors', 'running', 1) RETURNING id",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(id, 4);
+}

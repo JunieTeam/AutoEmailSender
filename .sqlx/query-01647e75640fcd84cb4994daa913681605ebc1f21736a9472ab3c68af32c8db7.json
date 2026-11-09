@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO candidate_profile (candidate_id, crawl_id, url) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "01647e75640fcd84cb4994daa913681605ebc1f21736a9472ab3c68af32c8db7"
+}

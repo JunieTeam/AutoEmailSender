@@ -7,7 +7,7 @@ use std::path::Path;
 
 use api::CallError;
 use chrono::{DateTime, Local, Utc};
-use crawl::queue::{CrawlDetail, CrawlState};
+use crawl::queue::{CrawlDetail, CrawlKind, CrawlState};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -119,10 +119,10 @@ fn crawl_content(
         CrawlState::Failed => "失败",
         CrawlState::Canceled => "已取消",
     };
-    let urls = if detail.urls.is_empty() {
-        "Agent 提交".to_owned()
-    } else {
-        detail.urls.join("\n")
+    let urls = match detail.summary.kind {
+        CrawlKind::Site => detail.urls.join("\n"),
+        CrawlKind::Agent => "Agent 提交".to_owned(),
+        CrawlKind::Mentors => "补全已有导师".to_owned(),
     };
     let mut out = environment();
     out.push_str(&format!(
@@ -145,12 +145,13 @@ fn crawl_content(
 }
 
 fn crawl_filename(detail: &CrawlDetail, date: &str) -> Result<String, Box<dyn Error>> {
-    let host = match detail.urls.first() {
-        Some(url) => tauri::Url::parse(url)?
+    let host = match detail.summary.kind {
+        CrawlKind::Site => tauri::Url::parse(detail.urls.first().ok_or("缺少起始网址")?)?
             .host_str()
             .ok_or("起始网址缺少主机名")?
             .to_owned(),
-        None => "Agent 提交".into(),
+        CrawlKind::Agent => "Agent 提交".into(),
+        CrawlKind::Mentors => "补全已有导师".into(),
     };
     // IPv6 hostnames contain colons, which Windows does not allow in filenames.
     Ok(format!("整理日志 {} {date}.txt", host.replace(':', "_")))
@@ -186,6 +187,7 @@ mod tests {
     fn detail() -> CrawlDetail {
         CrawlDetail {
             summary: CrawlSummary {
+                kind: CrawlKind::Site,
                 university: None,
                 school: None,
                 id: 5,
@@ -289,6 +291,7 @@ mod tests {
         assert!(content.contains("crawl started"));
         assert!(!content.contains("未找到这次整理的日志"));
         detail.urls.clear();
+        detail.summary.kind = CrawlKind::Agent;
         assert_eq!(
             crawl_filename(&detail, "2026-10-26").unwrap(),
             "整理日志 Agent 提交 2026-10-26.txt"

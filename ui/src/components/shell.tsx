@@ -709,7 +709,12 @@ function Background({ className }: { className?: string }) {
           <Group title="今天完成">
             {work.crawled.map((c) => (
               <Link key={c.id} to="/find" search={findSearch({ crawl: c.id })} className={ITEM}>
-                <Entry title={crawlName(c)} detail={`找到 ${c.candidates} 位候选，去审核`} />
+                <Entry
+                  title={crawlName(c)}
+                  detail={
+                    c.kind === "mentors" ? `补全 ${c.candidates} 位，去审核` : `找到 ${c.candidates} 位候选，去审核`
+                  }
+                />
               </Link>
             ))}
             {work.drafted.map((t) => (
