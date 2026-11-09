@@ -1,6 +1,10 @@
-import { type ComponentProps, useRef, useState } from "react";
+import { type ComponentProps, useState } from "react";
 import { composing } from "@/composing";
 import { Input } from "@/components/ui/input";
+
+/** The largest numbers the core takes as 16- and 32-bit whole numbers (`u16`, `u32`). */
+export const U16 = 65535;
+export const U32 = 4294967295;
 
 /**
  * The number in what was typed, written as `String` writes numbers (very large ones with an
@@ -17,11 +21,12 @@ function parse(text: string) {
 const format = (value: number | null) => (value === null ? "" : String(value));
 
 /**
- * A text field for a number, without the browser's spin buttons (docs/ui.md#控件). Its value is the
- * number it shows, and null while it is empty or shows no number it takes: one out of `min`–`max`,
- * with more than `decimals` places, or text that is no number, which it marks, and Enter in it then
- * does not submit. Leaving it puts a number at the nearest one it takes, and turns text that is no
- * number back to the value it had; the arrow keys step it.
+ * A text field for a number, without the browser's spin buttons (docs/ui.md#控件). It shows its
+ * value until something is typed in it, and then what was typed until it is left. Its value is the
+ * number typed, and null while that is empty or no number it takes: one out of `min`–`max`, with
+ * more than `decimals` places, or text that is no number, which it marks, and in which Enter does not
+ * submit nor Esc close the form, so the text is not lost. Leaving it puts a number at the nearest one
+ * it takes, and turns text that is no number back to the value it had; the arrow keys step it.
  */
 export function NumberField({
   value,
@@ -40,25 +45,27 @@ export function NumberField({
   decimals?: number;
 } & Omit<
   ComponentProps<"input">,
-  "value" | "onChange" | "onFocus" | "onBlur" | "onKeyDown" | "min" | "max" | "step" | "type" | "defaultValue"
+  "value" | "onChange" | "onBlur" | "onKeyDown" | "min" | "max" | "step" | "type" | "defaultValue"
 >) {
-  const [focused, setFocused] = useState(false);
-  // The text and the value it stands for: while the field is focused the text is what was typed,
-  // and otherwise it follows the value, which may stay as it was when the text gave none.
-  const [shown, setShown] = useState({ text: format(value), value });
-  if (!focused && value !== shown.value) setShown({ text: format(value), value });
-  // The value as the field was focused, for text that is no number to go back to.
-  const before = useRef(value);
+  // What was typed since the field was last left, and the value it had before, for text that is no
+  // number to go back to.
+  const [draft, setDraft] = useState<{ text: string; from: number | null } | null>(null);
+  const text = draft ? draft.text : format(value);
 
   const round = (n: number) => Number(n.toFixed(decimals));
   const takes = (n: number) => n >= min && n <= max && round(n) === n;
   const nearest = (n: number) => Math.min(Math.max(round(n), min), max);
-  const typed = parse(shown.text);
+  const typed = parse(text);
   const invalid = typed !== null && !takes(typed);
 
-  function show(text: string, next: number | null) {
+  function give(next: number | null) {
     if (next !== value) onValueChange(next);
-    setShown({ text, value: next });
+  }
+
+  function type(next: string) {
+    const n = parse(next);
+    give(n !== null && takes(n) ? n : null);
+    setDraft({ text: next, from: draft ? draft.from : value });
   }
 
   return (
@@ -67,28 +74,26 @@ export function NumberField({
       inputMode={decimals > 0 ? "decimal" : "numeric"}
       autoComplete="off"
       spellCheck={false}
-      value={shown.text}
+      value={text}
       aria-invalid={invalid || marked}
-      onFocus={() => {
-        before.current = value;
-        setFocused(true);
-      }}
-      onChange={(e) => {
-        const n = parse(e.target.value);
-        show(e.target.value, n !== null && takes(n) ? n : null);
-      }}
+      onChange={(e) => type(e.target.value)}
       onBlur={() => {
-        const next = typed === null ? null : Number.isNaN(typed) ? before.current : nearest(typed);
-        show(format(next), next);
-        setFocused(false);
+        if (!draft) return;
+        give(typed === null ? null : Number.isNaN(typed) ? draft.from : nearest(typed));
+        setDraft(null);
       }}
       onKeyDown={(e) => {
         if (composing(e)) return;
-        if (e.key === "Enter" && invalid) e.preventDefault();
+        if ((e.key === "Enter" || e.key === "Escape") && invalid) {
+          // Base UI closes a dialog on Esc even when its default is prevented; its own combobox keeps
+          // an Esc it uses from the dialog the same way.
+          e.preventDefault();
+          e.stopPropagation();
+        }
         if (e.key === "ArrowUp" || e.key === "ArrowDown") {
           e.preventDefault();
-          const next = nearest((typed === null || Number.isNaN(typed) ? 0 : typed) + (e.key === "ArrowUp" ? 1 : -1));
-          show(format(next), next);
+          const start = typed === null || Number.isNaN(typed) ? 0 : typed;
+          type(format(nearest(start + (e.key === "ArrowUp" ? 1 : -1))));
         }
       }}
     />

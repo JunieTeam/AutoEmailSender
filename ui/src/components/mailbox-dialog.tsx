@@ -9,7 +9,7 @@ import { formClose, Field, TestResult } from "@/components/form";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { NumberField } from "@/components/ui/number-field";
+import { NumberField, U16, U32 } from "@/components/ui/number-field";
 import { Select } from "@/components/ui/select";
 
 /** The provider table from the core; it never changes while the app runs. */
@@ -35,16 +35,8 @@ const EMPTY: NewMailbox = {
   secret: "",
 };
 
-const U16 = 65535;
-const U32 = 4294967295;
-
 function sameHost(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
-/** Whether a number field holds a whole number in range; the core cannot even read others. */
-function whole(n: number, min: number, max: number): boolean {
-  return Number.isInteger(n) && n >= min && n <= max;
 }
 
 function formOf(m: Mailbox): NewMailbox {
@@ -119,11 +111,8 @@ export function MailboxDialog({
     sameHost(form.smtp.host, mailbox.smtp.host) &&
     sameHost(form.imap.host, mailbox.imap.host);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
-  const numbers =
-    whole(form.dailyLimit, 1, U32) &&
-    whole(form.minIntervalS, 0, U32) &&
-    whole(form.smtp.port, 1, U16) &&
-    whole(form.imap.port, 1, U16);
+  // NaN where a number field gives no number; those it gives are in the range the core takes.
+  const numbers = [form.dailyLimit, form.minIntervalS, form.smtp.port, form.imap.port].every((n) => !Number.isNaN(n));
   const complete =
     usable &&
     numbers &&
@@ -237,8 +226,9 @@ export function MailboxDialog({
                       <NumberField
                         id="mailbox-daily"
                         min={1}
+                        max={U32}
                         className="w-16"
-                        aria-invalid={!whole(form.dailyLimit, 1, U32)}
+                        aria-invalid={Number.isNaN(form.dailyLimit)}
                         value={Number.isNaN(form.dailyLimit) ? null : form.dailyLimit}
                         onValueChange={(v) => edit({ ...form, dailyLimit: v ?? NaN })}
                       />
@@ -246,8 +236,9 @@ export function MailboxDialog({
                       <NumberField
                         aria-label="两封之间至少隔几秒"
                         min={0}
+                        max={U32}
                         className="w-16"
-                        aria-invalid={!whole(form.minIntervalS, 0, U32)}
+                        aria-invalid={Number.isNaN(form.minIntervalS)}
                         value={Number.isNaN(form.minIntervalS) ? null : form.minIntervalS}
                         onValueChange={(v) => edit({ ...form, minIntervalS: v ?? NaN })}
                       />
@@ -377,7 +368,7 @@ function ServerFields({
         aria-label={`${label}端口`}
         min={1}
         max={U16}
-        aria-invalid={!whole(server.port, 1, U16)}
+        aria-invalid={Number.isNaN(server.port)}
         value={Number.isNaN(server.port) ? null : server.port}
         onValueChange={(port) => onChange({ ...server, port: port ?? NaN })}
       />

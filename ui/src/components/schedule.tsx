@@ -6,7 +6,7 @@ import type { Schedule, TaskSummary } from "@/api/types";
 import { Field, formClose } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { NumberField } from "@/components/ui/number-field";
+import { NumberField, U32 } from "@/components/ui/number-field";
 import { TimeSelect } from "@/components/ui/time-select";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Confirm } from "@/components/batch-bar";
@@ -123,6 +123,7 @@ export function ScheduleFields({
                 <NumberField
                   id="window-count"
                   min={1}
+                  max={U32}
                   value={value.perWindow || null}
                   onValueChange={(perWindow) => onChange({ ...value, perWindow: perWindow ?? 0 })}
                 />
