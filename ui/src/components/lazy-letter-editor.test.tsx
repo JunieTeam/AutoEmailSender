@@ -22,6 +22,9 @@ function Asking() {
 }
 
 it("takes the focus asked for when it is first loaded, under StrictMode as in the app", async () => {
+  // On a busy machine loading the editor can outlast the wait below; loaded beforehand, the first
+  // render still suspends, as the lazy component waits on a promise of its own.
+  await import("./letter-editor");
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
