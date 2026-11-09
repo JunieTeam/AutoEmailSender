@@ -1740,6 +1740,33 @@ async fn files_of_one_name_count_once_toward_the_attachment_size(db: SqlitePool)
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn mentors_without_research_are_pointed_out_before_writing(db: SqlitePool) {
+    let vague = mentor(&db, 1, true).await;
+    let known = mentor::create(
+        &db,
+        &MentorFields {
+            name: "导师2".into(),
+            emails: vec!["m2@example.com".into()],
+            research: Some("视觉".into()),
+            ..Default::default()
+        },
+        T,
+    )
+    .await
+    .unwrap();
+    let p = plan(&db, &form(&db, vec![vague, known]).await)
+        .await
+        .unwrap();
+    assert_eq!(
+        p.mentors
+            .iter()
+            .map(|m| (m.id, m.has_research))
+            .collect::<Vec<_>>(),
+        [(vague, false), (known, true)]
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn task_name_checks_and_problem_counts_agree(db: SqlitePool) {
     sqlx::query("UPDATE profile SET name='林晓'")
         .execute(&db)

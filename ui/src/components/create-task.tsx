@@ -123,6 +123,7 @@ function TaskSteps({
   const unavailable = plan.data?.mentors.filter((m) => m.reason !== null) ?? [];
   const contacted = eligible.filter((m) => m.contactCount > 0 || m.lastContactAt !== null);
   const departed = eligible.filter((m) => m.libraryStatus !== null);
+  const vague = kind === "first" ? eligible.filter((m) => !m.hasResearch) : [];
   const create = useMutation({
     mutationFn: () => call("createTask", { ...form, ids: eligible.map((m) => m.id) }),
     onSuccess: ({ id }) => {
@@ -215,6 +216,18 @@ function TaskSteps({
                   </Button>
                 </div>
               )}
+              {vague.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 text-warning">
+                  <p>其中 {vague.length} 位没有研究方向，AI 只能写得笼统</p>
+                  <Button
+                    variant="quiet"
+                    size="sm"
+                    onClick={() => setExcluded([...excluded, ...vague.map((m) => m.id)])}
+                  >
+                    全部移出
+                  </Button>
+                </div>
+              )}
               <div className="max-h-72 space-y-[3px] overflow-y-auto">
                 {eligible.map((m) => (
                   <div key={m.id} className="flex items-center gap-2 rounded-md bg-muted px-3 py-2">
@@ -234,6 +247,9 @@ function TaskSteps({
                       )}
                       {m.libraryStatus && (
                         <p className="text-xs text-warning">导师库标为{LIBRARY_STATUS[m.libraryStatus]}</p>
+                      )}
+                      {kind === "first" && !m.hasResearch && (
+                        <p className="text-xs text-muted-foreground">没有研究方向</p>
                       )}
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => setExcluded([...excluded, m.id])}>

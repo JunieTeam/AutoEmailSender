@@ -66,7 +66,11 @@ export type CallError = { code: ErrorCode, message: string,
  */
 details: string | null, };
 
-export type Candidate = { id: number, name: string, reason: string | null, contactCount: number, lastContactAt: number | null, libraryStatus: LibraryStatus | null, previous: PreviousLetter | null, };
+export type Candidate = { id: number, name: string, reason: string | null, contactCount: number, lastContactAt: number | null, libraryStatus: LibraryStatus | null,
+/**
+ * Without one, AI can only write in general terms.
+ */
+hasResearch: boolean, previous: PreviousLetter | null, };
 
 export type CandidateDetail = { evidence: Array<Evidence>, id: number, crawlId: number | null, review: string, mentorId: number | null, fields: MentorFields, papers: Array<string>, sourceUrl: string | null, note: string | null, enrich: EnrichState, enrichChanges: Array<EnrichChange>, enrichError: Failure | null, };
 

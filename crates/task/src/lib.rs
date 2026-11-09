@@ -60,6 +60,8 @@ pub struct Candidate {
     pub contact_count: i64,
     pub last_contact_at: Option<i64>,
     pub library_status: Option<cloud_api::library::Status>,
+    /// Without one, AI can only write in general terms.
+    pub has_research: bool,
     pub previous: Option<PreviousLetter>,
 }
 #[derive(Debug, Serialize, TS)]
@@ -132,7 +134,9 @@ async fn candidates(
              (SELECT json_quote(status) FROM mentor_library WHERE mentor_id = m.id
                 AND status IN ('retired', 'departed', 'deceased')
                 ORDER BY CASE status WHEN 'deceased' THEN 0 WHEN 'departed' THEN 1 ELSE 2 END,
-                    library_id LIMIT 1) AS "library_status?: Json<cloud_api::library::Status>"
+                    library_id LIMIT 1) AS "library_status?: Json<cloud_api::library::Status>",
+             EXISTS (SELECT 1 FROM mentor_detail WHERE mentor_id = m.id AND research IS NOT NULL)
+               AS "has_research!: bool"
            FROM (SELECT value AS id, min(key) AS position FROM json_each(?1) GROUP BY value) picked
              JOIN mentor m ON m.id = picked.id
              LEFT JOIN mentor_contact c ON c.mentor_id = m.id
@@ -157,6 +161,7 @@ async fn candidates(
             contact_count: row.contact_count,
             last_contact_at: row.last_contact_at,
             library_status: row.library_status.map(|s| s.0),
+            has_research: row.has_research,
             // A mentor who can be followed up has not replied, so the latest letter out, which
             // the contact summary describes, is the one followed up.
             previous: previous.map(|p| PreviousLetter {
