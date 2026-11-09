@@ -78,11 +78,12 @@ impl Source {
                 .map(Source::Known)
                 .ok_or_else(|| "请选择服务商".into());
         }
-        // Calls append `/chat/completions` and `/models`. Relay services often show the whole
-        // address of the first, which is then pasted.
+        // Calls append `/chat/completions` or `/responses`, and `/models`. Relay services often
+        // show the whole address of the API they offer, which is then pasted.
         let base_url = base_url.trim().trim_end_matches('/');
         let base_url = base_url
             .strip_suffix("/chat/completions")
+            .or_else(|| base_url.strip_suffix("/responses"))
             .unwrap_or(base_url);
         let Some(url) = url::Url::parse(base_url)
             .ok()

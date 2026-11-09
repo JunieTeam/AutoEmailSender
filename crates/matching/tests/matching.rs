@@ -936,6 +936,18 @@ async fn old_model_name_error_does_not_pause_the_updated_configuration(db: Sqlit
         })
         .ok()
         .unwrap();
+    // Not found on either API, as for a model that does not exist.
+    let other = request(&mut p).await;
+    assert!(other.line.contains("/responses "), "{}", other.line);
+    other
+        .respond
+        .send(Response::Refused {
+            status: 404,
+            message: "model_not_found".into(),
+            retry_after: None,
+        })
+        .ok()
+        .unwrap();
     runner.changes.recv().await.unwrap();
     assert!(queue::progress(&db).await.unwrap().pause.is_none());
     let req = request(&mut p).await;

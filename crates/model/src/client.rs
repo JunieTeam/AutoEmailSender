@@ -1,9 +1,12 @@
 //! Calls to OpenAI-compatible APIs.
 
+use std::collections::BTreeSet;
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use net::Net;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use tokio::time::timeout;
 
@@ -76,6 +79,7 @@ pub struct Answer {
 pub enum Finish {
     Stop,
     /// Out of room for the answer.
+    #[serde(alias = "max_output_tokens")]
     Length,
     ContentFilter,
     ToolCalls,
@@ -85,12 +89,13 @@ pub enum Finish {
 
 /// Asks the model for a one-word answer, which proves the address, the key and the model name.
 pub async fn test(net: &Net, access: &Access, model: &str) -> Result<(), ModelError> {
-    let body = json!({
-        "model": model,
-        "messages": [{"role": "user", "content": "请只回复一个字：好"}],
-        "stream": true,
-    });
-    let answer = chat(net, access, body, false).await?;
+    let prompt = Prompt {
+        model,
+        system: None,
+        user: "请只回复一个字：好",
+        json: false,
+    };
+    let answer = complete(net, access, &prompt).await?;
     if answer.text.trim().is_empty() {
         return Err(ModelError::NoAnswer {
             finish_reason: answer.finish_reason,
@@ -108,28 +113,138 @@ pub async fn ask(
     user: &str,
     json: bool,
 ) -> Result<Answer, ModelError> {
-    let body = json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "stream": true,
-        // A streamed reply leaves out the tokens it took unless asked.
-        "stream_options": {"include_usage": true},
-    });
-    chat(net, access, body, json).await
+    let prompt = Prompt {
+        model,
+        system: Some(system),
+        user,
+        json,
+    };
+    complete(net, access, &prompt).await
 }
 
-/// Sends a chat request and puts the answer together. Streamed, as some models only think that
-/// way and not all can stop thinking. What the provider wrote stays out of the errors, which go to
-/// the log: it may be the user's letter.
-async fn chat(
+struct Prompt<'a> {
+    model: &'a str,
+    system: Option<&'a str>,
+    user: &'a str,
+    /// Whether the answer is to be a JSON object.
+    json: bool,
+}
+
+/// The two OpenAI-compatible APIs a model may answer on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Api {
+    Chat,
+    Responses,
+}
+
+/// The addresses and models found in this run to answer on `/responses` alone
+/// (docs/design.md#桌面端).
+static ON_RESPONSES: Mutex<BTreeSet<(String, String)>> = Mutex::new(BTreeSet::new());
+
+fn on_responses() -> MutexGuard<'static, BTreeSet<(String, String)>> {
+    ON_RESPONSES
+        .lock()
+        .unwrap_or_else(|_| unreachable!("nothing panics while holding the lock"))
+}
+
+/// Calls the API the model answers on; when the provider has no such API, the other, which it
+/// then answers on from here on.
+async fn complete(net: &Net, access: &Access, prompt: &Prompt<'_>) -> Result<Answer, ModelError> {
+    let target = (access.base_url.clone(), prompt.model.to_owned());
+    let (first, other) = if on_responses().contains(&target) {
+        (Api::Responses, Api::Chat)
+    } else {
+        (Api::Chat, Api::Responses)
+    };
+    let missing = |e: &ModelError| {
+        matches!(
+            e,
+            ModelError::Refused {
+                status: 404 | 405 | 501,
+                ..
+            }
+        )
+    };
+    let refused = match call(net, access, prompt, first).await {
+        Err(e) if missing(&e) => e,
+        answered => return answered,
+    };
+    let answer = match call(net, access, prompt, other).await {
+        // Neither: most likely a wrong address or model name, which the first says.
+        Err(e) if missing(&e) => return Err(refused),
+        answered => answered?,
+    };
+    tracing::info!(address = access.base_url, model = prompt.model, api = ?other, "model answers on the other API");
+    if other == Api::Responses {
+        on_responses().insert(target);
+    } else {
+        on_responses().remove(&target);
+    }
+    Ok(answer)
+}
+
+/// Sends the request to `api` and puts the answer together. Streamed, as some models only think
+/// that way and not all can stop thinking. What the provider wrote stays out of the errors, which
+/// go to the log: it may be the user's letter.
+async fn call(
     net: &Net,
     access: &Access,
-    mut body: Value,
-    json: bool,
+    prompt: &Prompt<'_>,
+    api: Api,
 ) -> Result<Answer, ModelError> {
+    let (path, body) = match api {
+        Api::Chat => {
+            let messages: Vec<Value> = prompt
+                .system
+                .map(|system| json!({"role": "system", "content": system}))
+                .into_iter()
+                .chain([json!({"role": "user", "content": prompt.user})])
+                .collect();
+            let mut body = json!({
+                "model": prompt.model,
+                "messages": messages,
+                "stream": true,
+                // A streamed reply leaves out the tokens it took unless asked.
+                "stream_options": {"include_usage": true},
+            });
+            if let Some(no_thinking) = access.no_thinking {
+                no_thinking.apply(&mut body);
+            }
+            if prompt.json && access.json_mode {
+                body["response_format"] = json!({"type": "json_object"});
+            }
+            ("chat/completions", body)
+        }
+        Api::Responses => {
+            let mut body = json!({"model": prompt.model, "input": prompt.user, "stream": true});
+            if let Some(system) = prompt.system {
+                body["instructions"] = system.into();
+            }
+            if prompt.json && access.json_mode {
+                body["text"] = json!({"format": {"type": "json_object"}});
+            }
+            ("responses", body)
+        }
+    };
+    let request = net
+        .http()
+        .post(format!("{}/{path}", access.base_url))
+        .bearer_auth(access.api_key.as_deref().ok_or(ModelError::MissingKey)?)
+        .json(&body);
+    let response = send(request, access).await?;
+    match api {
+        Api::Chat => chat(response, access).await,
+        Api::Responses => responses(response, access).await,
+    }
+}
+
+#[derive(Deserialize)]
+struct Failure {
+    message: String,
+}
+
+/// A Chat Completions answer, in chunks.
+async fn chat(response: reqwest::Response, access: &Access) -> Result<Answer, ModelError> {
     #[derive(Deserialize)]
     struct Chunk {
         #[serde(default)]
@@ -137,10 +252,6 @@ async fn chat(
         /// Some providers, such as OpenRouter, report failing partway here, after a success status.
         error: Option<Failure>,
         usage: Option<Tokens>,
-    }
-    #[derive(Deserialize)]
-    struct Failure {
-        message: String,
     }
     #[derive(Deserialize)]
     struct Choice {
@@ -169,63 +280,22 @@ async fn chat(
     struct Details {
         cached_tokens: Option<i64>,
     }
-    if let Some(no_thinking) = access.no_thinking {
-        no_thinking.apply(&mut body);
-    }
-    if json && access.json_mode {
-        body["response_format"] = json!({"type":"json_object"});
-    }
-    let request = net
-        .http()
-        .post(format!("{}/chat/completions", access.base_url))
-        .bearer_auth(access.api_key.as_deref().ok_or(ModelError::MissingKey)?)
-        .json(&body);
-    let mut response = send(request, access).await?;
     let (mut text, mut finish_reason, mut tokens) = (String::new(), None, None);
-    let (mut pending, mut events) = (Vec::new(), 0);
-    // Server-sent events, each a `data:` line, until `data: [DONE]`: what may follow it, or a
-    // connection kept open after it, is not part of the answer.
-    'read: loop {
-        let open = more(&mut response, &mut pending, access).await?;
-        if !open {
-            // The last line may end without a line break; it is read like the others.
-            pending.push(b'\n');
+    events(response, access, |data, n| {
+        let chunk: Chunk = event(data, n)?;
+        if let Some(failure) = chunk.error {
+            return Err(ModelError::Failed(without_key(&failure.message, access)));
         }
-        while let Some(end) = pending.iter().position(|&b| b == b'\n') {
-            let line: Vec<u8> = pending.drain(..=end).collect();
-            let line = String::from_utf8_lossy(&line);
-            let Some(data) = line.trim().strip_prefix("data:").map(str::trim) else {
-                continue;
-            };
-            if data == "[DONE]" {
-                break 'read;
-            }
-            events += 1;
-            let chunk: Chunk = serde_json::from_str(data).map_err(|e| {
-                ModelError::Broken(format!(
-                    "event {events}: {:?} error at column {}",
-                    e.classify(),
-                    e.column()
-                ))
-            })?;
-            if let Some(failure) = chunk.error {
-                return Err(ModelError::Failed(without_key(&failure.message, access)));
-            }
-            tokens = chunk.usage.or(tokens);
-            // The last chunk may only count tokens.
-            if let Some(choice) = chunk.choices.into_iter().next() {
-                text.extend(choice.delta.content);
-                finish_reason = choice.finish_reason.or(finish_reason);
-                tokens = choice.usage.or(tokens);
-            }
+        tokens = chunk.usage.or(tokens.take());
+        // The last chunk may only count tokens.
+        if let Some(choice) = chunk.choices.into_iter().next() {
+            text.extend(choice.delta.content);
+            finish_reason = choice.finish_reason.or(finish_reason);
+            tokens = choice.usage.or(tokens.take());
         }
-        if !open {
-            break;
-        }
-    }
-    if events == 0 {
-        return Err(ModelError::Broken("not an event stream".into()));
-    }
+        Ok(())
+    })
+    .await?;
     let usage = tokens.and_then(|t| {
         Some(Usage {
             input: t.prompt_tokens?,
@@ -242,6 +312,137 @@ async fn chat(
         text,
         finish_reason,
         usage,
+    })
+}
+
+/// A Responses answer, in events; those about anything but its text are passed over.
+async fn responses(response: reqwest::Response, access: &Access) -> Result<Answer, ModelError> {
+    #[derive(Deserialize)]
+    #[serde(tag = "type")]
+    enum Event {
+        #[serde(rename = "response.output_text.delta")]
+        Text { delta: String },
+        #[serde(rename = "response.completed")]
+        Completed { response: Ended },
+        #[serde(rename = "response.incomplete")]
+        Incomplete { response: Ended },
+        #[serde(rename = "response.failed")]
+        Failed { response: Failed },
+        /// Failing apart from a response, such as when the request is wrong.
+        #[serde(rename = "error")]
+        Error { message: String },
+        #[serde(other)]
+        Other,
+    }
+    #[derive(Deserialize)]
+    struct Ended {
+        incomplete_details: Option<Incomplete>,
+        usage: Option<Tokens>,
+    }
+    #[derive(Deserialize)]
+    struct Incomplete {
+        reason: Option<Finish>,
+    }
+    #[derive(Deserialize)]
+    struct Failed {
+        error: Failure,
+    }
+    #[derive(Deserialize)]
+    struct Tokens {
+        input_tokens: i64,
+        output_tokens: i64,
+        input_tokens_details: Option<Details>,
+    }
+    #[derive(Deserialize)]
+    struct Details {
+        cached_tokens: Option<i64>,
+    }
+    let mut answer = Answer {
+        text: String::new(),
+        finish_reason: None,
+        usage: None,
+    };
+    let mut end = |ended: Ended, finish_reason: Finish| {
+        answer.finish_reason = Some(finish_reason);
+        answer.usage = ended.usage.map(|t| Usage {
+            input: t.input_tokens,
+            cached: t
+                .input_tokens_details
+                .and_then(|d| d.cached_tokens)
+                .unwrap_or(0),
+            output: t.output_tokens,
+        });
+    };
+    events(response, access, |data, n| {
+        match event(data, n)? {
+            Event::Text { delta } => answer.text.push_str(&delta),
+            Event::Completed { response } => end(response, Finish::Stop),
+            Event::Incomplete { response } => {
+                let reason = response.incomplete_details.as_ref().and_then(|d| d.reason);
+                end(response, reason.unwrap_or(Finish::Other));
+            }
+            Event::Failed { response } => {
+                return Err(ModelError::Failed(without_key(
+                    &response.error.message,
+                    access,
+                )));
+            }
+            Event::Error { message } => {
+                return Err(ModelError::Failed(without_key(&message, access)));
+            }
+            Event::Other => {}
+        }
+        Ok(())
+    })
+    .await?;
+    Ok(answer)
+}
+
+/// Hands each server-sent event, a `data:` line, to `each` with its number, until the stream ends
+/// or says `data: [DONE]`: what may follow that, or a connection kept open after it, is not part
+/// of the answer.
+async fn events(
+    mut response: reqwest::Response,
+    access: &Access,
+    mut each: impl FnMut(&str, usize) -> Result<(), ModelError>,
+) -> Result<(), ModelError> {
+    let (mut pending, mut count) = (Vec::new(), 0);
+    'read: loop {
+        let open = more(&mut response, &mut pending, access).await?;
+        if !open {
+            // The last line may end without a line break; it is read like the others.
+            pending.push(b'\n');
+        }
+        while let Some(end) = pending.iter().position(|&b| b == b'\n') {
+            let line: Vec<u8> = pending.drain(..=end).collect();
+            let line = String::from_utf8_lossy(&line);
+            let Some(data) = line.trim().strip_prefix("data:").map(str::trim) else {
+                continue;
+            };
+            if data == "[DONE]" {
+                break 'read;
+            }
+            count += 1;
+            each(data, count)?;
+        }
+        if !open {
+            break;
+        }
+    }
+    if count == 0 {
+        return Err(ModelError::Broken("not an event stream".into()));
+    }
+    Ok(())
+}
+
+/// The `n`th event, read as `T`.
+fn event<T: DeserializeOwned>(data: &str, n: usize) -> Result<T, ModelError> {
+    serde_json::from_str(data).map_err(|e| {
+        ModelError::Broken(format!(
+            "event {n}: {:?} error at column {}",
+            e.classify(),
+            e.column()
+        ))
     })
 }
 

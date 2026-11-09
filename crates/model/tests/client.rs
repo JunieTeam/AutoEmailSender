@@ -450,3 +450,110 @@ async fn a_finish_reason_of_the_providers_own_is_not_quoted() {
     let failure = error.failure();
     assert!(!format!("{failure:?}").contains("sk-test"), "{failure:?}");
 }
+
+/// Starts a fake provider that answers requests to `/chat/completions` with `chat` and those to
+/// `/responses` with `responses`, each a status and a reply.
+async fn provider_by_api(
+    chat: (u16, &'static str),
+    responses: (u16, &'static str),
+) -> (String, Received) {
+    let mut provider = Provider::start().await.unwrap();
+    let address = provider.address.clone();
+    let received = Received::default();
+    let log = received.clone();
+    tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let (status, reply) = if request.line.contains("/responses ") {
+                responses
+            } else {
+                chat
+            };
+            log.lock().unwrap().push(Request {
+                line: request.line,
+                authorization: request.authorization,
+                body: request.body,
+            });
+            request
+                .respond
+                .send(Response::Raw {
+                    status,
+                    content: reply.into(),
+                })
+                .unwrap();
+        }
+    });
+    (address, received)
+}
+
+#[tokio::test]
+async fn a_model_only_on_the_responses_api_is_asked_there_from_then_on() {
+    let (address, received) = provider_by_api(
+        (
+            404,
+            r#"{"error":{"message":"This model is only supported in v1/responses and not in v1/chat/completions.","type":"invalid_request_error","param":"model","code":null}}"#,
+        ),
+        (
+            200,
+            concat!(
+                "event: response.created\n",
+                r#"data: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}"#,
+                "\n\nevent: response.output_text.delta\n",
+                r#"data: {"type":"response.output_text.delta","item_id":"msg_1","output_index":0,"content_index":0,"delta":"好"}"#,
+                "\n\nevent: response.completed\n",
+                r#"data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":5},"output_tokens":3,"total_tokens":23}}}"#,
+                "\n\n",
+            ),
+        ),
+    )
+    .await;
+    let net = Net::new(Vec::new()).unwrap();
+    let access = access(address, None);
+    for _ in 0..2 {
+        let answer = model::ask(&net, &access, "gpt-5-pro", "规则", "资料", false)
+            .await
+            .unwrap();
+        assert_eq!(answer.text, "好");
+        assert_eq!(answer.finish_reason, Some(model::Finish::Stop));
+        assert_eq!(
+            answer.usage,
+            Some(Usage {
+                input: 20,
+                cached: 5,
+                output: 3
+            })
+        );
+    }
+    let received = received.lock().unwrap();
+    let lines: Vec<_> = received.iter().map(|r| r.line.as_str()).collect();
+    assert_eq!(
+        lines,
+        [
+            "POST /v1/chat/completions HTTP/1.1\r\n",
+            "POST /v1/responses HTTP/1.1\r\n",
+            "POST /v1/responses HTTP/1.1\r\n",
+        ]
+    );
+    let body = &received[1].body;
+    assert_eq!(
+        (&body["model"], &body["instructions"], &body["input"]),
+        (&json!("gpt-5-pro"), &json!("规则"), &json!("资料"))
+    );
+}
+
+#[tokio::test]
+async fn with_neither_api_the_error_is_that_of_the_first() {
+    let (address, received) = provider_by_api(
+        (404, r#"{"error":{"message":"model gpt-x does not exist"}}"#),
+        (404, "404 page not found"),
+    )
+    .await;
+    let net = Net::new(Vec::new()).unwrap();
+    let error = model::ask(&net, &access(address, None), "gpt-x", "规则", "资料", false)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&error, ModelError::Refused { status: 404, reply, .. } if reply == "model gpt-x does not exist"),
+        "{error:?}"
+    );
+    assert_eq!(received.lock().unwrap().len(), 2);
+}
