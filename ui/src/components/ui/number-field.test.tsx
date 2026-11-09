@@ -4,9 +4,10 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { NumberField } from "./number-field";
 
-/** A form with one number field; `seen` is called with each value the field gives. */
+/** A form with one number field; `seen` is called with each value the field gives, `left` as it is left. */
 async function mount(field: { min?: number; max?: number; decimals?: number; initial: number | null }) {
   const seen = vi.fn<(value: number | null) => void>();
+  const left = vi.fn<(value: number | null) => void>();
   const submitted = vi.fn<(value: number | null) => void>();
   function Form() {
     const [value, setValue] = useState(field.initial);
@@ -27,6 +28,7 @@ async function mount(field: { min?: number; max?: number; decimals?: number; ini
             seen(v);
             setValue(v);
           }}
+          onValueCommitted={left}
         />
         <button type="submit">保存</button>
       </form>
@@ -42,6 +44,7 @@ async function mount(field: { min?: number; max?: number; decimals?: number; ini
   return {
     input,
     seen,
+    left,
     submitted,
     type: (text: string) =>
       act(async () => {
@@ -82,12 +85,13 @@ it("gives no number while what is typed is out of range, and the nearest one onc
   }
 });
 
-it("gives no number for text that is none, and empties the field once left", async () => {
+it("takes text that is no number for an emptied field", async () => {
   const field = await mount({ min: 0, decimals: 6, initial: 2 });
   try {
     await field.type("+");
     expect(field.seen).toHaveBeenLastCalledWith(null);
     await field.leave();
+    expect(field.left).toHaveBeenLastCalledWith(null);
     expect(field.input.value).toBe("");
   } finally {
     field.unmount();

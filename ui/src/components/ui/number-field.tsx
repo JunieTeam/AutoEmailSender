@@ -1,13 +1,13 @@
 import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field";
 import { cn } from "cn";
-import { type ComponentProps, useReducer } from "react";
+import { type ComponentProps, useReducer, useRef } from "react";
 import { FIELD } from "@/components/ui/input";
 
 /**
  * A text field for a number, without the browser's spin buttons (docs/ui.md#控件). The value is the
  * number the field shows, rounded to `decimals` places, whole numbers unless set; it is null while
  * the field is empty or shows no number between `min` and `max`. Leaving the field puts a number
- * out of range at the nearer end and clears text that is no number; the arrow keys step it.
+ * out of range at the nearer end, and empties one with text that is no number; the arrow keys step it.
  */
 export function NumberField({
   value,
@@ -30,6 +30,9 @@ export function NumberField({
   decimals?: number;
 } & Omit<ComponentProps<"input">, "value" | "onChange" | "min" | "max" | "step" | "type" | "defaultValue">) {
   const nearest = (v: number) => Math.min(Math.max(v, min ?? -Infinity), max ?? Infinity);
+  // Whether Base UI found a number, or none, in the text since it last changed: it reports nothing
+  // for text that is no number, and leaves it in the field.
+  const parsed = useRef(true);
   // Base UI shows the value again only when it renders after the field is left, and text that is
   // no number changes nothing that would render it.
   const [, render] = useReducer((n: number) => n + 1, 0);
@@ -40,7 +43,10 @@ export function NumberField({
       // Base UI would otherwise give the nearest number in range while the field still shows what
       // was typed, and a form could save a number the user never saw.
       allowOutOfRange
-      onValueChange={(v) => onValueChange(v !== null && nearest(v) === v ? v : null)}
+      onValueChange={(v) => {
+        parsed.current = true;
+        onValueChange(v !== null && nearest(v) === v ? v : null);
+      }}
       onValueCommitted={(v) => {
         const kept = v === null ? null : nearest(v);
         if (kept !== v) onValueChange(kept);
@@ -57,8 +63,15 @@ export function NumberField({
       <NumberFieldPrimitive.Input
         className={cn("h-10", FIELD, className)}
         // Runs before Base UI's handler, which then gives the number where the text has one.
-        onChange={() => onValueChange(null)}
-        onBlur={render}
+        onChange={() => {
+          parsed.current = false;
+          onValueChange(null);
+        }}
+        onBlur={() => {
+          if (!parsed.current) onValueCommitted?.(null);
+          parsed.current = true;
+          render();
+        }}
         {...input}
       />
     </NumberFieldPrimitive.Root>
