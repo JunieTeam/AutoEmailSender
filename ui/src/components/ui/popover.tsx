@@ -19,11 +19,11 @@ export const LIST = "max-h-[min(var(--available-height),360px)] overflow-y-auto 
 
 /** A choice in a list, highlighted by the pointer or the arrow keys. */
 export const OPTION =
-  "flex items-center rounded-md px-3 py-2 whitespace-nowrap outline-none select-none data-disabled:opacity-40 data-highlighted:bg-muted";
+  "flex items-center rounded-md px-3 py-2 wrap-anywhere outline-none select-none data-disabled:opacity-40 data-highlighted:bg-muted";
 
 /** An entry of a menu: an action, or a choice. */
 export const MENU_ITEM =
-  "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left whitespace-nowrap hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent";
+  "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left wrap-anywhere hover:bg-muted disabled:opacity-40 disabled:hover:bg-transparent";
 
 const Popover = PopoverPrimitive.Root;
 

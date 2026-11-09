@@ -506,7 +506,7 @@ export function TaskReviewPage() {
           </p>
         )}
       </header>
-      <div className="grid min-h-0 flex-1 grid-cols-[250px_minmax(0,1fr)_280px] max-[1240px]:grid-cols-[230px_minmax(0,1fr)] compact:grid-cols-1">
+      <div className="grid min-h-0 flex-1 grid-cols-[250px_minmax(0,1fr)_280px] narrow:grid-cols-[230px_minmax(0,1fr)] compact:grid-cols-1">
         <section
           className={`flex min-h-0 flex-col border-r border-border compact:border-0 ${search.email ? "compact:hidden" : ""}`}
         >
@@ -590,7 +590,9 @@ export function TaskReviewPage() {
             }}
           />
         ) : (
-          <Notice icon={Mail} title="选择一封草稿开始审核" detail="草稿会陆续出现在左边" />
+          <section className="compact:hidden">
+            <Notice icon={Mail} title="选择一封草稿开始审核" detail="草稿会陆续出现在左边" />
+          </section>
         )}
       </div>
       {changingSchedule && <ChangeSchedule task={t} onClose={() => setChangingSchedule(false)} />}
@@ -651,22 +653,31 @@ function DraftDetail({
   const error = draft.error ?? m.error ?? materials.error ?? placeholders.error;
   const d = draft.data;
   const mentor = m.data;
-  if (error) return <Notice title="邮件未能加载" failure={failureOf(error)} />;
-  if (!d || !mentor || !materials.data || !placeholders.data) return <Loading />;
+  const pane = `min-h-0 min-w-0 overflow-y-auto ${chosen ? "" : "compact:hidden"}`;
+  const back = (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="返回草稿列表"
+      className="hidden compact:inline-flex"
+      onClick={onBack}
+    >
+      <ChevronLeft />
+    </Button>
+  );
+  if (error || !d || !mentor || !materials.data || !placeholders.data)
+    return (
+      <section className={`grid grid-rows-[auto_minmax(0,1fr)] ${pane}`}>
+        <div className="px-5 pt-4 phone:px-3">{back}</div>
+        {error ? <Notice title="邮件未能加载" failure={failureOf(error)} /> : <Loading />}
+      </section>
+    );
   const editable = d.state === "review" && task.state !== "stopped";
   return (
     <>
-      <section className={`min-h-0 min-w-0 overflow-y-auto ${chosen ? "" : "compact:hidden"}`}>
+      <section className={pane}>
         <div className="flex items-center gap-2 px-5 pt-4 phone:px-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="返回草稿列表"
-            className="hidden compact:inline-flex"
-            onClick={onBack}
-          >
-            <ChevronLeft />
-          </Button>
+          {back}
           <div className="min-w-0 grow">
             <p className="font-medium">{mentor.name}</p>
             <p className="truncate text-sm text-muted-foreground">{mentor.emails[0] ?? "未填写邮箱"}</p>
@@ -769,7 +780,7 @@ function DraftDetail({
           )}
         </div>
       </section>
-      <aside className="min-h-0 overflow-y-auto border-l border-border p-5 text-sm max-[1240px]:hidden">
+      <aside className="min-h-0 overflow-y-auto border-l border-border p-5 text-sm narrow:hidden">
         <h2 className="mb-4 text-base font-semibold">匹配结果</h2>
         {mentor.analysis.result ? (
           <div className="space-y-4">

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Select } from "@/components/ui/select";
 
 /** The times of a day a quarter of an hour apart, as "HH:MM". */
@@ -8,7 +9,7 @@ const QUARTERS = Array.from(
 
 /**
  * A time of day as "HH:MM", a quarter of an hour apart (docs/ui.md#控件). A time set otherwise, such
- * as by an Agent or before, stays among them.
+ * as by an Agent or before, stays among them while the field is open, to choose again after another.
  */
 export function TimeSelect({
   value,
@@ -25,7 +26,8 @@ export function TimeSelect({
   disabled?: boolean;
   "aria-label"?: string;
 }) {
-  const times = value === "" || QUARTERS.includes(value) ? QUARTERS : [...QUARTERS, value].toSorted();
+  const [first] = useState(value);
+  const times = [...new Set([...QUARTERS, first, value])].filter((t) => t !== "").toSorted();
   const options = [...(none === undefined ? [] : [["", none] as const]), ...times.map((t) => [t, t] as const)];
   return <Select value={value} options={options} onChange={onChange} {...field} />;
 }

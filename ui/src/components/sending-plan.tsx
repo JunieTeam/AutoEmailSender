@@ -45,7 +45,7 @@ export function SendingPlan() {
           onChange={(column) => void navigate({ search: (s) => ({ ...s, column }) })}
         />
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-3 gap-4 px-5 pb-4 max-[1240px]:gap-2 max-[1240px]:px-3 phone:grid-cols-1 phone:px-3">
+      <div className="grid min-h-0 flex-1 grid-cols-3 gap-4 px-5 pb-4 narrow:gap-2 narrow:px-3 phone:grid-cols-1 phone:px-3">
         {COLUMNS.map(([column, label]) => (
           <PlanList key={column} column={column} label={label} hidden={column !== selected} />
         ))}

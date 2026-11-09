@@ -269,9 +269,14 @@ function NavLink({
 function UnreadBadge({ className }: { className?: string }) {
   const unread = useQuery({ queryKey: ["unreadCount"], queryFn: () => call("unreadCount", {}) });
   if (!unread.isError && !unread.data) return null;
+  const failed = unread.isError ? `新回信数量读取失败：${errorMessage(unread.error)}` : undefined;
   return (
-    <Tooltip content={unread.isError ? `新回信数量读取失败：${errorMessage(unread.error)}` : undefined}>
-      <span className={cn("min-w-5 rounded-full bg-unread px-1.5 text-center text-xs leading-5 text-white", className)}>
+    <Tooltip content={failed}>
+      <span
+        role={failed ? "img" : undefined}
+        aria-label={failed}
+        className={cn("min-w-5 rounded-full bg-unread px-1.5 text-center text-xs leading-5 text-white", className)}
+      >
         {unread.isError ? "!" : unread.data > 99 ? "99+" : unread.data}
       </span>
     </Tooltip>

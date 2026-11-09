@@ -1,7 +1,7 @@
 /**
  * docs/ui.md#控件: a ref for a row that scrolls sideways, which then also follows a mouse wheel, as
- * it only turns up and down. Trackpads and touch scroll it themselves; past either end, the wheel
- * scrolls the page.
+ * it only turns up and down. A wheel event does not tell a mouse from a trackpad, so scrolling a
+ * trackpad up or down over the row moves it too; past either end, both scroll the page.
  */
 export function scrollsSideways(row: HTMLElement | null) {
   // React calls the cleanup returned below in place of the ref with null.

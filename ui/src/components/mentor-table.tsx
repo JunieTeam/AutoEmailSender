@@ -158,7 +158,7 @@ function Match({ state: { result, state } }: { state: MatchSummary }) {
           </span>
           {result.basisChanged && (
             <Tooltip content={BASIS_CHANGED}>
-              <span className="size-1.5 rounded-full bg-faint" aria-label={BASIS_CHANGED} />
+              <span role="img" aria-label={BASIS_CHANGED} className="size-1.5 rounded-full bg-faint" />
             </Tooltip>
           )}
           {!state && (
@@ -168,12 +168,14 @@ function Match({ state: { result, state } }: { state: MatchSummary }) {
           )}
         </div>
       )}
-      {state ? (
-        <Tooltip content={state.state === "failed" ? state.error.message : undefined}>
-          <span className={state.state === "failed" ? "text-warning" : "text-muted-foreground"}>
-            {state.state === "queued" ? "排队中" : state.state === "running" ? "分析中" : "失败"}
+      {state?.state === "failed" ? (
+        <Tooltip content={state.error.message}>
+          <span role="img" aria-label={`失败：${state.error.message}`} className="text-warning">
+            失败
           </span>
         </Tooltip>
+      ) : state ? (
+        <span className="text-muted-foreground">{state.state === "queued" ? "排队中" : "分析中"}</span>
       ) : (
         !result && <Missing>未分析</Missing>
       )}
