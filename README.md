@@ -1,20 +1,20 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/JunieXD/AutoEmailSender/v2/frontend/public/favicon.svg" alt="Auto Email Sender Logo" width="100" height="100" />
+  <img src="https://raw.githubusercontent.com/JunieTeam/AutoEmailSender/v2/frontend/public/favicon.svg" alt="Auto Email Sender Logo" width="100" height="100" />
   <h1>Auto Email Sender</h1>
   <p>
     <strong>面向导师套磁场景的智能邮件助手</strong>
   </p>
   <p>
-    <a href="https://github.com/JunieXD/AutoEmailSender/releases/latest"><img src="https://img.shields.io/github/v/release/JunieXD/AutoEmailSender?display_name=tag&amp;sort=semver&amp;label=release&amp;logo=github&amp;color=ef4f43&amp;style=flat&amp;labelColor=f3f4f6&amp;logoColor=374151" alt="Latest release" /></a>
-    <a href="https://github.com/JunieXD/AutoEmailSender/releases"><img src="https://img.shields.io/github/downloads/JunieXD/AutoEmailSender/total?label=downloads&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzM3NDE1MSI%2BPHBhdGggZD0iTTUgMjBoMTR2LTJINXYyem0xNC05aC00VjNIOXY4SDVsNyA3IDctN3oiLz48L3N2Zz4%3D&amp;color=16a34a&amp;style=flat&amp;labelColor=f3f4f6&amp;logoColor=374151" alt="Total downloads" /></a>
-    <a href="https://github.com/JunieXD/AutoEmailSender/releases/latest"><img src="https://img.shields.io/badge/Windows-x64-0078d4?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzM3NDE1MSI%2BPHBhdGggZD0iTTAgMy40IDkuOCAydjkuNEgwek0xMSAxLjggMjQgMHYxMS40SDExek0wIDEyLjZoOS44VjIyTDAgMjAuNnpNMTEgMTIuNmgxM1YyNGwtMTMtMS44eiIvPjwvc3ZnPg%3D%3D&amp;style=flat&amp;labelColor=f3f4f6&amp;logoColor=374151" alt="Platform: Windows x64" /></a>
-    <a href="https://github.com/JunieXD/AutoEmailSender/releases/latest"><img src="https://img.shields.io/badge/macOS-ARM64-6b7280?logo=apple&amp;style=flat&amp;labelColor=f3f4f6&amp;logoColor=374151" alt="Platform: macOS ARM64" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/JunieXD/AutoEmailSender?label=license&amp;logo=gnu&amp;color=2563eb&amp;style=flat&amp;labelColor=f3f4f6&amp;logoColor=374151" alt="License: GPL-3.0" /></a>
+    <a href="https://github.com/JunieTeam/AutoEmailSender/releases/latest"><img src="https://img.shields.io/github/v/release/JunieTeam/AutoEmailSender?display_name=tag&amp;sort=semver&amp;label=release&amp;logo=github&amp;color=ef4f43&amp;style=flat&amp;labelColor=f3f4f6&amp;logoColor=374151" alt="Latest release" /></a>
+    <a href="https://github.com/JunieTeam/AutoEmailSender/releases"><img src="https://img.shields.io/github/downloads/JunieTeam/AutoEmailSender/total?label=downloads&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzM3NDE1MSI%2BPHBhdGggZD0iTTUgMjBoMTR2LTJINXYyem0xNC05aC00VjNIOXY4SDVsNyA3IDctN3oiLz48L3N2Zz4%3D&amp;color=16a34a&amp;style=flat&amp;labelColor=f3f4f6&amp;logoColor=374151" alt="Total downloads" /></a>
+    <a href="https://github.com/JunieTeam/AutoEmailSender/releases/latest"><img src="https://img.shields.io/badge/Windows-x64-0078d4?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzM3NDE1MSI%2BPHBhdGggZD0iTTAgMy40IDkuOCAydjkuNEgwek0xMSAxLjggMjQgMHYxMS40SDExek0wIDEyLjZoOS44VjIyTDAgMjAuNnpNMTEgMTIuNmgxM1YyNGwtMTMtMS44eiIvPjwvc3ZnPg%3D%3D&amp;style=flat&amp;labelColor=f3f4f6&amp;logoColor=374151" alt="Platform: Windows x64" /></a>
+    <a href="https://github.com/JunieTeam/AutoEmailSender/releases/latest"><img src="https://img.shields.io/badge/macOS-ARM64-6b7280?logo=apple&amp;style=flat&amp;labelColor=f3f4f6&amp;logoColor=374151" alt="Platform: macOS ARM64" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/JunieTeam/AutoEmailSender?label=license&amp;logo=gnu&amp;color=2563eb&amp;style=flat&amp;labelColor=f3f4f6&amp;logoColor=374151" alt="License: GPL-3.0" /></a>
   </p>
 </div>
 
 > [!IMPORTANT]
-> 这里是正在从头重写的 V3，还没有可下载的版本。现在可下载的是 V2 的最终版本 v2.6.5，可以继续正常使用，代码在 [`v2` 分支](https://github.com/JunieXD/AutoEmailSender/tree/v2)。V3 的进展和发布消息会第一时间在 QQ 交流群（`952383261`）公布。
+> 这里是正在从头重写的 V3，还没有可下载的版本。现在可下载的是 V2 的最终版本 v2.6.5，可以继续正常使用，代码在 [`v2` 分支](https://github.com/JunieTeam/AutoEmailSender/tree/v2)。V3 的进展和发布消息会第一时间在 QQ 交流群（`952383261`）公布。
 
 ---
 
@@ -28,7 +28,7 @@ Auto Email Sender 是一个本地运行的导师联系工具。从导师信息�
 
 <p align="center">
   <a href="https://www.bilibili.com/video/BV1sUHS6uEUZ">
-    <img src="https://raw.githubusercontent.com/JunieXD/AutoEmailSender/v2/website/public/screenshots/promo/bilibili-promo-v10-play.jpg" alt="Auto Email Sender 宣传片，点击前往哔哩哔哩观看" width="720" />
+    <img src="https://raw.githubusercontent.com/JunieTeam/AutoEmailSender/v2/website/public/screenshots/promo/bilibili-promo-v10-play.jpg" alt="Auto Email Sender 宣传片，点击前往哔哩哔哩观看" width="720" />
   </a>
 </p>
 
@@ -40,19 +40,19 @@ Auto Email Sender 是一个本地运行的导师联系工具。从导师信息�
 
 | 导师看板 | 批量草稿审核 |
 | --- | --- |
-| <img src="https://raw.githubusercontent.com/JunieXD/AutoEmailSender/v2/website/public/screenshots/docs/home/app-home-overview.png" alt="导师看板截图" /> | <img src="https://raw.githubusercontent.com/JunieXD/AutoEmailSender/v2/website/public/screenshots/docs/tasks/task-center-batch-review.png" alt="批量草稿审核截图" /> |
+| <img src="https://raw.githubusercontent.com/JunieTeam/AutoEmailSender/v2/website/public/screenshots/docs/home/app-home-overview.png" alt="导师看板截图" /> | <img src="https://raw.githubusercontent.com/JunieTeam/AutoEmailSender/v2/website/public/screenshots/docs/tasks/task-center-batch-review.png" alt="批量草稿审核截图" /> |
 
 | 统计面板 | 社区导师库 |
 | --- | --- |
-| <img src="https://raw.githubusercontent.com/JunieXD/AutoEmailSender/v2/website/public/screenshots/docs/statistics/statistics-overview.png" alt="统计面板截图" /> | <img src="https://raw.githubusercontent.com/JunieXD/AutoEmailSender/v2/website/public/screenshots/docs/community/community-mentor-catalog.png" alt="社区导师库截图" /> |
+| <img src="https://raw.githubusercontent.com/JunieTeam/AutoEmailSender/v2/website/public/screenshots/docs/statistics/statistics-overview.png" alt="统计面板截图" /> | <img src="https://raw.githubusercontent.com/JunieTeam/AutoEmailSender/v2/website/public/screenshots/docs/community/community-mentor-catalog.png" alt="社区导师库截图" /> |
 
 ## 入口
 
 - [官网](https://juniexd.github.io/AutoEmailSender/)
 - [文档](https://juniexd.github.io/AutoEmailSender/docs/getting-started)
 - [导师整理 Skill](https://juniexd.github.io/AutoEmailSender/docs/mentor-crawler-skill)
-- [下载桌面版](https://github.com/JunieXD/AutoEmailSender/releases)
-- [问题反馈](https://github.com/JunieXD/AutoEmailSender/issues)
+- [下载桌面版](https://github.com/JunieTeam/AutoEmailSender/releases)
+- [问题反馈](https://github.com/JunieTeam/AutoEmailSender/issues)
 - QQ 交流群：`952383261`
 
 ## 交流与反馈
@@ -60,10 +60,10 @@ Auto Email Sender 是一个本地运行的导师联系工具。从导师信息�
 欢迎加入 QQ 交流群反馈 Bug、提出功能建议，或和其他同学交流使用经验。
 
 <p>
-  <img src="https://raw.githubusercontent.com/JunieXD/AutoEmailSender/v2/website/public/qq-group-952383261.jpg" alt="Auto Email Sender QQ 交流群二维码" width="220" />
+  <img src="https://raw.githubusercontent.com/JunieTeam/AutoEmailSender/v2/website/public/qq-group-952383261.jpg" alt="Auto Email Sender QQ 交流群二维码" width="220" />
 </p>
 
-如果需要提交可追踪的问题、复现步骤或截图，也可以前往 [GitHub Issues](https://github.com/JunieXD/AutoEmailSender/issues)。
+如果需要提交可追踪的问题、复现步骤或截图，也可以前往 [GitHub Issues](https://github.com/JunieTeam/AutoEmailSender/issues)。
 
 ## 核心特点
 
@@ -97,8 +97,8 @@ GPL-3.0
 
 <a href="https://www.star-history.com/">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=JunieXD/AutoEmailSender&type=date&theme=dark&legend=top-left&sealed_token=xQN4NTyRjKuKYpjssLWpx_McJlHJe9s0mXmYmQNRrHYQxlq42KhQO8eOJoQTOoUvzxupHrY21TS9FVPsvpIRGboRX2_YEJ7DzXwvpVVDQWNGST4xKVGTSRCCMgPgJJ3i5MKjSv6LLZhC3-TQqfFZNUIdsvwZpaFvtoPPcjEaA19zdgH55LvDIyaOQyJ-" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=JunieXD/AutoEmailSender&type=date&legend=top-left&sealed_token=xQN4NTyRjKuKYpjssLWpx_McJlHJe9s0mXmYmQNRrHYQxlq42KhQO8eOJoQTOoUvzxupHrY21TS9FVPsvpIRGboRX2_YEJ7DzXwvpVVDQWNGST4xKVGTSRCCMgPgJJ3i5MKjSv6LLZhC3-TQqfFZNUIdsvwZpaFvtoPPcjEaA19zdgH55LvDIyaOQyJ-" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=JunieXD/AutoEmailSender&type=date&legend=top-left&sealed_token=xQN4NTyRjKuKYpjssLWpx_McJlHJe9s0mXmYmQNRrHYQxlq42KhQO8eOJoQTOoUvzxupHrY21TS9FVPsvpIRGboRX2_YEJ7DzXwvpVVDQWNGST4xKVGTSRCCMgPgJJ3i5MKjSv6LLZhC3-TQqfFZNUIdsvwZpaFvtoPPcjEaA19zdgH55LvDIyaOQyJ-" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=JunieTeam/AutoEmailSender&type=date&theme=dark&legend=top-left&sealed_token=xQN4NTyRjKuKYpjssLWpx_McJlHJe9s0mXmYmQNRrHYQxlq42KhQO8eOJoQTOoUvzxupHrY21TS9FVPsvpIRGboRX2_YEJ7DzXwvpVVDQWNGST4xKVGTSRCCMgPgJJ3i5MKjSv6LLZhC3-TQqfFZNUIdsvwZpaFvtoPPcjEaA19zdgH55LvDIyaOQyJ-" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=JunieTeam/AutoEmailSender&type=date&legend=top-left&sealed_token=xQN4NTyRjKuKYpjssLWpx_McJlHJe9s0mXmYmQNRrHYQxlq42KhQO8eOJoQTOoUvzxupHrY21TS9FVPsvpIRGboRX2_YEJ7DzXwvpVVDQWNGST4xKVGTSRCCMgPgJJ3i5MKjSv6LLZhC3-TQqfFZNUIdsvwZpaFvtoPPcjEaA19zdgH55LvDIyaOQyJ-" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=JunieTeam/AutoEmailSender&type=date&legend=top-left&sealed_token=xQN4NTyRjKuKYpjssLWpx_McJlHJe9s0mXmYmQNRrHYQxlq42KhQO8eOJoQTOoUvzxupHrY21TS9FVPsvpIRGboRX2_YEJ7DzXwvpVVDQWNGST4xKVGTSRCCMgPgJJ3i5MKjSv6LLZhC3-TQqfFZNUIdsvwZpaFvtoPPcjEaA19zdgH55LvDIyaOQyJ-" />
  </picture>
 </a>
