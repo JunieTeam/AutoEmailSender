@@ -296,6 +296,10 @@ async fn chat(response: reqwest::Response, access: &Access) -> Result<Answer, Mo
         Ok(())
     })
     .await?;
+    // What the provider's review stopped is no answer, however much came before.
+    if finish_reason == Some(Finish::ContentFilter) {
+        return Err(ModelError::NoAnswer { finish_reason });
+    }
     let usage = tokens.and_then(|t| {
         Some(Usage {
             input: t.prompt_tokens?,
@@ -345,7 +349,7 @@ async fn responses(response: reqwest::Response, access: &Access) -> Result<Answe
     }
     #[derive(Deserialize)]
     struct Failed {
-        error: Failure,
+        error: Option<Failure>,
     }
     #[derive(Deserialize)]
     struct Tokens {
@@ -379,13 +383,21 @@ async fn responses(response: reqwest::Response, access: &Access) -> Result<Answe
             Event::Completed { response } => end(response, Finish::Stop),
             Event::Incomplete { response } => {
                 let reason = response.incomplete_details.as_ref().and_then(|d| d.reason);
-                end(response, reason.unwrap_or(Finish::Other));
+                // Out of room is the callers' to judge, as on Chat Completions; cut short for
+                // anything else, such as the provider's review, it is no answer.
+                if reason != Some(Finish::Length) {
+                    return Err(ModelError::NoAnswer {
+                        finish_reason: Some(reason.unwrap_or(Finish::Other)),
+                    });
+                }
+                end(response, Finish::Length);
             }
             Event::Failed { response } => {
-                return Err(ModelError::Failed(without_key(
-                    &response.error.message,
-                    access,
-                )));
+                let message = response.error.map_or_else(
+                    || "the response failed without saying why".to_owned(),
+                    |e| e.message,
+                );
+                return Err(ModelError::Failed(without_key(&message, access)));
             }
             Event::Error { message } => {
                 return Err(ModelError::Failed(without_key(&message, access)));
@@ -395,6 +407,12 @@ async fn responses(response: reqwest::Response, access: &Access) -> Result<Answe
         Ok(())
     })
     .await?;
+    // Unlike Chat Completions, the end is always told: a stream closed before it was cut off.
+    if answer.finish_reason.is_none() {
+        return Err(ModelError::Failed(
+            "the stream ended before the response did".into(),
+        ));
+    }
     Ok(answer)
 }
 

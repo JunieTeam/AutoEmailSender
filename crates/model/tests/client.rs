@@ -557,3 +557,94 @@ async fn with_neither_api_the_error_is_that_of_the_first() {
     );
     assert_eq!(received.lock().unwrap().len(), 2);
 }
+
+/// Asks a fake provider on the Responses API alone, which replies with `events`.
+async fn ask_on_responses(events: &'static str) -> Result<model::Answer, ModelError> {
+    let (address, _) = provider_by_api((404, "404 page not found"), (200, events)).await;
+    let net = Net::new(Vec::new()).unwrap();
+    model::ask(
+        &net,
+        &access(address, None),
+        "gpt-5-pro",
+        "规则",
+        "资料",
+        false,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_responses_answer_is_whole_only_once_the_provider_says_it_ended() {
+    let cut = ask_on_responses(concat!(
+        r#"data: {"type":"response.output_text.delta","delta":"{\"score\": 8"}"#,
+        "\n\n",
+    ))
+    .await
+    .unwrap_err();
+    assert!(matches!(cut, ModelError::Failed(_)), "{cut:?}");
+    let filtered = ask_on_responses(concat!(
+        r#"data: {"type":"response.output_text.delta","delta":"王老师您好"}"#,
+        "\n\n",
+        r#"data: {"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"content_filter"}}}"#,
+        "\n\n",
+    ))
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(
+            filtered,
+            ModelError::NoAnswer {
+                finish_reason: Some(model::Finish::ContentFilter)
+            }
+        ),
+        "{filtered:?}"
+    );
+    // Out of room, the callers judge it, as on Chat Completions.
+    let long = ask_on_responses(concat!(
+        r#"data: {"type":"response.output_text.delta","delta":"王老师您好"}"#,
+        "\n\n",
+        r#"data: {"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":20,"output_tokens":3}}}"#,
+        "\n\n",
+    ))
+    .await
+    .unwrap();
+    assert_eq!(long.finish_reason, Some(model::Finish::Length));
+    // The error of a failed response may be null.
+    let failed = ask_on_responses(concat!(
+        r#"data: {"type":"response.failed","response":{"status":"failed","error":null}}"#,
+        "\n\n",
+    ))
+    .await
+    .unwrap_err();
+    assert!(matches!(failed, ModelError::Failed(_)), "{failed:?}");
+}
+
+#[tokio::test]
+async fn a_chat_answer_the_providers_review_stopped_is_no_answer() {
+    let (address, _) = provider_by_api(
+        (
+            200,
+            concat!(
+                r#"data: {"choices":[{"delta":{"content":"王老师您好"},"finish_reason":null}]}"#,
+                "\n\n",
+                r#"data: {"choices":[{"delta":{},"finish_reason":"content_filter"}]}"#,
+                "\n\ndata: [DONE]\n\n",
+            ),
+        ),
+        (404, "404 page not found"),
+    )
+    .await;
+    let net = Net::new(Vec::new()).unwrap();
+    let error = model::ask(&net, &access(address, None), "gpt-x", "规则", "资料", false)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            ModelError::NoAnswer {
+                finish_reason: Some(model::Finish::ContentFilter)
+            }
+        ),
+        "{error:?}"
+    );
+}
