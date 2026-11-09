@@ -113,6 +113,7 @@ async fn results_survive_queue_failure_retry_and_cancellation(db: SqlitePool) {
     .unwrap();
     let query = MentorQuery {
         filter: Default::default(),
+        sort: mentor::MentorSort::Match,
         page: NonZeroU32::MIN,
     };
     enqueue(&db, &[id], false, false, 30).await.unwrap();

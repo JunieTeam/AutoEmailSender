@@ -3,16 +3,27 @@ import { useState } from "react";
 import { exportMentors } from "@/api/app";
 import { failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
-import type { Scope, TableFormat } from "@/api/types";
+import type { MentorSort, Scope, TableFormat } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 
-export function ExportDialog({ scope, count, onClose }: { scope: Scope; count: number; onClose: () => void }) {
+/** The table lists the mentors in the order of the list, `sort`. */
+export function ExportDialog({
+  scope,
+  sort,
+  count,
+  onClose,
+}: {
+  scope: Scope;
+  sort?: MentorSort;
+  count: number;
+  onClose: () => void;
+}) {
   const [format, setFormat] = useState<TableFormat>("xlsx");
   const [note, setNote] = useState(true);
   const save = useMutation({
-    mutationFn: () => exportMentors({ scope, format, note }, "导师表格"),
+    mutationFn: () => exportMentors({ scope, sort, format, note }, "导师表格"),
     onSuccess: (saved) => {
       if (saved) onClose();
     },

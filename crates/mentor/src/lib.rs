@@ -54,8 +54,22 @@ pub struct MentorQuery {
     #[serde(flatten)]
     #[ts(flatten)]
     pub filter: filters::MentorFilter,
+    #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
+    pub sort: MentorSort,
     /// Starts at 1.
     pub page: NonZeroU32,
+}
+
+/// The order of the home list and of an exported table.
+#[derive(Debug, Clone, Copy, Default, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum MentorSort {
+    /// The latest added first, so that new mentors are at hand.
+    #[default]
+    Added,
+    /// Best matches first; mentors not analysed come last.
+    Match,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -357,7 +371,7 @@ macro_rules! filtered_query {
     }};
 }
 
-/// One page of the home list, best matches first.
+/// One page of the home list.
 ///
 /// The filters test only the mentor row: each `IN` set is built once per query, whereas joining the
 /// contact summary for every mentor made counting 100 000 mentors ten times slower. For the same
@@ -375,6 +389,7 @@ pub async fn list(
     let ids = filtered_ids(
         &mut tx,
         &query.filter,
+        query.sort,
         now,
         i64::from(PAGE_SIZE),
         offset(query.page),
@@ -394,24 +409,39 @@ pub async fn list(
     })
 }
 
+/// Each order is its own literal query, so that each pages along its index.
 async fn filtered_ids(
     conn: &mut SqliteConnection,
     filter: &filters::MentorFilter,
+    sort: MentorSort,
     now: i64,
     limit: i64,
     skip: i64,
 ) -> Result<Vec<i64>, sqlx::Error> {
-    filtered_query!(
-        conn,
-        filter,
-        now,
-        "SELECT m.id",
-        r#"ORDER BY m.match_score DESC, m.id
-        LIMIT ?18 OFFSET ?19"#,
-        fetch_all,
-        limit,
-        skip,
-    )
+    match sort {
+        MentorSort::Added => filtered_query!(
+            conn,
+            filter,
+            now,
+            "SELECT m.id",
+            r#"ORDER BY m.id DESC
+            LIMIT ?18 OFFSET ?19"#,
+            fetch_all,
+            limit,
+            skip,
+        ),
+        MentorSort::Match => filtered_query!(
+            conn,
+            filter,
+            now,
+            "SELECT m.id",
+            r#"ORDER BY m.match_score DESC, m.id
+            LIMIT ?18 OFFSET ?19"#,
+            fetch_all,
+            limit,
+            skip,
+        ),
+    }
 }
 
 /// Separate missing choices before binding, so SQL can skip value probes without parsing JSON.

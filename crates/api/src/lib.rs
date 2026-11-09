@@ -3183,6 +3183,10 @@ pub enum TableFormat {
 #[derive(Debug, Deserialize, TS)]
 pub struct ExportMentors {
     pub scope: mentor::export::Scope,
+    /// As the list is sorted.
+    #[serde(default)]
+    #[ts(as = "Option<_>", optional)]
+    pub sort: mentor::MentorSort,
     pub format: TableFormat,
     pub note: bool,
 }
@@ -3191,7 +3195,7 @@ pub async fn export_mentors(ctx: &Context, mut input: ExportMentors) -> Result<V
     if let mentor::export::Scope::Filter(filter) = &mut input.scope {
         filter.check().map_err(CallError::invalid)?;
     }
-    let rows = mentor::export::export(&ctx.db, &input.scope, input.note, now()).await?;
+    let rows = mentor::export::export(&ctx.db, &input.scope, input.sort, input.note, now()).await?;
     tokio::task::spawn_blocking(move || write_table(rows, input.format))
         .await
         .map_err(CallError::internal)?

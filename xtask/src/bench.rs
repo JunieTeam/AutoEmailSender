@@ -83,7 +83,12 @@ pub async fn run(path: &Path) -> Result {
             keyword: keyword.map(Into::into),
             ..Default::default()
         },
+        sort: mentor::MentorSort::Added,
         page: NonZeroU32::MIN.saturating_add(n - 1),
+    };
+    let by_match = |n| MentorQuery {
+        sort: mentor::MentorSort::Match,
+        ..page(None, None, n)
     };
     let mut unanswered = page(Some(ContactStatus::Contacted), None, 1);
     unanswered.filter.unanswered_days = std::num::NonZeroU32::new(7);
@@ -92,6 +97,8 @@ pub async fn run(path: &Path) -> Result {
         ("首页，全部，第 1 页", page(None, None, 1)),
         ("首页，全部，第 100 页", page(None, None, 100)),
         ("首页，全部，第 1900 页", page(None, None, 1900)),
+        ("首页，按匹配度，第 1 页", by_match(1)),
+        ("首页，按匹配度，第 1900 页", by_match(1900)),
         (
             "首页，已联系",
             page(Some(ContactStatus::Contacted), None, 1),

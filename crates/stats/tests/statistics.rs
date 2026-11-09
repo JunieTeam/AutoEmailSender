@@ -191,6 +191,7 @@ async fn contact_cohort_shares_contact_rules_and_counts_real_mail(db: SqlitePool
                 status: Some(status),
                 ..Default::default()
             },
+            sort: mentor::MentorSort::Match,
             page: NonZeroU32::MIN,
         };
         let listed = mentor::list(&db, &query, now).await.unwrap();

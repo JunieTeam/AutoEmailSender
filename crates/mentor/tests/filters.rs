@@ -108,6 +108,7 @@ async fn ids(db: &SqlitePool, filter: MentorFilter) -> Vec<i64> {
         db,
         &MentorQuery {
             filter,
+            sort: mentor::MentorSort::Match,
             page: NonZeroU32::MIN,
         },
         0,
@@ -273,9 +274,15 @@ async fn tags_scores_and_existing_filters_also_apply_to_export(db: SqlitePool) {
         ..Default::default()
     };
     assert_eq!(ids(&db, filter.clone()).await, [a]);
-    let rows = mentor::export::export(&db, &mentor::export::Scope::Filter(filter), false, 0)
-        .await
-        .unwrap();
+    let rows = mentor::export::export(
+        &db,
+        &mentor::export::Scope::Filter(filter),
+        mentor::MentorSort::Match,
+        false,
+        0,
+    )
+    .await
+    .unwrap();
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[1][0], "甲");
     assert_eq!(

@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Download, Merge, Plus, SearchX, Trash2, UsersRound } from "lucide-react";
 import { type ReactElement, useState } from "react";
 import { call, failureOf } from "@/api/call";
-import type { ContactStatus, Imported, MentorFilter, ReplyOutcomeFilter, Scope, Kind } from "@/api/types";
+import type { ContactStatus, Imported, MentorFilter, MentorSort, ReplyOutcomeFilter, Scope, Kind } from "@/api/types";
 import { BatchBar, Confirm } from "@/components/batch-bar";
 import { EMPTY_FORM, MentorDialog } from "@/components/mentor-dialog";
 import { MergeDialog } from "@/components/merge-dialog";
@@ -25,7 +25,7 @@ import { Notice } from "@/components/notice";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { SearchBox } from "@/components/search-box";
 import { Segments } from "@/components/ui/segments";
-import { type FilterSearch, filterOf, filterSearch, filtered, MentorFilters } from "@/components/mentor-filters";
+import { type FilterSearch, filterOf, filterSearch, filtered, MentorFilters, OneOf } from "@/components/mentor-filters";
 import { desktop } from "@/host";
 import { useKeptScroll } from "@/kept-scroll";
 
@@ -37,7 +37,14 @@ const STATUSES: [ContactStatus | undefined, string][] = [
   ["bounced", "退信"],
 ];
 
+const SORTS: [MentorSort, string][] = [
+  ["added", "最近添加"],
+  ["match", "匹配度"],
+];
+
 export type MentorSearch = FilterSearch & {
+  /** The latest added first when left out. */
+  sort?: "match";
   status?: ContactStatus;
   outcome?: ReplyOutcomeFilter;
   q?: string;
@@ -58,6 +65,7 @@ export function mentorSearch(search: Record<string, unknown>): MentorSearch {
   const days = Number(search.unansweredDays);
   return {
     ...filterSearch(search),
+    sort: search.sort === "match" ? "match" : undefined,
     status,
     outcome: status === "replied" ? OUTCOME_FILTERS.find(([o]) => o === search.outcome)?.[0] : undefined,
     q,
@@ -85,7 +93,7 @@ export function MentorsPage() {
   const page = search.page ?? 1;
   const query = useQuery({
     queryKey: ["listMentors", search],
-    queryFn: () => call("listMentors", { ...listFilter(search), page }),
+    queryFn: () => call("listMentors", { ...listFilter(search), sort: search.sort, page }),
     placeholderData: keepPreviousData,
   });
   const scroller = useKeptScroll<HTMLDivElement>(query);
@@ -100,7 +108,7 @@ export function MentorsPage() {
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
   const [imported, setImported] = useState<Imported | null>(null);
-  const [exporting, setExporting] = useState<{ scope: Scope; count: number } | null>(null);
+  const [exporting, setExporting] = useState<{ scope: Scope; sort?: MentorSort; count: number } | null>(null);
   // Ticks belong to one filter: changing it, including by going back, starts over.
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [merging, setMerging] = useState<[number, number] | null>(null);
@@ -201,7 +209,17 @@ export function MentorsPage() {
       <MentorFilters
         search={search}
         onChange={(next) => navigate({ search: (s) => ({ ...s, ...next, page: undefined }) })}
-      />
+      >
+        <OneOf
+          label="排序"
+          options={SORTS}
+          value={search.sort ?? "added"}
+          active={false}
+          onChange={(sort) =>
+            navigate({ search: (s) => ({ ...s, sort: sort === "match" ? sort : undefined, page: undefined }) })
+          }
+        />
+      </MentorFilters>
 
       {search.status === "replied" && (
         <div className="px-7 pb-3 phone:px-4">
@@ -350,7 +368,9 @@ export function MentorsPage() {
           {desktop && (
             <Button
               variant="ghost"
-              onClick={() => setExporting({ scope: { kind: "ids", value: [...selected] }, count: selected.size })}
+              onClick={() =>
+                setExporting({ scope: { kind: "ids", value: [...selected] }, sort: search.sort, count: selected.size })
+              }
             >
               <Download strokeWidth={1.6} />
               导出
@@ -393,6 +413,7 @@ export function MentorsPage() {
               onClick={() =>
                 setExporting({
                   scope: { kind: "filter", value: listFilter(search) },
+                  sort: search.sort,
                   count: total,
                 })
               }

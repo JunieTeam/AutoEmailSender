@@ -90,28 +90,27 @@ export function filtered(s: FilterSearch) {
   return Object.values(filterOf(s)).some((v) => v !== undefined);
 }
 
-/** One row of menus; every change starts again from the first page. */
-export function MentorFilters({ search, onChange }: { search: FilterSearch; onChange: (next: FilterSearch) => void }) {
+/** One row of menus, `children` at its end; every change starts again from the first page. */
+export function MentorFilters({
+  search,
+  onChange,
+  children,
+}: {
+  search: FilterSearch;
+  onChange: (next: FilterSearch) => void;
+  children?: React.ReactNode;
+}) {
   const options = useQuery({ queryKey: ["mentorFilterOptions"], queryFn: () => call("mentorFilterOptions", {}) });
   const o = options.data;
   return (
     <div className="flex flex-wrap items-center gap-2 px-7 pb-3 phone:flex-nowrap phone:overflow-x-auto phone:px-4 phone:pb-2.5 phone:[scrollbar-width:none]">
-      <Menu
+      <OneOf
         label="匹配度"
-        shown={search.match === undefined ? undefined : MATCHES.find(([m]) => m === search.match)?.[1]}
-      >
-        {MATCHES.map(([m, label]) => (
-          <button
-            key={label}
-            role="menuitemradio"
-            aria-checked={search.match === m}
-            className={cn(ROW, "aria-checked:font-medium aria-checked:text-brand-text")}
-            onClick={() => onChange({ ...search, match: m })}
-          >
-            {label}
-          </button>
-        ))}
-      </Menu>
+        options={MATCHES}
+        value={search.match}
+        active={search.match !== undefined}
+        onChange={(match) => onChange({ ...search, match })}
+      />
       {FIELDS.map(([key, label, list]) => (
         <Choices
           key={key}
@@ -131,19 +130,32 @@ export function MentorFilters({ search, onChange }: { search: FilterSearch; onCh
         error={options.error}
         onChange={(values) => onChange({ ...search, tag: values.length > 0 ? values : undefined })}
       />
-      {filtered(search) && (
-        <Button variant="ghost" className="ml-auto shrink-0 px-3" onClick={() => onChange(NO_FILTERS)}>
-          清除筛选
-        </Button>
-      )}
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        {filtered(search) && (
+          <Button variant="ghost" className="px-3" onClick={() => onChange(NO_FILTERS)}>
+            清除筛选
+          </Button>
+        )}
+        {children}
+      </div>
     </div>
   );
 }
 
 const ROW = "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left hover:bg-press";
 
-/** A pill showing what is chosen, opening a menu under it. */
-function Menu({ label, shown, children }: { label: string; shown?: string; children: React.ReactNode }) {
+/** A pill showing what is chosen, opening a menu under it; marked while it narrows the list. */
+function Menu({
+  label,
+  shown,
+  active,
+  children,
+}: {
+  label: string;
+  shown?: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <Popover>
       <PopoverTrigger
@@ -151,7 +163,7 @@ function Menu({ label, shown, children }: { label: string; shown?: string; child
           <button
             className={cn(
               "flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-sm whitespace-nowrap",
-              shown
+              active
                 ? "bg-selected font-medium text-brand-text"
                 : "bg-muted text-muted-foreground hover:text-foreground",
             )}
@@ -165,6 +177,41 @@ function Menu({ label, shown, children }: { label: string; shown?: string; child
         {children}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** One of a few choices, written out unless it is undefined, which is no choice. */
+export function OneOf<T>({
+  label,
+  options,
+  value,
+  active,
+  onChange,
+}: {
+  label: string;
+  options: [T, string][];
+  value: T;
+  active: boolean;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <Menu
+      label={label}
+      shown={value === undefined ? undefined : options.find(([o]) => o === value)?.[1]}
+      active={active}
+    >
+      {options.map(([o, name]) => (
+        <button
+          key={name}
+          role="menuitemradio"
+          aria-checked={value === o}
+          className={cn(ROW, "aria-checked:font-medium aria-checked:text-brand-text")}
+          onClick={() => onChange(o)}
+        >
+          {name}
+        </button>
+      ))}
+    </Menu>
   );
 }
 
@@ -198,7 +245,7 @@ function Choices<T extends string | number>({
   );
   const listed = [...choices, ...gone].filter((c) => c.label.includes(text.trim()));
   return (
-    <Menu label={label} shown={shown}>
+    <Menu label={label} shown={shown} active={shown !== undefined}>
       {choices.length > 8 && (
         <Input
           autoFocus

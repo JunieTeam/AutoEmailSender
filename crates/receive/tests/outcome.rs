@@ -267,6 +267,7 @@ async fn latest_marked_reply_filters_all_results_and_unmarked_with_summary_in_sy
                 reply_outcome: Some(filter),
                 ..Default::default()
             },
+            sort: mentor::MentorSort::Match,
             page: std::num::NonZeroU32::MIN,
         };
         let found = mentor::list(&db, &query, 30).await.unwrap();

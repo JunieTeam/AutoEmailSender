@@ -9,6 +9,7 @@ pub async fn names(db: &SqlitePool, keyword: Option<&str>) -> Vec<String> {
             keyword: keyword.map(Into::into),
             ..Default::default()
         },
+        sort: mentor::MentorSort::Match,
         page: NonZeroU32::MIN,
     };
     let page = mentor::list(db, &query, 0).await.unwrap();

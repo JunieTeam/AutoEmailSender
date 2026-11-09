@@ -2,7 +2,7 @@
 
 use crate::filters::MentorFilter;
 use crate::import::Field;
-use crate::{Affiliation, MentorFields, filtered_ids};
+use crate::{Affiliation, MentorFields, MentorSort, filtered_ids};
 use serde::Deserialize;
 use sqlx::{SqliteConnection, SqlitePool, types::Json};
 use std::collections::BTreeMap;
@@ -139,16 +139,29 @@ pub async fn profiles(
     Ok(profiles)
 }
 
+/// The rows in the order of the list.
 pub async fn export(
     db: &SqlitePool,
     scope: &Scope,
+    sort: MentorSort,
     note: bool,
     now: i64,
 ) -> Result<Vec<Vec<String>>, sqlx::Error> {
     let mut tx = db.begin().await?;
-    let ids = match scope {
-        Scope::Filter(f) => filtered_ids(&mut tx, f, now, -1, 0).await?,
-        Scope::Ids(ids) => {
+    let ids = match (scope, sort) {
+        (Scope::Filter(f), _) => filtered_ids(&mut tx, f, sort, now, -1, 0).await?,
+        (Scope::Ids(ids), MentorSort::Added) => {
+            sqlx::query_scalar!(
+                r#"SELECT id
+                FROM mentor
+                WHERE trashed_at IS NULL AND id IN (SELECT value FROM json_each(?))
+                ORDER BY id DESC"#,
+                Json(ids)
+            )
+            .fetch_all(&mut *tx)
+            .await?
+        }
+        (Scope::Ids(ids), MentorSort::Match) => {
             sqlx::query_scalar!(
                 r#"SELECT id
                 FROM mentor

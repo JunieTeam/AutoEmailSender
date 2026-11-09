@@ -348,7 +348,11 @@ export type Evidence = { url: string, name: string, emails: Array<string>,
  */
 recognized: Array<string>, research: string | null, };
 
-export type ExportMentors = { scope: Scope, format: TableFormat, note: boolean, };
+export type ExportMentors = { scope: Scope,
+/**
+ * As the list is sorted.
+ */
+sort?: MentorSort, format: TableFormat, note: boolean, };
 
 export type FactCheck = { "state": "completed", findings: Array<Finding>, } | { "state": "failed", reason: Failure, };
 
@@ -661,7 +665,7 @@ export type MentorOverview = { total: number, matching: [number, number, number,
 
 export type MentorPage = { mentors: Array<MentorRow>, total: number, };
 
-export type MentorQuery = {
+export type MentorQuery = { sort?: MentorSort,
 /**
  * Starts at 1.
  */
@@ -696,6 +700,8 @@ affiliation: Affiliation | null, affiliationCount: number,
  * The start of the research description, enough for the two lines the list shows.
  */
 research: string | null, matchState: MatchSummary, contact: Contact, outcome: ReplyOutcome | null, tags: Array<Tag>, };
+
+export type MentorSort = "added" | "match";
 
 export type MergePreview = { emails: number, affiliations: number, discardedDrafts: Array<DraftKind>, };
 

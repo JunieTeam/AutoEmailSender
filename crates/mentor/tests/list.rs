@@ -17,6 +17,7 @@ fn query(status: Option<ContactStatus>, keyword: Option<&str>, page: u32) -> Men
             keyword: keyword.map(Into::into),
             ..Default::default()
         },
+        sort: mentor::MentorSort::Match,
         page: NonZeroU32::new(page).unwrap(),
     }
 }
@@ -132,6 +133,7 @@ async fn unanswered_filter_uses_latest_sent_time_and_ignores_automatic_replies(d
             unanswered_days: q.filter.unanswered_days,
             ..Default::default()
         }),
+        mentor::MentorSort::Match,
         false,
         now,
     )
@@ -296,4 +298,45 @@ async fn a_mentor_is_found_by_any_name_and_affiliation(db: SqlitePool) {
     let row = &page.mentors[0];
     assert_eq!(row.affiliation, Some(at("北京大学", Some("计算机学院"))));
     assert_eq!(row.affiliation_count, 2);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_latest_added_come_first_unless_sorted_by_match(db: SqlitePool) {
+    let older = add(&db, "先加的", "清华大学", "视觉").await;
+    let newer = add(&db, "后加的", "清华大学", "视觉").await;
+    sqlx::query(
+        "UPDATE mentor SET match_score = 90, matched_at = 0, match_model = 'm' WHERE id = ?",
+    )
+    .bind(older)
+    .execute(&db)
+    .await
+    .unwrap();
+    for (sort, expected) in [
+        (mentor::MentorSort::Added, ["后加的", "先加的"]),
+        (mentor::MentorSort::Match, ["先加的", "后加的"]),
+    ] {
+        let page = mentor::list(
+            &db,
+            &MentorQuery {
+                sort,
+                ..query(None, None, 1)
+            },
+            0,
+        )
+        .await
+        .unwrap();
+        let names: Vec<_> = page.mentors.into_iter().map(|m| m.name).collect();
+        assert_eq!(names, expected);
+        // An exported table keeps the order, whether of the filtered or of the ticked mentors.
+        for scope in [
+            mentor::export::Scope::Filter(Default::default()),
+            mentor::export::Scope::Ids(vec![older, newer]),
+        ] {
+            let rows = mentor::export::export(&db, &scope, sort, false, 0)
+                .await
+                .unwrap();
+            let exported: Vec<_> = rows[1..].iter().map(|r| r[0].as_str()).collect();
+            assert_eq!(exported, expected);
+        }
+    }
 }

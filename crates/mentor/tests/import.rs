@@ -89,9 +89,15 @@ async fn headers_mapping_validation_and_physical_rows(db: SqlitePool) {
     import::import(&db, &sheets, &setup, &Decisions::default(), 1)
         .await
         .unwrap();
-    let rows = export::export(&db, &Scope::Ids(vec![1]), true, 0)
-        .await
-        .unwrap();
+    let rows = export::export(
+        &db,
+        &Scope::Ids(vec![1]),
+        mentor::MentorSort::Match,
+        true,
+        0,
+    )
+    .await
+    .unwrap();
     assert!(rows[1].contains(&"方向".to_owned()));
     assert!(rows[1].contains(&"wang@pku.edu.cn".to_owned()));
     let setup = Setup {
@@ -296,9 +302,15 @@ async fn trash_and_round_trip(db: SqlitePool) {
         .updated,
         1
     );
-    let rows = export::export(&db, &Scope::Ids(vec![id]), true, 0)
-        .await
-        .unwrap();
+    let rows = export::export(
+        &db,
+        &Scope::Ids(vec![id]),
+        mentor::MentorSort::Match,
+        true,
+        0,
+    )
+    .await
+    .unwrap();
     let bytes = sheet::write_csv(&rows);
     let exported = sheet::read("a.csv", &bytes).unwrap();
     assert_eq!(
@@ -315,22 +327,40 @@ async fn trash_and_round_trip(db: SqlitePool) {
         1
     );
     assert_eq!(
-        export::export(&other, &Scope::Ids(vec![1]), true, 0)
-            .await
-            .unwrap(),
+        export::export(
+            &other,
+            &Scope::Ids(vec![1]),
+            mentor::MentorSort::Match,
+            true,
+            0
+        )
+        .await
+        .unwrap(),
         rows
     );
     other.close().await;
-    let no_note = export::export(&db, &Scope::Ids(vec![id]), false, 0)
-        .await
-        .unwrap();
+    let no_note = export::export(
+        &db,
+        &Scope::Ids(vec![id]),
+        mentor::MentorSort::Match,
+        false,
+        0,
+    )
+    .await
+    .unwrap();
     assert!(!no_note[0].contains(&"备注".into()));
     mentor::trash::trash(&db, &[id], 4).await.unwrap();
     assert_eq!(
-        export::export(&db, &Scope::Ids(vec![id]), true, 0)
-            .await
-            .unwrap()
-            .len(),
+        export::export(
+            &db,
+            &Scope::Ids(vec![id]),
+            mentor::MentorSort::Match,
+            true,
+            0
+        )
+        .await
+        .unwrap()
+        .len(),
         1
     );
 }
@@ -449,6 +479,7 @@ async fn export_uses_all_filtered_pages_and_list_order(db: SqlitePool) {
             keyword: Some("北京大学".into()),
             ..Default::default()
         }),
+        mentor::MentorSort::Match,
         true,
         0,
     )
@@ -461,6 +492,7 @@ async fn export_uses_all_filtered_pages_and_list_order(db: SqlitePool) {
     let selected = export::export(
         &db,
         &Scope::Ids(vec![other, ids[0], ids[1], ids[54]]),
+        mentor::MentorSort::Match,
         false,
         0,
     )
@@ -474,7 +506,7 @@ async fn export_uses_all_filtered_pages_and_list_order(db: SqlitePool) {
             .collect::<Vec<_>>(),
         ["王明54", "王明1", "其他导师"]
     );
-    let template = export::export(&db, &Scope::Ids(vec![]), true, 0)
+    let template = export::export(&db, &Scope::Ids(vec![]), mentor::MentorSort::Match, true, 0)
         .await
         .unwrap();
     assert_eq!(template.len(), 1);
@@ -511,9 +543,15 @@ async fn grouped_new_rows_keep_order_and_existing_units_round_trip(db: SqlitePoo
     )
     .await
     .unwrap();
-    let rows = export::export(&db, &Scope::Ids(vec![1]), true, 0)
-        .await
-        .unwrap();
+    let rows = export::export(
+        &db,
+        &Scope::Ids(vec![1]),
+        mentor::MentorSort::Match,
+        true,
+        0,
+    )
+    .await
+    .unwrap();
     let sheets = sheet::read(
         "a.xlsx",
         &sheet::write_xlsx(&[Sheet {
@@ -645,9 +683,15 @@ async fn shared_new_email_and_trash_separate(db: SqlitePool) {
     let result = apply(&db, &sheets, &choices).await;
     assert_eq!((result.created, result.updated), (1, 0));
     assert!(mentor::get(&db, id).await.unwrap().unwrap().trashed);
-    let rows = export::export(&db, &Scope::Filter(Default::default()), true, 0)
-        .await
-        .unwrap();
+    let rows = export::export(
+        &db,
+        &Scope::Filter(Default::default()),
+        mentor::MentorSort::Match,
+        true,
+        0,
+    )
+    .await
+    .unwrap();
     assert_eq!(rows.len(), 2);
     assert!(rows[1].contains(&"第一行备注".to_owned()));
 }
@@ -778,9 +822,15 @@ async fn valid_homepage_with_semicolon_survives_export_import(db: SqlitePool) {
     .check()
     .unwrap();
     let id = mentor::create(&db, &fields, 0).await.unwrap();
-    let rows = export::export(&db, &Scope::Ids(vec![id]), true, 0)
-        .await
-        .unwrap();
+    let rows = export::export(
+        &db,
+        &Scope::Ids(vec![id]),
+        mentor::MentorSort::Match,
+        true,
+        0,
+    )
+    .await
+    .unwrap();
     for name in ["导师.xlsx", "导师.csv"] {
         let bytes = if name.ends_with("xlsx") {
             sheet::write_xlsx(&[Sheet {
@@ -816,9 +866,15 @@ async fn exported_papers_keep_semicolons_and_flatten_item_newlines(db: SqlitePoo
         .execute(&db)
         .await
         .unwrap();
-    let rows = export::export(&db, &Scope::Ids(vec![id]), true, 0)
-        .await
-        .unwrap();
+    let rows = export::export(
+        &db,
+        &Scope::Ids(vec![id]),
+        mentor::MentorSort::Match,
+        true,
+        0,
+    )
+    .await
+    .unwrap();
     for name in ["导师.xlsx", "导师.csv"] {
         let other = SqlitePool::connect("sqlite::memory:").await.unwrap();
         db::MIGRATOR.run(&other).await.unwrap();
@@ -856,9 +912,15 @@ async fn quotes_survive_xlsx_and_csv_round_trip(db: SqlitePool) {
         .execute(&db)
         .await
         .unwrap();
-    let rows = export::export(&db, &Scope::Ids(vec![id]), true, 0)
-        .await
-        .unwrap();
+    let rows = export::export(
+        &db,
+        &Scope::Ids(vec![id]),
+        mentor::MentorSort::Match,
+        true,
+        0,
+    )
+    .await
+    .unwrap();
     for name in ["导师.xlsx", "导师.csv"] {
         let bytes = if name.ends_with("xlsx") {
             sheet::write_xlsx(&[Sheet {
@@ -918,7 +980,9 @@ async fn full_width_email_exports_round_trip_without_duplicates(db: SqlitePool) 
         ["wang@pku.edu.cn"]
     );
     let scope = Scope::Filter(Default::default());
-    let rows = export::export(&db, &scope, true, 0).await.unwrap();
+    let rows = export::export(&db, &scope, mentor::MentorSort::Match, true, 0)
+        .await
+        .unwrap();
     for name in ["导师.csv", "导师.xlsx"] {
         let bytes = if name.ends_with("csv") {
             sheet::write_csv(&rows)
@@ -947,7 +1011,9 @@ async fn full_width_email_exports_round_trip_without_duplicates(db: SqlitePool) 
         let result = apply(&db, &sheets, &Decisions::default()).await;
         assert_eq!((result.created, result.updated), (0, 0), "{name}");
         assert_eq!(
-            export::export(&db, &scope, true, 0).await.unwrap(),
+            export::export(&db, &scope, mentor::MentorSort::Match, true, 0)
+                .await
+                .unwrap(),
             rows,
             "{name}"
         );
@@ -972,7 +1038,9 @@ async fn full_width_name_exports_round_trip_without_duplicates(db: SqlitePool) {
     .unwrap();
     let id = mentor::create(&db, &fields, 0).await.unwrap();
     let scope = Scope::Filter(Default::default());
-    let rows = export::export(&db, &scope, true, 0).await.unwrap();
+    let rows = export::export(&db, &scope, mentor::MentorSort::Match, true, 0)
+        .await
+        .unwrap();
     for name in ["导师.csv", "导师.xlsx"] {
         let bytes = if name.ends_with("csv") {
             sheet::write_csv(&rows)
@@ -1003,7 +1071,9 @@ async fn full_width_name_exports_round_trip_without_duplicates(db: SqlitePool) {
         let result = apply(&db, &sheets, &Decisions::default()).await;
         assert_eq!((result.created, result.updated), (0, 0), "{name}");
         assert_eq!(
-            export::export(&db, &scope, true, 0).await.unwrap(),
+            export::export(&db, &scope, mentor::MentorSort::Match, true, 0)
+                .await
+                .unwrap(),
             rows,
             "{name}"
         );
@@ -1015,7 +1085,9 @@ async fn full_width_name_exports_round_trip_without_duplicates(db: SqlitePool) {
             1
         );
         assert_eq!(
-            export::export(&other, &scope, true, 0).await.unwrap(),
+            export::export(&other, &scope, mentor::MentorSort::Match, true, 0)
+                .await
+                .unwrap(),
             rows,
             "{name}"
         );
@@ -1117,9 +1189,15 @@ async fn namesake_exports_round_trip_without_crossing_profiles(db: SqlitePool) {
             .unwrap(),
         );
     }
-    let rows = export::export(&db, &Scope::Ids(ids.clone()), true, 0)
-        .await
-        .unwrap();
+    let rows = export::export(
+        &db,
+        &Scope::Ids(ids.clone()),
+        mentor::MentorSort::Match,
+        true,
+        0,
+    )
+    .await
+    .unwrap();
     for name in ["导师.csv", "导师.xlsx"] {
         let bytes = if name.ends_with("csv") {
             sheet::write_csv(&rows)
@@ -1157,9 +1235,15 @@ async fn namesake_exports_round_trip_without_crossing_profiles(db: SqlitePool) {
         let result = apply(&db, &sheets, &Decisions::default()).await;
         assert_eq!((result.created, result.updated), (0, 0), "{name}");
         assert_eq!(
-            export::export(&db, &Scope::Ids(ids.clone()), true, 0)
-                .await
-                .unwrap(),
+            export::export(
+                &db,
+                &Scope::Ids(ids.clone()),
+                mentor::MentorSort::Match,
+                true,
+                0
+            )
+            .await
+            .unwrap(),
             rows,
             "{name}"
         );
@@ -1174,9 +1258,15 @@ async fn mixed_missing_email_import_is_unchanged_when_repeated(db: SqlitePool) {
         &["王明", "", "图学习"],
     ]);
     assert_eq!(apply(&db, &sheets, &Decisions::default()).await.created, 2);
-    let rows = export::export(&db, &Scope::Ids(vec![1, 2]), true, 0)
-        .await
-        .unwrap();
+    let rows = export::export(
+        &db,
+        &Scope::Ids(vec![1, 2]),
+        mentor::MentorSort::Match,
+        true,
+        0,
+    )
+    .await
+    .unwrap();
     let preview = import::preview(&db, &sheets, &Setup::default())
         .await
         .unwrap();
@@ -1191,9 +1281,15 @@ async fn mixed_missing_email_import_is_unchanged_when_repeated(db: SqlitePool) {
     let result = apply(&db, &sheets, &Decisions::default()).await;
     assert_eq!((result.created, result.updated), (0, 0));
     assert_eq!(
-        export::export(&db, &Scope::Ids(vec![1, 2]), true, 0)
-            .await
-            .unwrap(),
+        export::export(
+            &db,
+            &Scope::Ids(vec![1, 2]),
+            mentor::MentorSort::Match,
+            true,
+            0
+        )
+        .await
+        .unwrap(),
         rows
     );
 }
