@@ -105,8 +105,6 @@ export function MentorsPage() {
     const saved = Number(localStorage.getItem("unansweredDays"));
     return saved > 0 && saved <= 36500 && Number.isInteger(saved) ? saved : 7;
   });
-  // The list keeps the days while their field is emptied, and the field shows them again when left.
-  const [cleared, setCleared] = useState(false);
   const [matching, setMatching] = useState<number[] | null>(null);
   const [enriching, setEnriching] = useState<number[] | null>(null);
   const [adding, setAdding] = useState(false);
@@ -269,17 +267,15 @@ export function MentorsPage() {
             min={1}
             max={36500}
             className="h-8 w-20"
-            value={cleared ? null : (search.unansweredDays ?? days)}
+            value={search.unansweredDays ?? days}
             onValueChange={(value) => {
-              setCleared(value === null);
-              if (value !== null) {
-                setDays(value);
-                localStorage.setItem("unansweredDays", String(value));
-                if (search.unansweredDays !== undefined)
-                  void navigate({ search: (s) => ({ ...s, unansweredDays: value, page: undefined }) });
-              }
+              // The list keeps its days while the field gives none; the field shows them again once left.
+              if (value === null) return;
+              setDays(value);
+              localStorage.setItem("unansweredDays", String(value));
+              if (search.unansweredDays !== undefined)
+                void navigate({ search: (s) => ({ ...s, unansweredDays: value, page: undefined }) });
             }}
-            onValueCommitted={() => setCleared(false)}
           />
           天未回复
           {tracked && (

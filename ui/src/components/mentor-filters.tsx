@@ -314,8 +314,8 @@ function Option({
   return (
     <label className={cn(MENU_ITEM, className)}>
       <Checkbox checked={checked} onCheckedChange={onToggle} />
-      <span className="min-w-0 grow truncate">{label}</span>
-      <span className="text-xs text-muted-foreground">{count}</span>
+      <span className="min-w-0 grow">{label}</span>
+      <span className="shrink-0 text-xs text-muted-foreground">{count}</span>
     </label>
   );
 }
