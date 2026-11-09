@@ -588,6 +588,7 @@ pub async fn apply(
         )
         .execute(&mut *conn)
         .await?;
+        crate::reindex(&mut *conn, id).await?;
         for row in change.rows {
             accepted.insert(row, id);
         }

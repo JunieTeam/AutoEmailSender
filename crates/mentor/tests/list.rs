@@ -340,3 +340,65 @@ async fn the_latest_added_come_first_unless_sorted_by_match(db: SqlitePool) {
         }
     }
 }
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn addresses_and_notes_are_found_and_follow_their_changes(db: SqlitePool) {
+    let id = mentor::create(
+        &db,
+        &MentorFields {
+            name: "张三".into(),
+            emails: vec!["zhang.san@pku.edu.cn".into()],
+            ..MentorFields::default()
+        },
+        0,
+    )
+    .await
+    .unwrap();
+    add(&db, "李四", "北京大学", "视觉").await;
+    for found in [
+        "zhang.san@pku.edu.cn",
+        "<Zhang.San@PKU.edu.cn>",
+        "zhangsan",
+        "san@pku",
+    ] {
+        assert_eq!(names(&db, None, Some(found)).await, ["张三"], "{found}");
+    }
+
+    mentor::set_note(&db, id, Some("去年在会议上认识"))
+        .await
+        .unwrap();
+    assert_eq!(names(&db, None, Some("会议")).await, ["张三"]);
+    mentor::set_note(&db, id, Some("推荐人是王老师"))
+        .await
+        .unwrap();
+    assert!(names(&db, None, Some("会议")).await.is_empty());
+    assert_eq!(names(&db, None, Some("推荐人")).await, ["张三"]);
+
+    mentor::add_email(&db, id, "zs@163.com", 0).await.unwrap();
+    assert_eq!(names(&db, None, Some("zs@163.com")).await, ["张三"]);
+    // Saving the fields again keeps the note searchable.
+    let detail = mentor::get(&db, id).await.unwrap().unwrap();
+    let fields = MentorFields {
+        name: detail.name,
+        emails: detail.emails,
+        ..MentorFields::default()
+    };
+    mentor::update(&db, id, &fields, 0).await.unwrap();
+    assert_eq!(names(&db, None, Some("推荐人")).await, ["张三"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_emptied_index_is_written_again(db: SqlitePool) {
+    add(&db, "张三", "北京大学", "视觉").await;
+    let trashed = add(&db, "李四", "北京大学", "视觉").await;
+    mentor::trash::trash(&db, &[trashed], 1).await.unwrap();
+    sqlx::query("INSERT INTO mentor_search (mentor_search) VALUES ('delete-all')")
+        .execute(&db)
+        .await
+        .unwrap();
+    assert!(names(&db, None, Some("北京大学")).await.is_empty());
+
+    assert_eq!(mentor::index_missing(&db).await.unwrap(), 2);
+    assert_eq!(names(&db, None, Some("北京大学")).await, ["张三"]);
+    assert_eq!(mentor::index_missing(&db).await.unwrap(), 0);
+}

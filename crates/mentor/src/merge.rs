@@ -172,7 +172,6 @@ pub async fn merge(
             SaveError::Db(e) => MergeError::Db(e),
             SaveError::EmailTaken { .. } => unreachable!("every address is the kept one's by now"),
         })?;
-    index(&mut tx, keep, &fields).await?;
     sqlx::query!(
         "UPDATE mentor_detail SET research = ?, papers = ?, note = ? WHERE mentor_id = ?",
         fields.research,
@@ -182,6 +181,7 @@ pub async fn merge(
     )
     .execute(&mut *tx)
     .await?;
+    index(&mut tx, keep, &fields).await?;
     sqlx::query!(
         "UPDATE mentor SET source_url = coalesce(mentor.source_url, o.source_url),
            mailbox_id = coalesce(mentor.mailbox_id, o.mailbox_id)

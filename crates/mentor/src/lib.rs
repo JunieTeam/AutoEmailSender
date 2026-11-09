@@ -670,14 +670,20 @@ pub async fn detail(
 
 /// Replaces the mentor's private note; None clears it. False when there is no such mentor.
 pub async fn set_note(db: &SqlitePool, id: i64, note: Option<&str>) -> Result<bool, sqlx::Error> {
+    let mut tx = db.begin().await?;
     let done = sqlx::query!(
         "UPDATE mentor_detail SET note = ? WHERE mentor_id = ?",
         note,
         id
     )
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
-    Ok(done.rows_affected() == 1)
+    if done.rows_affected() == 0 {
+        return Ok(false);
+    }
+    reindex(&mut tx, id).await?;
+    tx.commit().await?;
+    Ok(true)
 }
 
 /// The tags of each of `ids`, in the user's order.
@@ -749,9 +755,16 @@ fn inconsistent(id: i64) -> sqlx::Error {
 
 /// The FTS5 query for a keyword search, in which every word must appear: a phrase of bigrams per
 /// word. A single character would match nearly every mentor's text, so a one-character word only
-/// searches the characters of names. None when the text has nothing to search for.
+/// searches the characters of names. A part with `@` is an address, or part of one, searched as
+/// the index holds addresses. None when the text has nothing to search for.
 fn keyword(text: &str) -> Option<String> {
-    let terms: Vec<String> = words(text)
+    let terms: Vec<String> = text
+        .split_whitespace()
+        .flat_map(|part| match part.contains('@') {
+            true => vec![address(part)],
+            false => words(part).collect(),
+        })
+        .filter(|w| !w.is_empty())
         .map(|w| match w.as_slice() {
             [c] => format!("name:\"{c}\""),
             _ => format!("\"{}\"", bigrams_of(&w).join(" ")),
@@ -767,18 +780,22 @@ fn words(text: &str) -> impl Iterator<Item = Vec<char>> {
         .map(|w| w.to_lowercase().chars().collect())
 }
 
+/// An email address as one word, its letters and digits run together, so that both a whole
+/// address and any piece of one are found in it.
+fn address(text: &str) -> Vec<char> {
+    words(text).flatten().collect()
+}
+
 fn bigrams_of(word: &[char]) -> Vec<String> {
     word.windows(2).map(|w| w.iter().collect()).collect()
 }
 
 /// The text stored in the keyword index: overlapping two-character tokens, so that a phrase of the
-/// query's tokens finds any field containing the query (docs/data-model.md#导师). Words are kept
+/// query's tokens finds any word containing the query (docs/data-model.md#导师). Words are kept
 /// apart by a one-character token, which no query phrase contains, so a phrase never runs from the
 /// end of one word into the next.
-fn search_text(fields: &[&str]) -> String {
-    fields
-        .iter()
-        .flat_map(|f| words(f))
+fn search_text(words: impl Iterator<Item = Vec<char>>) -> String {
+    words
         .map(|w| bigrams_of(&w).join(" "))
         .collect::<Vec<_>>()
         .join(" 0 ")
@@ -1185,6 +1202,7 @@ pub async fn add_email(
     )
     .execute(&mut *tx)
     .await?;
+    reindex(&mut tx, id).await?;
     tx.commit().await?;
     Ok(true)
 }
@@ -1211,12 +1229,54 @@ async fn taken(tx: &mut SqliteConnection, address: &str) -> SaveError {
     }
 }
 
-/// Writes the mentor's keyword index entry, replacing any earlier one.
+/// Writes the mentor's keyword index entry from what is saved, replacing any earlier one: after
+/// anything it holds changes, the note and the addresses included.
+pub(crate) async fn reindex(tx: &mut SqliteConnection, id: i64) -> Result<(), sqlx::Error> {
+    if let Some(saved) = export::profiles(tx, &[id]).await?.get(&id) {
+        index(tx, id, &saved.fields).await?;
+    }
+    Ok(())
+}
+
+/// Writes the keyword index entry of mentors that have none, as after a migration has cleared the
+/// index to change what it holds; a few at a time, so that saves in between need not wait long.
+/// Returns how many were written.
+pub async fn index_missing(db: &SqlitePool) -> Result<u64, sqlx::Error> {
+    let mut written = 0;
+    // In order of ID, so that each mentor is looked at once.
+    let mut after = 0;
+    loop {
+        let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+        let ids = sqlx::query_scalar!(
+            r#"SELECT id AS "id!" FROM mentor
+            WHERE id > ? AND id NOT IN (SELECT rowid FROM mentor_search)
+            ORDER BY id
+            LIMIT 200"#,
+            after
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        let Some(&last) = ids.last() else {
+            return Ok(written);
+        };
+        for (id, saved) in export::profiles(&mut tx, &ids).await? {
+            index(&mut tx, id, &saved.fields).await?;
+            written += 1;
+        }
+        tx.commit().await?;
+        after = last;
+    }
+}
+
+/// Writes the mentor's keyword index entry, replacing any earlier one. The note is read as saved.
 async fn index(
     tx: &mut SqliteConnection,
     id: i64,
     mentor: &MentorFields,
 ) -> Result<(), sqlx::Error> {
+    let note = sqlx::query_scalar!("SELECT note FROM mentor_detail WHERE mentor_id = ?", id)
+        .fetch_one(&mut *tx)
+        .await?;
     let names: Vec<&str> = std::iter::once(&mentor.name)
         .chain(&mentor.aliases)
         .map(String::as_str)
@@ -1239,13 +1299,15 @@ async fn index(
             .into_iter()
             .filter_map(Option::as_deref)
     });
-    let fields: Vec<&str> = names
+    let texts = names
         .iter()
         .copied()
         .chain(places)
         .chain(mentor.research.as_deref())
-        .collect();
-    let (body, name) = (search_text(&fields), name_chars(&names));
+        .chain(note.as_deref())
+        .flat_map(words);
+    let body = search_text(texts.chain(mentor.emails.iter().map(|e| address(e))));
+    let name = name_chars(&names);
     sqlx::query!("DELETE FROM mentor_search WHERE rowid = ?", id)
         .execute(&mut *tx)
         .await?;

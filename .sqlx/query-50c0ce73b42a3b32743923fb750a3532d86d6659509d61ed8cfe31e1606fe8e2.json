@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT note FROM mentor_detail WHERE mentor_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "note",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mentor_detail",
+            "name": "note"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "50c0ce73b42a3b32743923fb750a3532d86d6659509d61ed8cfe31e1606fe8e2"
+}

@@ -44,6 +44,12 @@ pub async fn open(dir: &Path) -> Result<(Context, bool), Error> {
     let db = db::open(&dir.join("app.db"))
         .await
         .map_err(Error::Database)?;
+    // Written before anything reads the list: until then search and the title filter would miss
+    // mentors. It takes long only on the first start after an upgrade that cleared the index.
+    let indexed = mentor::index_missing(&db).await.map_err(Error::Index)?;
+    if indexed > 0 {
+        tracing::info!("indexed {indexed} mentors for keyword search");
+    }
     let net = net::Net::new(fake_mail_root(dir).map_err(Error::DataDir)?).map_err(Error::Net)?;
     Ok((Context::new(db, net, dir), restored))
 }
@@ -68,6 +74,8 @@ pub enum Error {
     InUse,
     DataDir(std::io::Error),
     Database(db::OpenError),
+    /// Writing the keyword index entries a migration cleared (docs/data-model.md#导师).
+    Index(sqlx::Error),
     Restore(crate::backup::Error),
     Net(Box<dyn StdError + Send + Sync>),
 }
@@ -79,6 +87,7 @@ impl std::fmt::Display for Error {
             Self::DataDir(e) => write!(f, "data directory: {e}"),
             Self::Restore(e) => write!(f, "restore: {e}"),
             Self::Database(e) => write!(f, "{e}"),
+            Self::Index(e) => write!(f, "index mentors for keyword search: {e}"),
             Self::Net(e) => write!(f, "network: {e}"),
         }
     }
@@ -105,7 +114,7 @@ impl Error {
             }
             Self::DataDir(e) => failure::file("数据目录无法使用", e),
             Self::Net(e) => Failure::unrecognized("网络连接无法初始化", &e.to_string()),
-            Self::Database(OpenError::Open(e)) => {
+            Self::Database(OpenError::Open(e)) | Self::Index(e) => {
                 Failure::unrecognized("数据库无法打开", &e.to_string())
             }
             Self::Database(OpenError::Newer) => Failure::new(

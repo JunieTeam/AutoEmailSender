@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\" FROM mentor\n            WHERE id > ? AND id NOT IN (SELECT rowid FROM mentor_search)\n            ORDER BY id\n            LIMIT 200",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "mentor",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fc66f2557a9aee901b7be5202522d7c785b54355e5ab5270c90e81679e085d02"
+}

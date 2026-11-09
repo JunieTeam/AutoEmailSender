@@ -149,7 +149,7 @@ export function MentorsPage() {
         <SearchBox
           id="mentor-search"
           label="搜索导师"
-          placeholder="搜索姓名、学校、研究方向"
+          placeholder="搜索姓名、邮箱、单位、研究方向或备注"
           className="w-[320px] phone:order-3 phone:w-full"
           value={search.q ?? ""}
           onChange={(q) => navigate({ search: (s) => ({ ...s, q: q || undefined, page: undefined }) })}
