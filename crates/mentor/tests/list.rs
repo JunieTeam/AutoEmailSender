@@ -402,3 +402,18 @@ async fn an_emptied_index_is_written_again(db: SqlitePool) {
     assert_eq!(names(&db, None, Some("北京大学")).await, ["张三"]);
     assert_eq!(mentor::index_missing(&db).await.unwrap(), 0);
 }
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn every_mentor_the_filter_leaves_can_be_ticked_at_once(db: SqlitePool) {
+    for i in 0..PAGE_SIZE + 2 {
+        add(&db, &format!("导师{i}"), "北京大学", "语言").await;
+    }
+    let other = add(&db, "其他", "清华大学", "视觉").await;
+    let filter = mentor::filters::MentorFilter {
+        keyword: Some("北京大学".into()),
+        ..Default::default()
+    };
+    let ids = mentor::ids(&db, &filter, 0).await.unwrap();
+    assert_eq!(ids.len(), PAGE_SIZE as usize + 2);
+    assert!(!ids.contains(&other));
+}

@@ -14,11 +14,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
  */
 export function BatchBar({
   count,
+  more,
   errors,
   onClear,
   children,
 }: {
   count: number;
+  /** Beside the count, as a way to tick more. */
+  more?: ReactNode;
   /** What failed and why. */
   errors: { lead: string; failure: Failure }[];
   onClear: () => void;
@@ -53,6 +56,7 @@ export function BatchBar({
           {ticked > 0 && (
             <>
               <span className="pr-2 text-sm whitespace-nowrap">已选 {ticked} 位</span>
+              {more}
               {children}
             </>
           )}

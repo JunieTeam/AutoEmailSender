@@ -140,7 +140,18 @@ export function refreshMentors(queryClient: QueryClient) {
  */
 export function dropDrafts(queryClient: QueryClient, ids: number[], kind: DraftKind | "all" = "all") {
   const mutations = queryClient.getMutationCache();
-  for (const id of ids) {
+  // Only the mentors something is cached for, found in one pass: trashing every mentor at once must
+  // not go through the caches once for each.
+  const listed = new Set(ids);
+  const keys = [
+    ...queryClient
+      .getQueryCache()
+      .getAll()
+      .map((q) => q.queryKey),
+    ...mutations.getAll().map((m) => m.options.mutationKey ?? []),
+  ];
+  const cached = new Set(keys.flatMap((key) => key.filter((part) => typeof part === "number" && listed.has(part))));
+  for (const id of cached) {
     if (kind === "all" || kind === "reply") {
       queryClient.removeQueries({ queryKey: ["getReplyDraft", id] });
       forgetWriting(queryClient, ["writeReply", id]);

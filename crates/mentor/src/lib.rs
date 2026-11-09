@@ -424,6 +424,16 @@ pub async fn list(
     })
 }
 
+/// Every mentor the filter leaves, for ticking them all.
+pub async fn ids(
+    db: &SqlitePool,
+    filter: &filters::MentorFilter,
+    now: i64,
+) -> Result<Vec<i64>, sqlx::Error> {
+    let mut conn = db.acquire().await?;
+    filtered_ids(&mut conn, filter, MentorSort::Added, now, -1, 0).await
+}
+
 /// Each order is its own literal query, so that each pages along its index.
 pub(crate) async fn filtered_ids(
     conn: &mut SqliteConnection,

@@ -839,6 +839,8 @@ operations! {
             import_mentors(ImportMentors) -> mentor::import::Imported;
         /// 按筛选、排序和分页条件读取导师列表。
         "listMentors" [none] => list_mentors(mentor::MentorQuery) -> mentor::MentorPage;
+        /// 按筛选条件读取筛出的全部导师的 id，用来一次勾选它们。
+        "listMentorIds" [none] => list_mentor_ids(mentor::filters::MentorFilter) -> Vec<i64>;
         /// 读取导师筛选里哪些选项能用：有没有追踪过打开情况的信。
         "mentorFilterOptions" [none] => mentor_filter_options(Nothing)
             -> mentor::filters::MentorFilterOptions;
@@ -1253,6 +1255,14 @@ async fn list_mentors(
 ) -> Result<mentor::MentorPage, CallError> {
     query.filter.check().map_err(CallError::invalid)?;
     Ok(mentor::list(&ctx.db, &query, now()).await?)
+}
+
+async fn list_mentor_ids(
+    ctx: &Context,
+    mut filter: mentor::filters::MentorFilter,
+) -> Result<Vec<i64>, CallError> {
+    filter.check().map_err(CallError::invalid)?;
+    Ok(mentor::ids(&ctx.db, &filter, now()).await?)
 }
 
 async fn mentor_filter_options(

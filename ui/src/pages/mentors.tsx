@@ -122,6 +122,20 @@ export function MentorsPage() {
   useLastPage(query.isSuccess && !query.isFetching ? query.data.total : undefined, page, (n) =>
     navigate({ search: (s) => ({ ...s, page: n > 1 ? n : undefined }), replace: true }),
   );
+  const pageIds = query.data?.mentors.map((m) => m.id) ?? [];
+  // Only once the whole page is ticked, as in the header, and while the page is that of the filter.
+  const offerAll =
+    !query.isPlaceholderData &&
+    total > selected.size &&
+    total > pageIds.length &&
+    pageIds.length > 0 &&
+    pageIds.every((id) => selected.has(id));
+  const tickAll = useMutation({
+    mutationFn: (asked: { filter: MentorFilter; from: ReadonlySet<number> }) => call("listMentorIds", asked.filter),
+    // Only over the ticks it was asked from: ticking, unticking or changing the filter while it ran
+    // replaced them, and the user's latest choice stands.
+    onSuccess: (ids, { from }) => setSelected((s) => (s === from ? new Set(ids) : s)),
+  });
   const addTag = useAddTag();
   const tracked = useQuery({
     queryKey: ["mentorFilterOptions"],
@@ -132,7 +146,8 @@ export function MentorsPage() {
     mutationFn: (ids: number[]) => call("trashMentors", { ids }),
     // Only these: others may have been ticked while it ran.
     onSuccess: (_, ids) => {
-      setSelected((s) => new Set([...s].filter((id) => !ids.includes(id))));
+      const gone = new Set(ids);
+      setSelected((s) => new Set([...s].filter((id) => !gone.has(id))));
       dropDrafts(queryClient, ids);
     },
     onSettled: () => refreshMentors(queryClient),
@@ -338,13 +353,25 @@ export function MentorsPage() {
         </div>
         <BatchBar
           count={selected.size}
+          more={
+            offerAll && (
+              <Button
+                variant="ghost"
+                disabled={tickAll.isPending}
+                onClick={() => tickAll.mutate({ filter: listFilter(search), from: selected })}
+              >
+                选择全部 {total.toLocaleString()} 位
+              </Button>
+            )
+          }
           errors={[
+            ...(tickAll.error ? [{ lead: "未能选择全部：", failure: failureOf(tickAll.error) }] : []),
             ...(addTag.error ? [{ lead: "未能添加标签：", failure: failureOf(addTag.error) }] : []),
             ...(trash.error ? [{ lead: "未能移入回收站：", failure: failureOf(trash.error) }] : []),
           ]}
           onClear={() => {
             setSelected(new Set());
-            for (const action of [addTag, trash]) if (!action.isPending) action.reset();
+            for (const action of [addTag, trash, tickAll]) if (!action.isPending) action.reset();
           }}
         >
           <Button

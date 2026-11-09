@@ -1414,6 +1414,7 @@ export interface Operations {
   previewImport: { input: PreviewImport; output: Preview };
   importMentors: { input: ImportMentors; output: Imported };
   listMentors: { input: MentorQuery; output: MentorPage };
+  listMentorIds: { input: MentorFilter; output: Array<number> };
   mentorFilterOptions: { input: Nothing; output: MentorFilterOptions };
   mentorFilterValues: { input: FilterValuesQuery; output: FilterValues };
   mentorFilterTags: { input: MentorFilter; output: FilterTags };
