@@ -6,6 +6,7 @@ use std::num::NonZeroU32;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use mentor::filters::AffiliationField;
 use mentor::{ContactStatus, MentorQuery};
 
 use crate::Result;
@@ -262,10 +263,58 @@ pub async fn run(path: &Path) -> Result {
             home,
         );
     }
+    let all = mentor::filters::MentorFilter::default();
+    for (label, field) in [
+        ("导师筛选可选值，学校", AffiliationField::University),
+        ("导师筛选可选值，学院", AffiliationField::School),
+        ("导师筛选可选值，系所", AffiliationField::Department),
+        ("导师筛选可选值，职称", AffiliationField::Title),
+    ] {
+        report(
+            label,
+            median(async || {
+                mentor::filters::values(&db, field, &all, NOW)
+                    .await
+                    .map(drop)
+            })
+            .await?,
+            Duration::from_millis(50),
+        );
+    }
     report(
-        "导师筛选可选值及人数",
-        median(async || mentor::filters::options(&db).await.map(drop)).await?,
-        Duration::from_millis(150),
+        "导师筛选可选值，标签",
+        median(async || mentor::filters::tags(&db, &all, NOW).await.map(drop)).await?,
+        Duration::from_millis(50),
+    );
+    // The school menu once a university is chosen, and the university menu under a contact status,
+    // which leaves most mentors: the menus then count among a list of mentors.
+    let chosen = mentor::filters::MentorFilter {
+        universities: vec![Some("清华大学".into())],
+        ..Default::default()
+    };
+    report(
+        "导师筛选可选值，选了学校后的学院",
+        median(async || {
+            mentor::filters::values(&db, AffiliationField::School, &chosen, NOW)
+                .await
+                .map(drop)
+        })
+        .await?,
+        Duration::from_millis(50),
+    );
+    let uncontacted = mentor::filters::MentorFilter {
+        status: Some(ContactStatus::None),
+        ..Default::default()
+    };
+    report(
+        "导师筛选可选值，未联系的学校",
+        median(async || {
+            mentor::filters::values(&db, AffiliationField::University, &uncontacted, NOW)
+                .await
+                .map(drop)
+        })
+        .await?,
+        Duration::from_millis(50),
     );
 
     sqlx::query(

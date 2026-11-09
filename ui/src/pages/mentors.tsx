@@ -208,6 +208,7 @@ export function MentorsPage() {
       </div>
       <MentorFilters
         search={search}
+        filter={listFilter(search)}
         onChange={(next) => navigate({ search: (s) => ({ ...s, ...next, page: undefined }) })}
       >
         <OneOf

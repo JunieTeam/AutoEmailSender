@@ -34,13 +34,13 @@ export function TagChip({ tag }: { tag: Pick<Tag, "name" | "color"> }) {
   );
 }
 
-function useTags() {
+export function useTags() {
   return useQuery({ queryKey: ["listTags"], queryFn: () => call("listTags", {}) });
 }
 
 /** After tags change, everything that shows them is out of date. */
 function refreshTags(queryClient: ReturnType<typeof useQueryClient>) {
-  for (const queryKey of [["listTags"], ["getMentor"], ["listMentors"], ["mentorFilterOptions"], ["listTrash"]]) {
+  for (const queryKey of [["listTags"], ["getMentor"], ["listMentors"], ["mentorFilterTags"], ["listTrash"]]) {
     void queryClient.invalidateQueries({ queryKey });
   }
 }

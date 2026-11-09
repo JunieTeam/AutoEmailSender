@@ -1,10 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { cn } from "cn";
 import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 import { call, failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
-import type { MentorFilter } from "@/api/types";
+import type { MentorFilter, Missing } from "@/api/types";
+import { Loading } from "@/components/loading";
+import { useTags } from "@/components/tags";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -13,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 /** docs/ui.md#交互: the filters under the contact states, as they are kept in the URL. */
 export type FilterSearch = {
   match?: Match;
+  missing?: Missing;
   university?: (string | null)[];
   school?: (string | null)[];
   department?: (string | null)[];
@@ -28,6 +31,14 @@ const MATCHES: [Match | undefined, string][] = [
   [60, "60 分以上"],
   [40, "40 分以上"],
   ["none", "未分析"],
+];
+
+export const MISSING: [Missing | undefined, string][] = [
+  [undefined, "不限"],
+  ["email", "缺邮箱"],
+  ["research", "缺研究方向"],
+  ["papers", "缺代表论文"],
+  ["homepage", "缺主页"],
 ];
 
 const FIELDS = [
@@ -52,6 +63,7 @@ export function filterSearch(search: Record<string, unknown>): FilterSearch {
     : [];
   return {
     match: MATCHES.find(([m]) => m !== undefined && m === search.match)?.[0],
+    missing: MISSING.find(([m]) => m !== undefined && m === search.missing)?.[0],
     university: texts(search.university),
     school: texts(search.school),
     department: texts(search.department),
@@ -74,11 +86,13 @@ export function filterOf(s: FilterSearch): MentorFilter {
     departments: s.department,
     titles: s.title,
     tags: s.tag,
+    missing: s.missing,
   };
 }
 
 const NO_FILTERS = {
   match: undefined,
+  missing: undefined,
   university: undefined,
   school: undefined,
   department: undefined,
@@ -90,18 +104,22 @@ export function filtered(s: FilterSearch) {
   return Object.values(filterOf(s)).some((v) => v !== undefined);
 }
 
-/** One row of menus, `children` at its end; every change starts again from the first page. */
+/**
+ * One row of menus, `children` at its end; every change starts again from the first page. A menu
+ * offers the values among the mentors the rest of `filter`, the list's, leaves.
+ */
 export function MentorFilters({
   search,
+  filter,
   onChange,
   children,
 }: {
   search: FilterSearch;
+  filter: MentorFilter;
   onChange: (next: FilterSearch) => void;
   children?: React.ReactNode;
 }) {
-  const options = useQuery({ queryKey: ["mentorFilterOptions"], queryFn: () => call("mentorFilterOptions", {}) });
-  const o = options.data;
+  const tags = useTags();
   return (
     <div className="flex flex-wrap items-center gap-2 px-7 pb-3 phone:flex-nowrap phone:overflow-x-auto phone:px-4 phone:pb-2.5 phone:[scrollbar-width:none]">
       <OneOf
@@ -111,24 +129,49 @@ export function MentorFilters({
         active={search.match !== undefined}
         onChange={(match) => onChange({ ...search, match })}
       />
-      {FIELDS.map(([key, label, list]) => (
-        <Choices
-          key={key}
-          label={label}
-          choices={o?.[list].values.map((v) => ({ value: v.value, label: v.value, count: v.count })) ?? []}
-          missing={{ label: "未填写", count: o?.[list].missing ?? 0 }}
-          selected={search[key] ?? []}
-          error={options.error}
-          onChange={(values) => onChange({ ...search, [key]: values.length > 0 ? values : undefined })}
-        />
-      ))}
+      {FIELDS.map(([key, label, list]) => {
+        // Without its own choice, so that ticking in the menu keeps what it lists.
+        const others = { ...filter, [list]: undefined };
+        return (
+          <Choices
+            key={key}
+            label={label}
+            selected={search[key] ?? []}
+            name={(v) => v ?? "未填写"}
+            queryKey={["mentorFilterValues", key, others]}
+            load={async () => {
+              const o = await call("mentorFilterValues", { field: key, ...others });
+              return {
+                choices: o.values.map((v) => ({ value: v.value, label: v.value, count: v.count })),
+                missing: o.missing,
+              };
+            }}
+            onChange={(values) => onChange({ ...search, [key]: values.length > 0 ? values : undefined })}
+          />
+        );
+      })}
       <Choices
         label="标签"
-        choices={o?.tags.map((t) => ({ value: t.id, label: t.name, count: t.count })) ?? []}
-        missing={{ label: "无标签", count: o?.untagged ?? 0 }}
         selected={search.tag ?? []}
-        error={options.error}
+        name={(id) =>
+          id === null
+            ? "无标签"
+            : (tags.data?.find((t) => t.id === id)?.name ??
+              (tags.isError ? "未能读取标签名" : tags.isPending ? "…" : "已删除的标签"))
+        }
+        queryKey={["mentorFilterTags", { ...filter, tags: undefined }]}
+        load={async () => {
+          const o = await call("mentorFilterTags", { ...filter, tags: undefined });
+          return { choices: o.tags.map((t) => ({ value: t.id, label: t.name, count: t.count })), missing: o.untagged };
+        }}
         onChange={(values) => onChange({ ...search, tag: values.length > 0 ? values : undefined })}
+      />
+      <OneOf
+        label="资料"
+        options={MISSING}
+        value={search.missing}
+        active={search.missing !== undefined}
+        onChange={(missing) => onChange({ ...search, missing })}
       />
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {filtered(search) && (
@@ -217,35 +260,49 @@ export function OneOf<T>({
 
 type Choice<T> = { value: T; label: string; count: number };
 
-/** Any of the ticked values, with the mentors who have none of them at the bottom. */
-function Choices<T extends string | number>({
-  label,
-  choices,
-  missing,
-  selected,
-  error,
-  onChange,
-}: {
+type ChoicesProps<T> = {
   label: string;
-  choices: Choice<T>[];
-  missing: { label: string; count: number };
   selected: (T | null)[];
-  error: Error | null;
+  /** What a value not among those loaded is called; null is the mentors with none. */
+  name: (value: T | null) => string;
+  queryKey: unknown[];
+  load: () => Promise<{ choices: Choice<T>[]; missing: number }>;
   onChange: (values: (T | null)[]) => void;
-}) {
-  const [text, setText] = useState("");
-  const name = (v: T | null) => (v === null ? missing.label : (choices.find((c) => c.value === v)?.label ?? String(v)));
+};
+
+/** Any of the ticked values, with the mentors who have none of them at the bottom. */
+function Choices<T extends string | number>(props: ChoicesProps<T>) {
+  const { label, selected, name } = props;
   const [first] = selected;
   const shown =
     first === undefined ? undefined : selected.length > 1 ? `${name(first)} 等 ${selected.length} 个` : name(first);
-  const toggle = (v: T | null) => onChange(selected.includes(v) ? selected.filter((s) => s !== v) : [...selected, v]);
-  // A chosen value nobody has any more (all moved to the bin, say) stays listed, so that it can be unticked.
-  const gone = selected.flatMap((v) =>
-    v === null || choices.some((c) => c.value === v) ? [] : [{ value: v, label: String(v), count: 0 }],
-  );
-  const listed = [...choices, ...gone].filter((c) => c.label.includes(text.trim()));
   return (
     <Menu label={label} shown={shown} active={shown !== undefined}>
+      <ChoiceList {...props} />
+    </Menu>
+  );
+}
+
+/** The menu's list, loaded each time it opens, so that the counts are those of now. */
+function ChoiceList<T extends string | number>({ label, selected, name, queryKey, load, onChange }: ChoicesProps<T>) {
+  const query = useQuery({ queryKey, queryFn: load, placeholderData: keepPreviousData });
+  const [text, setText] = useState("");
+  if (query.error) {
+    return <FailureNote className="px-2.5 py-2 text-destructive" lead="未能加载：" failure={failureOf(query.error)} />;
+  }
+  if (!query.data) return <Loading />;
+  const { choices, missing } = query.data;
+  const toggle = (v: T | null) => onChange(selected.includes(v) ? selected.filter((s) => s !== v) : [...selected, v]);
+  // A chosen value the other filters leave no one with stays listed, so that it can be unticked.
+  const gone = selected.flatMap((v) =>
+    v === null || choices.some((c) => c.value === v) ? [] : [{ value: v, label: name(v), count: 0 }],
+  );
+  const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const listed = [...choices, ...gone].filter((c) => words.every((w) => inOrder(c.label.toLowerCase(), w)));
+  const unticked = listed.filter((c) => !selected.includes(c.value));
+  const none = (missing > 0 && words.length === 0) || selected.includes(null);
+  return (
+    <>
       {choices.length > 8 && (
         <Input
           autoFocus
@@ -256,8 +313,15 @@ function Choices<T extends string | number>({
           className="mb-1 h-9"
         />
       )}
-      {error && <FailureNote className="px-2.5 py-2 text-destructive" lead="未能加载：" failure={failureOf(error)} />}
       <div className="max-h-72 overflow-y-auto">
+        {words.length > 0 && listed.length > 1 && unticked.length > 0 && (
+          <button
+            className={cn(ROW, "text-brand-text")}
+            onClick={() => onChange([...selected, ...unticked.map((c) => c.value)])}
+          >
+            全选搜到的 {listed.length} 项
+          </button>
+        )}
         {listed.map((c) => (
           <Option
             key={c.value}
@@ -267,18 +331,34 @@ function Choices<T extends string | number>({
             onToggle={() => toggle(c.value)}
           />
         ))}
-        {(missing.count > 0 || selected.includes(null)) && (
+        {none && (
           <Option
-            label={missing.label}
-            count={missing.count}
+            label={name(null)}
+            count={missing}
             checked={selected.includes(null)}
             onToggle={() => toggle(null)}
             className="text-muted-foreground"
           />
         )}
+        {listed.length === 0 && !none && (
+          <p className="px-2.5 py-2 text-sm text-muted-foreground">
+            {words.length > 0 ? `没有匹配的${label}` : `没有可选的${label}`}
+          </p>
+        )}
       </div>
-    </Menu>
+    </>
   );
+}
+
+/** Whether the characters of `query` come in `text` in order, as "北航" in "北京航空航天大学". */
+function inOrder(text: string, query: string) {
+  let at = 0;
+  for (const c of query) {
+    at = text.indexOf(c, at);
+    if (at < 0) return false;
+    at += c.length;
+  }
+  return true;
 }
 
 function Option({

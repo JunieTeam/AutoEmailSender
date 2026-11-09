@@ -231,24 +231,26 @@ fn match_state(
     })
 }
 
-// SQLx checks concatenated literals, so count and page can share predicates and bindings
-// while keeping their separate query plans and index orders.
+// SQLx checks concatenated literals, so the page, the count and the filter menus can share
+// predicates and bindings while keeping their own query plans and index orders. `$from` names
+// the mentors `m`, and may join what is counted to them; `$query` is the SQLx macro, with its output
+// type for `query_as`.
 macro_rules! filtered_query {
-    ($conn:expr, $filter:expr, $now:expr, $select:literal, $tail:literal, $fetch:ident
-        $(, $page:expr)* $(,)?) => {{
+    ($conn:expr, $filter:expr, $now:expr, $query:ident($($out:ty)?), $from:literal, $tail:literal,
+        $fetch:ident $(, $page:expr)* $(,)?) => {{
         let filter = $filter;
         let now = $now;
         let before = filter.unanswered_before(now);
-        let keyword = filter.keyword.as_deref().and_then(keyword);
+        let keyword = filter.keyword.as_deref().and_then($crate::keyword);
         let (minimum, unanalyzed) = filter.match_score();
-        let (universities, university_missing) = selections(&filter.universities);
-        let (schools, school_missing) = selections(&filter.schools);
-        let (departments, department_missing) = selections(&filter.departments);
-        let (titles, title_missing) = selections(&filter.titles);
-        let (tags, untagged) = selections(&filter.tags);
-        sqlx::query_scalar!(
-            $select + r#"
-            FROM mentor m
+        let (universities, university_missing) = $crate::selections(&filter.universities);
+        let (schools, school_missing) = $crate::selections(&filter.schools);
+        let (departments, department_missing) = $crate::selections(&filter.departments);
+        let (titles, title_missing) = $crate::selections(&filter.titles);
+        let (tags, untagged) = $crate::selections(&filter.tags);
+        sqlx::$query!(
+            $($out,)?
+            $from + r#"
             WHERE m.trashed_at IS NULL
             AND (?5 IS NULL OR m.match_score >= ?5)
             AND (NOT ?6 OR m.match_score IS NULL)
@@ -301,17 +303,15 @@ macro_rules! filtered_query {
             END
             AND CASE
                 WHEN ?13 IS NULL THEN CASE WHEN ?14 THEN NOT EXISTS (
-                        SELECT 1 FROM mentor_affiliation a
-                        WHERE a.mentor_id = m.id AND a.title IS NOT NULL
+                        SELECT 1 FROM mentor_title t WHERE t.mentor_id = m.id
                     ) ELSE 1 END
                 WHEN EXISTS (
-                    SELECT 1 FROM mentor_affiliation a
-                    WHERE a.mentor_id = m.id
-                        AND a.title IN (SELECT value FROM json_each(?13))
+                    SELECT 1 FROM mentor_title t
+                    WHERE t.mentor_id = m.id
+                        AND t.title IN (SELECT value FROM json_each(?13))
                 ) THEN 1
                 WHEN ?14 THEN NOT EXISTS (
-                        SELECT 1 FROM mentor_affiliation a
-                        WHERE a.mentor_id = m.id AND a.title IS NOT NULL
+                        SELECT 1 FROM mentor_title t WHERE t.mentor_id = m.id
                     )
                 ELSE 0
             END
@@ -346,6 +346,18 @@ macro_rules! filtered_query {
             AND (?2 IS NULL OR m.id IN (
                 SELECT rowid FROM mentor_search WHERE mentor_search MATCH ?2
             ))
+            AND CASE ?18
+                WHEN 'email' THEN m.id NOT IN (SELECT mentor_id FROM mentor_email)
+                WHEN 'research' THEN m.id IN (
+                    SELECT mentor_id FROM mentor_detail WHERE research IS NULL
+                )
+                WHEN 'papers' THEN m.id IN (
+                    SELECT mentor_id FROM mentor_detail
+                    WHERE coalesce(json_array_length(papers), 0) = 0
+                )
+                WHEN 'homepage' THEN m.id NOT IN (SELECT mentor_id FROM mentor_homepage)
+                ELSE 1
+            END
             "# + $tail,
             filter.status,
             keyword,
@@ -364,12 +376,14 @@ macro_rules! filtered_query {
             tags,
             untagged,
             filter.opened,
+            filter.missing,
             $($page,)*
         )
         .$fetch($conn)
         .await
     }};
 }
+pub(crate) use filtered_query;
 
 /// One page of the home list.
 ///
@@ -399,7 +413,8 @@ pub async fn list(
         &mut *tx,
         &query.filter,
         now,
-        r#"SELECT count(*) AS "n!: i64""#,
+        query_scalar(),
+        r#"SELECT count(*) AS "n!: i64" FROM mentor m"#,
         "",
         fetch_one,
     )?;
@@ -410,7 +425,7 @@ pub async fn list(
 }
 
 /// Each order is its own literal query, so that each pages along its index.
-async fn filtered_ids(
+pub(crate) async fn filtered_ids(
     conn: &mut SqliteConnection,
     filter: &filters::MentorFilter,
     sort: MentorSort,
@@ -423,9 +438,10 @@ async fn filtered_ids(
             conn,
             filter,
             now,
-            "SELECT m.id",
+            query_scalar(),
+            "SELECT m.id FROM mentor m",
             r#"ORDER BY m.id DESC
-            LIMIT ?18 OFFSET ?19"#,
+            LIMIT ?19 OFFSET ?20"#,
             fetch_all,
             limit,
             skip,
@@ -434,9 +450,10 @@ async fn filtered_ids(
             conn,
             filter,
             now,
-            "SELECT m.id",
+            query_scalar(),
+            "SELECT m.id FROM mentor m",
             r#"ORDER BY m.match_score DESC, m.id
-            LIMIT ?18 OFFSET ?19"#,
+            LIMIT ?19 OFFSET ?20"#,
             fetch_all,
             limit,
             skip,
@@ -1268,7 +1285,38 @@ pub async fn index_missing(db: &SqlitePool) -> Result<u64, sqlx::Error> {
     }
 }
 
-/// Writes the mentor's keyword index entry, replacing any earlier one. The note is read as saved.
+/// The parts of a title such as "教授，博士生导师" or "教授 博导", which the title filter lists one
+/// by one (docs/data-model.md#导师). A space parts them only beside a Chinese character, keeping
+/// "Associate Professor" and "Professeur associé" whole.
+pub fn title_parts(title: &str) -> Vec<String> {
+    let chinese = |c: char| {
+        matches!(
+            u32::from(c),
+            0x3400..=0x4dbf | 0x4e00..=0x9fff | 0xf900..=0xfaff | 0x20000..=0x323af
+        )
+    };
+    let mut parts = Vec::new();
+    for piece in title.split(['、', '，', ',', '/', '／', '|', '｜', '；', ';']) {
+        let mut part = String::new();
+        for word in piece.split_whitespace() {
+            if !part.is_empty() {
+                if part.ends_with(chinese) || word.starts_with(chinese) {
+                    parts.push(std::mem::take(&mut part));
+                } else {
+                    part.push(' ');
+                }
+            }
+            part.push_str(word);
+        }
+        if !part.is_empty() {
+            parts.push(part);
+        }
+    }
+    parts
+}
+
+/// Writes the mentor's keyword index entry and title parts, replacing any earlier ones. The note
+/// is read as saved.
 async fn index(
     tx: &mut SqliteConnection,
     id: i64,
@@ -1308,6 +1356,24 @@ async fn index(
         .flat_map(words);
     let body = search_text(texts.chain(mentor.emails.iter().map(|e| address(e))));
     let name = name_chars(&names);
+    sqlx::query!("DELETE FROM mentor_title WHERE mentor_id = ?", id)
+        .execute(&mut *tx)
+        .await?;
+    for title in mentor
+        .affiliations
+        .iter()
+        .filter_map(|a| a.title.as_deref())
+    {
+        for part in title_parts(title) {
+            sqlx::query!(
+                "INSERT OR IGNORE INTO mentor_title (mentor_id, title) VALUES (?, ?)",
+                id,
+                part
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
     sqlx::query!("DELETE FROM mentor_search WHERE rowid = ?", id)
         .execute(&mut *tx)
         .await?;

@@ -85,7 +85,18 @@ async fn list_and_export_validate_filters_at_the_boundary(db: SqlitePool) {
         let rows = sheet::read("mentors.csv", &bytes).unwrap();
         assert_eq!(rows[0].rows[1][0], "甲");
     }
-    let options = call(&ctx, "mentorFilterOptions", json!({})).await.unwrap();
-    assert_eq!(options["universities"]["values"][0]["value"], "A");
-    assert_eq!(options["untagged"], 1);
+    let values = call(&ctx, "mentorFilterValues", json!({"field": "university"}))
+        .await
+        .unwrap();
+    assert_eq!(values["values"][0]["value"], "A");
+    let blank = json!({"field": "school", "titles": [" "]});
+    assert!(matches!(
+        call(&ctx, "mentorFilterValues", blank)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::Invalid
+    ));
+    let tags = call(&ctx, "mentorFilterTags", json!({})).await.unwrap();
+    assert_eq!(tags["untagged"], 1);
 }

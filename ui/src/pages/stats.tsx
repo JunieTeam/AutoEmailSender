@@ -8,6 +8,7 @@ import type { ContactProgress, MentorOverview, Range, Trend, TokenUsage, UsagePu
 import { BarChart, Legend, type Point, type Series } from "@/components/bar-chart";
 import { Pager } from "@/components/mentor-table";
 import { findSearch } from "@/pages/find";
+import { mentorSearch } from "@/pages/mentors";
 import { Segments } from "@/components/ui/segments";
 import { Loading } from "@/components/loading";
 
@@ -337,12 +338,26 @@ function Mentors({ overview: o }: { overview: MentorOverview }) {
       <div>
         <h3 className="mb-4 font-medium">资料完整度</h3>
         <Bars
-          rows={[
-            { label: "有邮箱", value: o.email },
-            { label: "有研究方向", value: o.research },
-            { label: "有代表论文", value: o.papers },
-            { label: "有主页", value: o.homepage },
-          ]}
+          rows={(
+            [
+              ["有邮箱", o.email, "email"],
+              ["有研究方向", o.research, "research"],
+              ["有代表论文", o.papers, "papers"],
+              ["有主页", o.homepage, "homepage"],
+            ] as const
+          ).map(([label, value, missing]) => ({
+            label,
+            value,
+            after: value < o.total && (
+              <Link
+                to="/mentors"
+                search={mentorSearch({ missing })}
+                className="text-brand-text tabular-nums hover:underline"
+              >
+                缺 {o.total - value} 位
+              </Link>
+            ),
+          }))}
           max={o.total}
           unit="位"
           share
@@ -360,15 +375,23 @@ function Bars({
   max = Math.max(1, ...rows.map((r) => r.value)),
   share = false,
 }: {
-  rows: { label: string; value: number }[];
+  /** `after` follows the count, as a link to the mentors behind it. */
+  rows: { label: string; value: number; after?: React.ReactNode }[];
   unit: string;
   max?: number;
   share?: boolean;
 }) {
+  const after = rows.some((r) => r.after);
   return (
     <ul className="space-y-3 text-sm">
       {rows.map((r) => (
-        <li key={r.label} className="grid grid-cols-[minmax(4.5rem,8rem)_1fr_auto] items-center gap-3">
+        <li
+          key={r.label}
+          className={cn(
+            "grid items-center gap-3",
+            after ? "grid-cols-[minmax(4.5rem,8rem)_1fr_auto_4.5rem]" : "grid-cols-[minmax(4.5rem,8rem)_1fr_auto]",
+          )}
+        >
           <span className="truncate text-muted-foreground" title={r.label}>
             {r.label}
           </span>
@@ -381,6 +404,7 @@ function Bars({
           <span className="w-16 text-right tabular-nums">
             {share ? `${Math.round((r.value / max) * 100)}%` : `${r.value} ${unit}`}
           </span>
+          {after && <span>{r.after}</span>}
         </li>
       ))}
     </ul>

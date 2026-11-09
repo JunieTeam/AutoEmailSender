@@ -839,9 +839,16 @@ operations! {
             import_mentors(ImportMentors) -> mentor::import::Imported;
         /// 按筛选、排序和分页条件读取导师列表。
         "listMentors" [none] => list_mentors(mentor::MentorQuery) -> mentor::MentorPage;
-        /// 读取导师筛选可用的学校、院系和标签等选项。
+        /// 读取导师筛选里哪些选项能用：有没有追踪过打开情况的信。
         "mentorFilterOptions" [none] => mentor_filter_options(Nothing)
             -> mentor::filters::MentorFilterOptions;
+        /// 读取一项单位筛选（学校、学院、系所或职称）可选的值：按其余筛选条件筛出的导师里，
+        /// 各值有几位，没填这一项的有几位。职称按拆开的每一项算。
+        "mentorFilterValues" [none] => mentor_filter_values(FilterValuesQuery)
+            -> mentor::filters::FilterValues;
+        /// 读取标签筛选可选的标签：按其余筛选条件筛出的导师里，各标签有几位，没有标签的有几位。
+        "mentorFilterTags" [none] => mentor_filter_tags(mentor::filters::MentorFilter)
+            -> mentor::filters::FilterTags;
         /// 读取指定 id 的导师完整资料。
         "getMentor" [none] => get_mentor(MentorId) -> mentor::MentorDetail;
         /// 保存指定导师的备注，返回存下的备注；只有空白时清空备注，返回 null。
@@ -1253,6 +1260,31 @@ async fn mentor_filter_options(
     _: Nothing,
 ) -> Result<mentor::filters::MentorFilterOptions, CallError> {
     Ok(mentor::filters::options(&ctx.db).await?)
+}
+
+#[derive(Debug, Deserialize, TS)]
+pub struct FilterValuesQuery {
+    pub field: mentor::filters::AffiliationField,
+    /// The filters on show; this field's own is left out.
+    #[serde(flatten)]
+    #[ts(flatten)]
+    pub filter: mentor::filters::MentorFilter,
+}
+
+async fn mentor_filter_values(
+    ctx: &Context,
+    mut input: FilterValuesQuery,
+) -> Result<mentor::filters::FilterValues, CallError> {
+    input.filter.check().map_err(CallError::invalid)?;
+    Ok(mentor::filters::values(&ctx.db, input.field, &input.filter, now()).await?)
+}
+
+async fn mentor_filter_tags(
+    ctx: &Context,
+    mut filter: mentor::filters::MentorFilter,
+) -> Result<mentor::filters::FilterTags, CallError> {
+    filter.check().map_err(CallError::invalid)?;
+    Ok(mentor::filters::tags(&ctx.db, &filter, now()).await?)
 }
 
 async fn get_mentor(ctx: &Context, input: MentorId) -> Result<mentor::MentorDetail, CallError> {

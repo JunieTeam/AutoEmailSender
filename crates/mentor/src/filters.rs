@@ -8,14 +8,25 @@ use ts_rs::TS;
 
 use crate::{ContactStatus, ReplyOutcomeFilter};
 
-#[derive(Debug, Clone, Copy, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum MatchFilter {
     AtLeast { score: u8 },
     Unanalyzed,
 }
 
-#[derive(Debug, Clone, Default, Deserialize, TS)]
+/// Something a mentor's profile lacks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS, sqlx::Type)]
+#[serde(rename_all = "snake_case")]
+#[sqlx(rename_all = "snake_case")]
+pub enum Missing {
+    Email,
+    Research,
+    Papers,
+    Homepage,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct MentorFilter {
     #[ts(optional)]
@@ -45,6 +56,9 @@ pub struct MentorFilter {
     /// None selects mentors with no tags.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<Option<i64>>,
+    /// Mentors without this.
+    #[ts(optional)]
+    pub missing: Option<Missing>,
 }
 
 impl MentorFilter {
@@ -104,123 +118,161 @@ pub struct FilterTag {
     pub count: i64,
 }
 
-#[derive(Debug, Default, Serialize, TS)]
-pub struct MentorFilterOptions {
-    pub universities: FilterValues,
-    pub schools: FilterValues,
-    pub departments: FilterValues,
-    pub titles: FilterValues,
+#[derive(Debug, Serialize, TS)]
+pub struct FilterTags {
     pub tags: Vec<FilterTag>,
     pub untagged: i64,
+}
+
+/// A menu of the values affiliations have.
+#[derive(Debug, Clone, Copy, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum AffiliationField {
+    University,
+    School,
+    Department,
+    /// Titles in their parts.
+    Title,
+}
+
+struct Counted {
+    value: Option<String>,
+    count: i64,
+}
+
+struct Tagged {
+    id: Option<i64>,
+    name: Option<String>,
+    count: i64,
+}
+
+/// The values of one field among the mentors the other filters leave, with how many of them have
+/// each and how many have none: what choosing a value would leave (docs/ui.md#交互).
+pub async fn values(
+    db: &SqlitePool,
+    field: AffiliationField,
+    filter: &MentorFilter,
+    now: i64,
+) -> Result<FilterValues, sqlx::Error> {
+    let mut others = filter.clone();
+    match field {
+        AffiliationField::University => others.universities.clear(),
+        AffiliationField::School => others.schools.clear(),
+        AffiliationField::Department => others.departments.clear(),
+        AffiliationField::Title => others.titles.clear(),
+    }
+    // Mentors with no value join to NULL, which so counts them. Each field is its own literal
+    // query, as SQLx checks only literals.
+    let rows = match field {
+        AffiliationField::University => crate::filtered_query!(
+            db,
+            &others,
+            now,
+            query_as(Counted),
+            r#"SELECT v.university AS "value?", count(DISTINCT m.id) AS "count!: i64"
+            FROM mentor m
+            LEFT JOIN mentor_affiliation v ON v.mentor_id = m.id AND v.university IS NOT NULL"#,
+            "GROUP BY v.university ORDER BY 2 DESC, 1",
+            fetch_all,
+        )?,
+        AffiliationField::School => crate::filtered_query!(
+            db,
+            &others,
+            now,
+            query_as(Counted),
+            r#"SELECT v.school AS "value?", count(DISTINCT m.id) AS "count!: i64"
+            FROM mentor m
+            LEFT JOIN mentor_affiliation v ON v.mentor_id = m.id AND v.school IS NOT NULL"#,
+            "GROUP BY v.school ORDER BY 2 DESC, 1",
+            fetch_all,
+        )?,
+        AffiliationField::Department => crate::filtered_query!(
+            db,
+            &others,
+            now,
+            query_as(Counted),
+            r#"SELECT v.department AS "value?", count(DISTINCT m.id) AS "count!: i64"
+            FROM mentor m
+            LEFT JOIN mentor_affiliation v ON v.mentor_id = m.id AND v.department IS NOT NULL"#,
+            "GROUP BY v.department ORDER BY 2 DESC, 1",
+            fetch_all,
+        )?,
+        AffiliationField::Title => crate::filtered_query!(
+            db,
+            &others,
+            now,
+            query_as(Counted),
+            r#"SELECT v.title AS "value?", count(*) AS "count!: i64"
+            FROM mentor m
+            LEFT JOIN mentor_title v ON v.mentor_id = m.id"#,
+            "GROUP BY v.title ORDER BY 2 DESC, 1",
+            fetch_all,
+        )?,
+    };
+    let mut values = FilterValues::default();
+    for row in rows {
+        match row.value {
+            Some(value) => values.values.push(FilterValue {
+                value,
+                count: row.count,
+            }),
+            None => values.missing = row.count,
+        }
+    }
+    Ok(values)
+}
+
+/// The tags among the mentors the other filters leave, as [`values`] does for affiliations.
+pub async fn tags(
+    db: &SqlitePool,
+    filter: &MentorFilter,
+    now: i64,
+) -> Result<FilterTags, sqlx::Error> {
+    let others = MentorFilter {
+        tags: Vec::new(),
+        ..filter.clone()
+    };
+    // Untagged mentors join to NULL, which so counts them.
+    let rows = crate::filtered_query!(
+        db,
+        &others,
+        now,
+        query_as(Tagged),
+        r#"SELECT t.id AS "id?", t.name AS "name?", count(*) AS "count!: i64"
+        FROM mentor m
+        LEFT JOIN mentor_tag mt ON mt.mentor_id = m.id
+        LEFT JOIN tag t ON t.id = mt.tag_id"#,
+        "GROUP BY t.id ORDER BY count(*) DESC, t.name",
+        fetch_all,
+    )?;
+    let mut result = FilterTags {
+        tags: Vec::new(),
+        untagged: 0,
+    };
+    for row in rows {
+        match row.id.zip(row.name) {
+            Some((id, name)) => result.tags.push(FilterTag {
+                id,
+                name,
+                count: row.count,
+            }),
+            None => result.untagged = row.count,
+        }
+    }
+    Ok(result)
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct MentorFilterOptions {
     /// Whether a letter has gone out tracked, without which filtering by opens finds no one.
     pub tracked: bool,
 }
 
-#[derive(Debug, sqlx::Type)]
-#[sqlx(rename_all = "snake_case")]
-enum AffiliationField {
-    University,
-    School,
-    Department,
-    Title,
-}
-
-/// Counts mentors rather than affiliations, using one snapshot for all menus.
 pub async fn options(db: &SqlitePool) -> Result<MentorFilterOptions, sqlx::Error> {
-    let mut tx = db.begin().await?;
-    let mut options = MentorFilterOptions::default();
-    // Grouping expanded fields needs a temporary B-tree; separate aggregates retain index order.
-    let values = sqlx::query!(
-        r#"WITH trash AS MATERIALIZED (
-            SELECT id FROM mentor WHERE trashed_at IS NOT NULL
-        ), active_count AS MATERIALIZED (
-            SELECT count(*) AS total FROM mentor WHERE trashed_at IS NULL
-        )
-        SELECT 'university' AS "field!: AffiliationField", university AS "value?",
-            count(DISTINCT mentor_id) AS "count!: i64"
-        FROM mentor_affiliation
-        WHERE university IS NOT NULL AND mentor_id NOT IN (SELECT id FROM trash)
-        GROUP BY university
-        UNION ALL
-        SELECT 'university', NULL,
-            (SELECT total FROM active_count) - count(DISTINCT mentor_id)
-        FROM mentor_affiliation
-        WHERE university IS NOT NULL AND mentor_id NOT IN (SELECT id FROM trash)
-        UNION ALL
-        SELECT 'school', school,
-            count(DISTINCT mentor_id)
-        FROM mentor_affiliation
-        WHERE school IS NOT NULL AND mentor_id NOT IN (SELECT id FROM trash)
-        GROUP BY school
-        UNION ALL
-        SELECT 'school', NULL,
-            (SELECT total FROM active_count) - count(DISTINCT mentor_id)
-        FROM mentor_affiliation
-        WHERE school IS NOT NULL AND mentor_id NOT IN (SELECT id FROM trash)
-        UNION ALL
-        SELECT 'department', department,
-            count(DISTINCT mentor_id)
-        FROM mentor_affiliation
-        WHERE department IS NOT NULL AND mentor_id NOT IN (SELECT id FROM trash)
-        GROUP BY department
-        UNION ALL
-        SELECT 'department', NULL,
-            (SELECT total FROM active_count) - count(DISTINCT mentor_id)
-        FROM mentor_affiliation
-        WHERE department IS NOT NULL AND mentor_id NOT IN (SELECT id FROM trash)
-        UNION ALL
-        SELECT 'title', title,
-            count(DISTINCT mentor_id)
-        FROM mentor_affiliation
-        WHERE title IS NOT NULL AND mentor_id NOT IN (SELECT id FROM trash)
-        GROUP BY title
-        UNION ALL
-        SELECT 'title', NULL,
-            (SELECT total FROM active_count) - count(DISTINCT mentor_id)
-        FROM mentor_affiliation
-        WHERE title IS NOT NULL AND mentor_id NOT IN (SELECT id FROM trash)
-        ORDER BY 3 DESC, 2"#,
-    )
-    .fetch_all(&mut *tx)
-    .await?;
-    for row in values {
-        let field = match row.field {
-            AffiliationField::University => &mut options.universities,
-            AffiliationField::School => &mut options.schools,
-            AffiliationField::Department => &mut options.departments,
-            AffiliationField::Title => &mut options.titles,
-        };
-        match row.value {
-            Some(value) => field.values.push(FilterValue {
-                value,
-                count: row.count,
-            }),
-            None => field.missing = row.count,
-        }
-    }
-    options.untagged = sqlx::query_scalar!(
-        r#"SELECT (SELECT count(*) FROM mentor WHERE trashed_at IS NULL)
-            - count(DISTINCT mentor_id) AS "count!: i64"
-        FROM mentor_tag
-        WHERE mentor_id NOT IN (SELECT id FROM mentor WHERE trashed_at IS NOT NULL)"#,
-    )
-    .fetch_one(&mut *tx)
-    .await?;
-    options.tags = sqlx::query_as!(
-        FilterTag,
-        r#"SELECT t.id, t.name, count(mt.mentor_id) AS "count!: i64"
-        FROM tag t
-        LEFT JOIN mentor_tag mt ON mt.tag_id = t.id
-            AND mt.mentor_id NOT IN (SELECT id FROM mentor WHERE trashed_at IS NOT NULL)
-        GROUP BY t.id
-        ORDER BY count(mt.mentor_id) DESC, t.name"#,
-    )
-    .fetch_all(&mut *tx)
-    .await?;
-    options.tracked = sqlx::query_scalar!(
+    let tracked = sqlx::query_scalar!(
         r#"SELECT EXISTS (SELECT 1 FROM email WHERE tracking_state = 'tracked') AS "tracked!: bool""#
     )
-    .fetch_one(&mut *tx)
+    .fetch_one(db)
     .await?;
-    Ok(options)
+    Ok(MentorFilterOptions { tracked })
 }

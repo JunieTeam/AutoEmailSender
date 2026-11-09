@@ -114,6 +114,8 @@ export function refreshMentors(queryClient: QueryClient) {
     ["planMatching"],
     ["listMentors"],
     ["mentorFilterOptions"],
+    ["mentorFilterValues"],
+    ["mentorFilterTags"],
     ["listTrash"],
     ["getMentor"],
     ["listCorrespondence"],

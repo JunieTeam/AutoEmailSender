@@ -30,6 +30,8 @@ export type Affiliation = { university: string | null, school: string | null, de
 
 export type AffiliationAddition = { before: Affiliation | null, added: Affiliation, };
 
+export type AffiliationField = "university" | "school" | "department" | "title";
+
 export type AgentAccess = { enabled: boolean, };
 
 export type AgentAnswer = { id: number, allow: boolean, rendered?: Array<RenderedLetter>, };
@@ -376,9 +378,37 @@ export type FilledTemplate = { subject: string, bodyMd: string, };
 
 export type FilterTag = { id: number, name: string, count: number, };
 
+export type FilterTags = { tags: Array<FilterTag>, untagged: number, };
+
 export type FilterValue = { value: string, count: number, };
 
 export type FilterValues = { values: Array<FilterValue>, missing: number, };
+
+export type FilterValuesQuery = { field: AffiliationField, status?: ContactStatus,
+/**
+ * Applied only with status = replied.
+ */
+replyOutcome?: ReplyOutcomeFilter, keyword?: string, unansweredDays?: number,
+/**
+ * Applied only with status = contacted: whether the latest letter, tracked, was opened.
+ */
+opened?: boolean,
+/**
+ * All scores when absent; an unfinished analysis can still have a previous result.
+ */
+matching?: MatchFilter,
+/**
+ * Empty lists mean no restriction; None selects mentors with no value in any affiliation.
+ */
+universities?: Array<string | null>, schools?: Array<string | null>, departments?: Array<string | null>, titles?: Array<string | null>,
+/**
+ * None selects mentors with no tags.
+ */
+tags?: Array<number | null>,
+/**
+ * Mentors without this.
+ */
+missing?: Missing, };
 
 export type Finding = { quote: string, reason: string, };
 
@@ -635,9 +665,13 @@ universities?: Array<string | null>, schools?: Array<string | null>, departments
 /**
  * None selects mentors with no tags.
  */
-tags?: Array<number | null>, };
+tags?: Array<number | null>,
+/**
+ * Mentors without this.
+ */
+missing?: Missing, };
 
-export type MentorFilterOptions = { universities: FilterValues, schools: FilterValues, departments: FilterValues, titles: FilterValues, tags: Array<FilterTag>, untagged: number,
+export type MentorFilterOptions = {
 /**
  * Whether a letter has gone out tracked, without which filtering by opens finds no one.
  */
@@ -689,7 +723,11 @@ universities?: Array<string | null>, schools?: Array<string | null>, departments
 /**
  * None selects mentors with no tags.
  */
-tags?: Array<number | null>, };
+tags?: Array<number | null>,
+/**
+ * Mentors without this.
+ */
+missing?: Missing, };
 
 export type MentorRow = { id: number, name: string,
 /**
@@ -722,6 +760,8 @@ truncated: boolean, } & ({ "kind": "reply", unread: boolean, canReply: boolean, 
 export type MessageIds = { ids: Array<number>, };
 
 export type Method = "alipay" | "wxpay";
+
+export type Missing = "email" | "research" | "papers" | "homepage";
 
 export type ModelAgreement = { id: number, provider: string, baseUrl: string | null, };
 
@@ -1375,6 +1415,8 @@ export interface Operations {
   importMentors: { input: ImportMentors; output: Imported };
   listMentors: { input: MentorQuery; output: MentorPage };
   mentorFilterOptions: { input: Nothing; output: MentorFilterOptions };
+  mentorFilterValues: { input: FilterValuesQuery; output: FilterValues };
+  mentorFilterTags: { input: MentorFilter; output: FilterTags };
   getMentor: { input: MentorId; output: MentorDetail };
   setMentorNote: { input: MentorNote; output: string | null };
   addMentor: { input: MentorForm; output: MentorId };
