@@ -161,6 +161,9 @@
 
 @layer base {
   html {
+    /* src/host.ts: the band at the top of the window where macOS draws the window's buttons, which
+       src/main.tsx sets; the phone page has none. */
+    --title-bar: 0px;
     font-family: var(--font-sans);
     font-size: var(--text-base);
     font-variant-numeric: tabular-nums;

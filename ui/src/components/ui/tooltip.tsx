@@ -1,7 +1,7 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { cn } from "cn";
 import type { ReactElement } from "react";
-import { POPUP } from "@/components/ui/popover";
+import { COLLISION_PADDING, POPUP } from "@/components/ui/popover";
 
 /**
  * A hint shown while the pointer rests on `children`, drawn like our menus rather than the system's
@@ -16,7 +16,7 @@ export function Tooltip({ content, children }: { content: string | undefined; ch
     <TooltipPrimitive.Root>
       <TooltipPrimitive.Trigger render={children} />
       <TooltipPrimitive.Portal>
-        <TooltipPrimitive.Positioner sideOffset={6} className="z-50">
+        <TooltipPrimitive.Positioner sideOffset={6} collisionPadding={COLLISION_PADDING} className="z-50">
           <TooltipPrimitive.Popup
             className={cn(POPUP, "max-w-[min(360px,var(--available-width))] px-2.5 py-1.5 text-xs wrap-anywhere")}
           >

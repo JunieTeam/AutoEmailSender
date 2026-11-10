@@ -35,7 +35,7 @@ import { LibraryUpdatesDialog } from "@/components/library";
 import { TermsUpdate, useAccount } from "@/components/account";
 import { UpdateEntry } from "@/components/update";
 import { useResume } from "@/pages/mailboxes";
-import { desktop } from "@/host";
+import { desktop, dragsWindow } from "@/host";
 import { useReceive } from "@/pages/conversations";
 
 const NAV = [
@@ -184,8 +184,11 @@ export function Shell() {
   if (failure.isPending) return null;
   if (failure.data) return <StartupFailure failure={failure.data} />;
   return (
-    <div className="flex h-dvh phone:flex-col">
-      <aside className="flex w-[228px] shrink-0 flex-col px-3 py-4 phone:hidden">
+    <div className="flex h-dvh phone:flex-col phone:pt-(--title-bar)" {...dragsWindow()}>
+      <aside
+        className="flex w-[228px] shrink-0 flex-col px-3 pt-[calc(var(--title-bar)+16px)] pb-4 phone:hidden"
+        {...dragsWindow("deep")}
+      >
         <div className="flex items-center gap-2.5 px-2 pb-5 font-semibold">
           <img src={appIcon} alt="" className="size-[30px]" />
           Auto Email Sender

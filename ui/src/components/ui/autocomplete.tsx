@@ -2,7 +2,7 @@ import { Autocomplete as AutocompletePrimitive } from "@base-ui/react/autocomple
 import { cn } from "cn";
 import type { ComponentProps } from "react";
 import { FIELD } from "@/components/ui/input";
-import { FIT, LIST, OPTION, POPUP } from "@/components/ui/popover";
+import { COLLISION_PADDING, FIT, LIST, OPTION, POPUP } from "@/components/ui/popover";
 
 /**
  * A text field suggesting values that match what is typed, in a list of our own (docs/ui.md#控件);
@@ -23,7 +23,12 @@ export function Autocomplete({
     <AutocompletePrimitive.Root items={items} value={value} onValueChange={(v) => onValueChange(v)} openOnInputClick>
       <AutocompletePrimitive.Input className={cn("h-10", FIELD, className)} {...input} />
       <AutocompletePrimitive.Portal>
-        <AutocompletePrimitive.Positioner align="start" sideOffset={6} className="z-50 data-empty:hidden">
+        <AutocompletePrimitive.Positioner
+          align="start"
+          sideOffset={6}
+          collisionPadding={COLLISION_PADDING}
+          className="z-50 data-empty:hidden"
+        >
           <AutocompletePrimitive.Popup className={cn(FIT, POPUP, "p-0")}>
             <AutocompletePrimitive.List className={LIST}>
               {(item: string) => (

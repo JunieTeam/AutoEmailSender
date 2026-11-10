@@ -3,7 +3,7 @@ import { cn } from "cn";
 import { ChevronDownIcon } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 import { FIELD } from "@/components/ui/input";
-import { FIT, LIST, OPTION, POPUP } from "@/components/ui/popover";
+import { COLLISION_PADDING, FIT, LIST, OPTION, POPUP } from "@/components/ui/popover";
 
 /** The choices, each a value and how it is shown. */
 export type Options<T> = readonly (readonly [T, ReactNode])[];
@@ -38,7 +38,13 @@ export function SelectRoot<T>({
     >
       {children}
       <SelectPrimitive.Portal>
-        <SelectPrimitive.Positioner alignItemWithTrigger={false} align="start" sideOffset={6} className="z-50">
+        <SelectPrimitive.Positioner
+          alignItemWithTrigger={false}
+          align="start"
+          sideOffset={6}
+          collisionPadding={COLLISION_PADDING}
+          className="z-50"
+        >
           <SelectPrimitive.Popup className={cn(FIT, POPUP, "p-0")}>
             <SelectPrimitive.List className={LIST}>
               {options.map(([, label], i) => (

@@ -19,7 +19,7 @@ function DialogContent({ className, children, ...props }: DialogPrimitive.Popup.
         <DialogPrimitive.Popup
           data-slot="dialog-content"
           className={cn(
-            "flex max-h-[calc(100dvh-3rem)] min-h-0 w-[660px] max-w-full min-w-0 flex-col rounded-xl bg-background shadow-pop transition-[opacity,scale,translate] duration-180 ease-out outline-none data-ending-style:scale-96 data-ending-style:opacity-0 data-ending-style:duration-120 data-ending-style:ease-in data-starting-style:scale-96 data-starting-style:opacity-0 phone:h-full phone:max-h-dvh phone:w-full phone:rounded-none phone:data-ending-style:translate-y-full phone:data-ending-style:scale-100 phone:data-starting-style:translate-y-full phone:data-starting-style:scale-100",
+            "flex max-h-[calc(100dvh-3rem)] min-h-0 w-[660px] max-w-full min-w-0 flex-col rounded-xl bg-background shadow-pop transition-[opacity,scale,translate] duration-180 ease-out outline-none data-ending-style:scale-96 data-ending-style:opacity-0 data-ending-style:duration-120 data-ending-style:ease-in data-starting-style:scale-96 data-starting-style:opacity-0 phone:h-full phone:max-h-dvh phone:w-full phone:rounded-none phone:pt-(--title-bar) phone:data-ending-style:translate-y-full phone:data-ending-style:scale-100 phone:data-starting-style:translate-y-full phone:data-starting-style:scale-100",
             className,
           )}
           {...props}
