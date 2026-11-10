@@ -939,26 +939,18 @@ async fn describe(
         }
         "agreeModel" => {
             let input: crate::ModelAgreement = parse(input)?;
+            let source = input.source()?;
             let model = model_target(conn, input.id).await?;
-            let (provider, address) = if input.provider == model::providers::CUSTOM {
-                (
-                    "自定义模型服务".to_owned(),
-                    input.base_url.unwrap_or_else(|| "未填写服务地址".into()),
-                )
-            } else {
-                let found = model::providers::find(&input.provider)
-                    .and_then(|p| Some((p, p.endpoint(input.region.as_deref())?)));
-                match found {
-                    // Named with its region, as the settings show it.
-                    Some((p, e)) => (
-                        match e.region {
-                            Some(region) => format!("{}{}地域", p.name, region.name),
-                            None => p.name.to_owned(),
-                        },
-                        e.base_url.into(),
-                    ),
-                    None => ("找不到的模型服务商或地域".to_owned(), input.provider),
-                }
+            let (provider, address) = match &source {
+                // Named with its region, as the settings show it.
+                model::Source::Known(p, e) => (
+                    match e.region {
+                        Some(region) => format!("{}{}地域", p.name, region.name),
+                        None => p.name.to_owned(),
+                    },
+                    e.base_url,
+                ),
+                model::Source::Custom(url) => ("自定义模型服务".to_owned(), url.as_str()),
             };
             object(
                 "同意把数据发给这个模型服务",

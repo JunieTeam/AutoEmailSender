@@ -75,13 +75,10 @@ async fn model(db: &SqlitePool, address: &str, agreed: bool) {
         base_url: address.into(),
         model: "m".into(),
     };
-    let id = model::create(db, &form.check().unwrap(), "", T)
-        .await
-        .unwrap();
+    let fields = form.check().unwrap();
+    let id = model::create(db, &fields, "", T).await.unwrap();
     if agreed {
-        model::agree(db, id, "custom", None, Some(address))
-            .await
-            .unwrap();
+        model::agree(db, id, &fields.source).await.unwrap();
     }
 }
 
@@ -124,7 +121,7 @@ async fn follow_up_uses_prior_letters_without_private_mentor_fields(db: SqlitePo
         &Net::new(Vec::new()).unwrap(),
         &prepared,
         &blank(),
-        |purpose, usage| model::usage::record_for_email(&db, &chosen, purpose, None, usage, T),
+        |purpose, usage, _| model::usage::record_for_email(&db, &chosen, purpose, None, usage, T),
     )
     .await
     .unwrap();
@@ -379,7 +376,7 @@ async fn current_write(
         },
     )
     .await?;
-    writing::write(net, &prepared, current, |purpose, usage| {
+    writing::write(net, &prepared, current, |purpose, usage, _| {
         model::usage::record_for_email(db, &chosen, purpose, None, usage, now)
     })
     .await
@@ -401,7 +398,7 @@ async fn check(
         chosen,
         references,
         || async { Ok(true) },
-        |usage| {
+        |usage, _| {
             model::usage::record_for_email(
                 db,
                 chosen,
@@ -532,7 +529,7 @@ async fn reply_drafts_and_rewrites_use_the_fixed_target_and_record_their_purpose
         )
         .await
         .unwrap();
-        let answer = writing::write(&net, &prepared, letter, |purpose, usage| {
+        let answer = writing::write(&net, &prepared, letter, |purpose, usage, _| {
             model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
         })
         .await
@@ -618,7 +615,7 @@ async fn reply_context_stops_at_twenty_letters_and_ten_thousand_characters(db: S
         )
         .await
         .unwrap();
-        writing::write(&net, &prepared, &blank(), |purpose, usage| {
+        writing::write(&net, &prepared, &blank(), |purpose, usage, _| {
             model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
         })
         .await

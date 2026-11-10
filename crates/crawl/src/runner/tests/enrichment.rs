@@ -609,9 +609,13 @@ async fn enrichment_waiting_for_quota_rechecks_default_deletion_edits_and_consen
         } else {
             &new.address
         };
-        model::agree(&db, selected.id, "custom", None, Some(address))
-            .await
-            .unwrap();
+        model::agree(
+            &db,
+            selected.id,
+            &model::Source::check("custom", None, address).unwrap(),
+        )
+        .await
+        .unwrap();
         queue::control(&db, crawl, "resume", 3).await.unwrap();
         let c = queue::next(&db).await.unwrap().unwrap();
         let provider = if mode == "consent" {

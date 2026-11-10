@@ -100,9 +100,7 @@ async fn setup(db: &SqlitePool, address: &str, n: usize) -> Vec<i64> {
     .check()
     .unwrap();
     let config = model::create(db, &fields, "", 1).await.unwrap();
-    model::agree(db, config, "custom", None, Some(address))
-        .await
-        .unwrap();
+    model::agree(db, config, &fields.source).await.unwrap();
     profile::update(
         db,
         &profile::ProfileForm {
@@ -640,9 +638,7 @@ async fn startup_recovers_running_concurrency_is_three_and_pause_stops_claiming(
     .check()
     .unwrap();
     let config = model::create(&db, &fields, "", 20).await.unwrap();
-    model::agree(&db, config, "custom", None, Some(&p.address))
-        .await
-        .unwrap();
+    model::agree(&db, config, &fields.source).await.unwrap();
     profile::set_default_model(&db, config).await.unwrap();
     queue::resume(&db).await.unwrap();
     runner.matcher.restart();
@@ -897,11 +893,7 @@ async fn old_endpoint_error_does_not_pause_the_reconfirmed_configuration(db: Sql
     .unwrap();
     assert!(model::update(&db, config.id, &fields, "").await.unwrap());
     assert!(!model::chosen(&db).await.unwrap().unwrap().agreed);
-    assert!(
-        model::agree(&db, config.id, "custom", None, Some(&new_provider.address))
-            .await
-            .unwrap()
-    );
+    assert!(model::agree(&db, config.id, &fields.source).await.unwrap());
     while runner.changes.try_recv().is_ok() {}
     old.respond
         .send(Response::Refused {

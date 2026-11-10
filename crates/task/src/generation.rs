@@ -140,9 +140,8 @@ async fn generate(
                 body_md: String::new(),
             },
         };
-        let at = now();
         note_sent();
-        writing::write(net, &input, &current, |purpose, usage| {
+        writing::write(net, &input, &current, |purpose, usage, at| {
             let chosen = &chosen;
             async move {
                 writes
@@ -176,7 +175,6 @@ async fn generate(
                 }
                 match model::selected(db, t.model_config_id).await? {
                     Some(check_config) => {
-                        let at = now();
                         note_sent();
                         let result = writing::fact_check::check(
                             db,
@@ -191,7 +189,7 @@ async fn generate(
                                 note_sent();
                                 Ok(go_on)
                             },
-                            |usage| {
+                            |usage, at| {
                                 let chosen = &check_config;
                                 async move {
                                     writes

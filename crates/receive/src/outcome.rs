@@ -140,7 +140,6 @@ async fn analyze(
             "reply processing model answered"
         );
         if let Some(usage) = answer.usage {
-            let at = now();
             writes
                 .retry("record reply processing usage", || {
                     model::usage::record_for_email(
@@ -153,7 +152,7 @@ async fn analyze(
                         },
                         email_id,
                         usage,
-                        at,
+                        answer.sent_at,
                     )
                 })
                 .await;

@@ -87,7 +87,7 @@ pub async fn check<G, F>(
     chosen: &model::Chosen,
     references: &[material::Reference],
     go_on: impl Fn() -> G,
-    record_usage: impl Fn(model::usage::Usage) -> F,
+    record_usage: impl Fn(model::usage::Usage, i64) -> F,
 ) -> Result<Option<Vec<Finding>>, Error>
 where
     G: Future<Output = Result<bool, sqlx::Error>>,
@@ -113,7 +113,8 @@ where
             "the model checked the letter"
         );
         if let Some(usage) = answer.usage {
-            record_usage(usage).await?;
+            // Each call by the time it was sent: one may be retried past an hour charged otherwise.
+            record_usage(usage, answer.sent_at).await?;
         }
         if answer.finish_reason == Some(model::Finish::Length) {
             return Err(Error::InvalidAnswer);

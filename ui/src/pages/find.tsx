@@ -40,7 +40,7 @@ import { Segments } from "@/components/ui/segments";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PillSelect } from "@/components/ui/pill";
-import { costAt, costEstimate, day, hoursNote, time, UNITS } from "@/format";
+import { costAt, costEstimate, day, hoursNote, money, time, UNITS } from "@/format";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { desktop } from "@/host";
 import { useKeptScroll } from "@/kept-scroll";
@@ -798,13 +798,19 @@ export function EnrichMentorsDialog({ ids, onClose }: { ids: number[]; onClose: 
     </EnrichDialog>
   );
 }
-/** Once started, `children` tells how it went in place of the plan, which then no longer holds. */
+
 /** "约 0.12～0.48 元": each mentor reads one to four pages, each about 4000 tokens in and 1000 out. */
 function costRange(rate: ModelRate, mentors: number) {
   const least = costAt(rate, 4000 * mentors, 1000 * mentors);
-  return `约 ${least.toFixed(2)}～${(least * 4).toFixed(2)} ${UNITS[rate.currency]}${hoursNote(rate)}`;
+  const most = least * 4;
+  const unit = UNITS[rate.currency];
+  // As in money(), what costs less than 0.01 never reads 0.00: then only the most it may come to.
+  let range = `约 ${least.toFixed(2)}～${most.toFixed(2)} ${unit}`;
+  if (least > 0 && least < 0.01) range = most < 0.01 ? money(most, rate.currency) : `最多约 ${most.toFixed(2)} ${unit}`;
+  return range + hoursNote(rate);
 }
 
+/** Once started, `children` tells how it went in place of the plan, which then no longer holds. */
 function EnrichDialog({
   title,
   preview,

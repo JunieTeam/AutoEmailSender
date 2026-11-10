@@ -418,7 +418,7 @@ impl Reader<'_> {
                             self.chosen,
                             self.claim.crawl,
                             usage,
-                            now(),
+                            answer.sent_at,
                         )
                     })
                     .await;

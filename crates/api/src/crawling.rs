@@ -369,9 +369,13 @@ mod tests {
                 .ids,
             vec![id]
         );
-        model::agree(&db, default, "custom", None, Some("http://127.0.0.1:2"))
-            .await
-            .unwrap();
+        model::agree(
+            &db,
+            default,
+            &model::Source::check("custom", None, "http://127.0.0.1:2").unwrap(),
+        )
+        .await
+        .unwrap();
         assert_eq!(
             enrich_candidates(&ctx, CandidateIds { ids: vec![id] })
                 .await

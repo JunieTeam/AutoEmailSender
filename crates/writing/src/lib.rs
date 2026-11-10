@@ -109,12 +109,13 @@ pub async fn prepare<'a>(
 
 /// Drafts a letter when `current` is blank, and otherwise rewrites it using the same inputs that
 /// filled its template.
-/// The caller controls usage persistence so background retries keep the answer in memory.
+/// The caller controls usage persistence so background retries keep the answer in memory; it is
+/// given the time the request was sent (`model::Answer::sent_at`).
 pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
     net: &net::Net,
     input: &Prepared<'_>,
     current: &Letter,
-    record_usage: impl Fn(Purpose, model::usage::Usage) -> F,
+    record_usage: impl Fn(Purpose, model::usage::Usage, i64) -> F,
 ) -> Result<Letter, Error> {
     let Prepared {
         mentor,
@@ -148,7 +149,7 @@ pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
         } else {
             Purpose::Rewrite
         };
-        record_usage(purpose, usage).await?;
+        record_usage(purpose, usage, answer.sent_at).await?;
     }
     let finish_reason = answer.finish_reason;
     if answer.text.trim().is_empty() {

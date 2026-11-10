@@ -112,8 +112,8 @@ pub struct KnownModel {
     pub json_mode: bool,
 }
 
-/// How a model is told to think as little as it can. Not sending it, many think as hard as they
-/// may, slow and costly.
+/// How a model is told to think as little as it can: left to their defaults, most think first,
+/// which takes longer and costs output tokens.
 #[derive(Debug, Clone, Copy)]
 pub enum Thinking {
     /// `"thinking": {"type": "disabled"}`
@@ -319,7 +319,7 @@ pub static PROVIDERS: &[Provider] = &[
         endpoints: &[Endpoint {
             region: None,
             base_url: "https://ark.cn-beijing.volces.com/api/v3",
-            key_url: "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
+            key_url: "https://ark.volcengine.com/region:cn-beijing/apiKey",
         }],
         currency: Currency::Cny,
         peak_hours: None,
@@ -351,7 +351,7 @@ pub static PROVIDERS: &[Provider] = &[
         endpoints: &[Endpoint {
             region: None,
             base_url: "https://api.moonshot.cn/v1",
-            key_url: "https://platform.moonshot.cn/console/api-keys",
+            key_url: "https://platform.kimi.com/console/api-keys",
         }],
         currency: Currency::Cny,
         peak_hours: None,
@@ -472,7 +472,8 @@ pub static PROVIDERS: &[Provider] = &[
                 name: "gemini-3.8-flash",
                 prices: Prices::official(1.5, Some(0.15), 7.5),
                 off_peak: None,
-                thinking: Some(Thinking::Effort("minimal")),
+                // Its thinking levels start at low: it has no minimal.
+                thinking: Some(Thinking::Effort("low")),
                 json_mode: false,
             },
             KnownModel {

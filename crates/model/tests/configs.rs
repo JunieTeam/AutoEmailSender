@@ -77,13 +77,10 @@ async fn what_the_user_agreed_to_holds_only_for_the_same_provider(db: SqlitePool
     assert!(!agreed().await);
 
     // Not to a provider the user was not told about.
-    assert!(
-        !model::agree(&db, id, "custom", None, Some("https://api.example.com/v1"))
-            .await
-            .unwrap()
-    );
+    let custom = Source::check("custom", None, "https://api.example.com/v1").unwrap();
+    assert!(!model::agree(&db, id, &custom).await.unwrap());
     assert!(!agreed().await);
-    assert!(model::agree(&db, id, "deepseek", None, None).await.unwrap());
+    assert!(model::agree(&db, id, &deepseek.source).await.unwrap());
     assert!(agreed().await);
     // Another model of the same provider was agreed to as well.
     let mut renamed = form("deepseek", "");
@@ -183,14 +180,11 @@ async fn missing_key_is_distinct_from_a_keyless_model_and_pauses_background_work
 async fn agreement_and_key_hold_only_in_the_same_region(db: SqlitePool) {
     let fields = form("qwen", "").check().unwrap();
     let id = model::create(&db, &fields, "sk-beijing", 0).await.unwrap();
-    // Left out, the region is the first.
+    // Left out, the region is the first, for the agreement as well.
     let configs = model::list(&db, 0).await.unwrap();
     assert_eq!(configs[0].region.as_deref(), Some("cn-beijing"));
-    assert!(
-        model::agree(&db, id, "qwen", Some("cn-beijing"), None)
-            .await
-            .unwrap()
-    );
+    let beijing = Source::check("qwen", None, "").unwrap();
+    assert!(model::agree(&db, id, &beijing).await.unwrap());
 
     let singapore = Source::check("qwen", Some("ap-southeast-1"), "").unwrap();
     assert_eq!(
@@ -204,6 +198,8 @@ async fn agreement_and_key_hold_only_in_the_same_region(db: SqlitePool) {
         .await
         .unwrap();
     assert!(!model::chosen(&db).await.unwrap().unwrap().agreed);
+    assert!(!model::agree(&db, id, &beijing).await.unwrap());
+    assert!(model::agree(&db, id, &singapore).await.unwrap());
     assert!(Source::check("qwen", Some("eu-central-1"), "").is_err());
 }
 

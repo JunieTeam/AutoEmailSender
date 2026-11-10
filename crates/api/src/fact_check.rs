@@ -63,7 +63,6 @@ pub async fn fact_check_email(
         } else {
             row.subject.unwrap_or_default()
         };
-        let at = now();
         let findings = writing::fact_check::check(
             &ctx.db,
             &ctx.net,
@@ -78,7 +77,7 @@ pub async fn fact_check_email(
                 Ok(profile::ai_fact_check(&ctx.db).await?
                     && email::fact_check::wanted(&ctx.db, id, claim).await?)
             },
-            |usage| {
+            |usage, at| {
                 model::usage::record_for_email(
                     &ctx.db,
                     &chosen,

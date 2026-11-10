@@ -1943,9 +1943,21 @@ pub struct ModelAgreement {
     pub base_url: Option<String>,
 }
 
+impl ModelAgreement {
+    /// Where this is agreed to send, read as a configuration's source is: the confirmation names
+    /// the same place the agreement holds for.
+    pub(crate) fn source(&self) -> Result<model::Source, CallError> {
+        model::Source::check(
+            &self.provider,
+            self.region.as_deref(),
+            self.base_url.as_deref().unwrap_or_default(),
+        )
+        .map_err(CallError::invalid)
+    }
+}
+
 async fn agree_model(ctx: &Context, input: ModelAgreement) -> Result<(), CallError> {
-    let (region, base_url) = (input.region.as_deref(), input.base_url.as_deref());
-    let applied = model::agree(&ctx.db, input.id, &input.provider, region, base_url).await?;
+    let applied = model::agree(&ctx.db, input.id, &input.source()?).await?;
     require_applied(
         applied,
         "这个模型配置刚被修改或删除。请查看新的说明后再确认。",
@@ -2396,7 +2408,6 @@ async fn write_letter(
         subject: input.subject,
         body_md: input.body_md,
     };
-    let at = now();
     let chosen = model::chosen(&ctx.db)
         .await?
         .ok_or(writing::Error::NoModel)?;
@@ -2416,7 +2427,7 @@ async fn write_letter(
         .await?
         .map(|draft| draft.id);
     turn.send()?;
-    writing::write(&ctx.net, &prepared, &current, |purpose, usage| {
+    writing::write(&ctx.net, &prepared, &current, |purpose, usage, at| {
         model::usage::record_for_email(&ctx.db, &chosen, purpose, email_id, usage, at)
     })
     .await
@@ -2810,7 +2821,6 @@ async fn write_follow_up(
     let email_id = email::follow_up::draft(&ctx.db, input.mentor_id)
         .await?
         .map(|draft| draft.id);
-    let at = now();
     turn.send()?;
     writing::write(
         &ctx.net,
@@ -2819,7 +2829,7 @@ async fn write_follow_up(
             subject: String::new(),
             body_md: input.body_md,
         },
-        |purpose, usage| {
+        |purpose, usage, at| {
             model::usage::record_for_email(&ctx.db, &chosen, purpose, email_id, usage, at)
         },
     )
@@ -2867,7 +2877,6 @@ async fn write_reply(
         .await?
         .filter(|draft| draft.reply_to == input.reply_to)
         .map(|draft| draft.id);
-    let at = now();
     turn.send()?;
     writing::write(
         &ctx.net,
@@ -2876,7 +2885,7 @@ async fn write_reply(
             subject: String::new(),
             body_md: input.body_md,
         },
-        |purpose, usage| {
+        |purpose, usage, at| {
             model::usage::record_for_email(&ctx.db, &chosen, purpose, email_id, usage, at)
         },
     )
@@ -3340,11 +3349,7 @@ mod writing_tests {
         .check()
         .unwrap();
         let id = model::create(&ctx.db, &fields, "", 0).await.unwrap();
-        assert!(
-            model::agree(&ctx.db, id, "custom", None, Some(&address))
-                .await
-                .unwrap()
-        );
+        assert!(model::agree(&ctx.db, id, &fields.source).await.unwrap());
         let mut permits = Vec::new();
         for _ in 0..model::background::CONCURRENCY {
             permits.push(ctx.model_limit.acquire().await);
@@ -3461,7 +3466,7 @@ mod writing_tests {
             .await
             .unwrap();
         assert!(
-            model::agree(&ctx.db, id, "custom", None, Some(&old_address))
+            model::agree(&ctx.db, id, &form(&old_address).check().unwrap().source)
                 .await
                 .unwrap()
         );

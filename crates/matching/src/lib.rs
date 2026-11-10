@@ -262,10 +262,9 @@ async fn analyze(
             "match model answered"
         );
         if let Some(usage) = answer.usage {
-            let at = now();
             writes
                 .retry("record match usage", || {
-                    model::usage::record(db, &chosen, Purpose::Match, usage, at)
+                    model::usage::record(db, &chosen, Purpose::Match, usage, answer.sent_at)
                 })
                 .await;
         }

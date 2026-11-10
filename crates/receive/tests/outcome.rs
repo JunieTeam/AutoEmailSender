@@ -83,9 +83,7 @@ async fn config(db: &SqlitePool, address: &str) -> i64 {
     .check()
     .unwrap();
     let id = model::create(db, &fields, "", 1).await.unwrap();
-    model::agree(db, id, "custom", None, Some(address))
-        .await
-        .unwrap();
+    model::agree(db, id, &fields.source).await.unwrap();
     profile_default(db, id).await;
     id
 }

@@ -96,12 +96,14 @@ function officialPricing(
   return prices ? { currency: provider.currency, prices, offPeak: NO_PRICES } : undefined;
 }
 
-function samePrices(a: ModelPrices, b: ModelPrices) {
-  return a.input === b.input && a.cache === b.cache && a.output === b.output;
+/** These prices, less those still as the official ones filled them in. */
+function withoutOfficial(prices: ModelPrices, official: ModelPrices): ModelPrices {
+  const kept = (key: keyof ModelPrices) => (prices[key] === official[key] ? null : prices[key]);
+  return { input: kept("input"), cache: kept("cache"), output: kept("output") };
 }
 
-function samePricing(a: Pricing, b: Pricing) {
-  return a.currency === b.currency && samePrices(a.prices, b.prices) && samePrices(a.offPeak, b.offPeak);
+function unpriced(form: Form) {
+  return [form.prices, form.offPeak].every((p) => p.input === null && p.cache === null && p.output === null);
 }
 
 /** Adding or editing a model configuration (docs/ui.md#交互). Mounted while open. */
@@ -118,7 +120,16 @@ export function ModelDialog({
   onClose: () => void;
 }) {
   const [initial] = useState(() => (config ? formOf(config) : EMPTY));
-  const [form, setForm] = useState(initial);
+  // With the form, the official prices filled in for the model it names: those still as they were
+  // go again with it, even once the list they came from is gone.
+  const [{ form, filled }, setState] = useState(() => ({
+    form: initial,
+    filled: officialPricing(
+      initial,
+      providers.find((p) => p.id === initial.provider),
+      undefined,
+    ),
+  }));
   const queryClient = useQueryClient();
   const save = useMutation({
     mutationFn: (f: Form) => (config ? call("updateModelConfig", { ...f, id: config.id }) : call("addModelConfig", f)),
@@ -153,9 +164,10 @@ export function ModelDialog({
 
   /**
    * Changes the form. Prices are in the provider's currency, and only one with peak hours has
-   * off-peak prices. They follow a known model: its official prices replace the others, and go
-   * again, if left as they were, for a model, provider or region whose prices are not known. An
-   * earlier test no longer applies, nor a list from another provider or key.
+   * off-peak prices. They follow a known model: its official prices replace the others, and those
+   * left as they were go again for a model, provider or region whose prices are not known. A key
+   * typed for one provider or region is not sent to another; an earlier test no longer applies,
+   * nor a list from another provider or key.
    */
   function edit(change: Partial<Form>) {
     let next = { ...form, ...change };
@@ -169,13 +181,20 @@ export function ModelDialog({
       };
     }
     const moved = next.provider !== form.provider || next.region !== form.region;
+    if (moved && form.provider !== "") next = { ...next, apiKey: "" };
+    let official = filled;
     if (moved || next.model !== form.model) {
-      const before = officialPricing(form, provider, models.data);
-      const after = officialPricing(next, nextProvider, moved ? undefined : models.data);
-      if (after) next = { ...next, ...after };
-      else if (before && samePricing(before, form)) next = { ...next, prices: NO_PRICES, offPeak: NO_PRICES };
+      official = officialPricing(next, nextProvider, moved ? undefined : models.data);
+      if (official) next = { ...next, ...official };
+      else if (filled) {
+        next = {
+          ...next,
+          prices: withoutOfficial(next.prices, filled.prices),
+          offPeak: withoutOfficial(next.offPeak, filled.offPeak),
+        };
+      }
     }
-    setForm(next);
+    setState({ form: next, filled: official });
     test.reset();
     if (moved || next.baseUrl !== form.baseUrl || next.apiKey !== form.apiKey) models.reset();
   }
@@ -276,7 +295,22 @@ export function ModelDialog({
                     type="button"
                     variant="quiet"
                     disabled={!reachable || models.isPending}
-                    onClick={() => models.mutate({ ...form, id: config?.id })}
+                    onClick={() =>
+                      models.mutate(
+                        { ...form, id: config?.id },
+                        {
+                          // Prices from the list for a model named before it came, where none are
+                          // filled in; a known model's were filled in as it was named.
+                          onSuccess: (listed) =>
+                            setState((s) => {
+                              const official = officialPricing(s.form, provider, listed);
+                              return s.filled || !official || !unpriced(s.form)
+                                ? s
+                                : { form: { ...s.form, ...official }, filled: official };
+                            }),
+                        },
+                      )
+                    }
                   >
                     获取列表
                   </Button>

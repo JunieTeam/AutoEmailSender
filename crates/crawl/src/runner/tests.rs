@@ -185,9 +185,7 @@ async fn config(db: &SqlitePool, address: &str) -> i64 {
     .check()
     .unwrap();
     let id = model::create(db, &f, "fixture", 1).await.unwrap();
-    model::agree(db, id, "custom", None, Some(address))
-        .await
-        .unwrap();
+    model::agree(db, id, &f.source).await.unwrap();
     id
 }
 
@@ -3324,9 +3322,13 @@ async fn regression_deleted_or_changed_config_requeues_and_requires_current_cons
         save(&db, &fresh, &outcome).await.unwrap();
         assert!(old_provider.requests.try_recv().is_err());
         assert!(new_provider.requests.try_recv().is_err());
-        model::agree(&db, chosen.id, "custom", None, Some(&new_provider.address))
-            .await
-            .unwrap();
+        model::agree(
+            &db,
+            chosen.id,
+            &model::Source::check("custom", None, &new_provider.address).unwrap(),
+        )
+        .await
+        .unwrap();
         queue::control(&db, crawl, "resume", 2).await.unwrap();
         let fresh = queue::next(&db).await.unwrap().unwrap();
         let read = process(&db, &net, &fetcher, &limit, &fresh, &cooldown);

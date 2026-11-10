@@ -106,6 +106,9 @@ pub struct Answer {
     pub finish_reason: Option<Finish>,
     /// None when the provider did not say.
     pub usage: Option<Usage>,
+    /// When the request it answers was sent, in UTC milliseconds: a provider charging by the hour
+    /// charges by this time, not by when the answer ended.
+    pub sent_at: i64,
 }
 
 /// Why a model stopped, as OpenAI-compatible APIs say. A reason of a provider's own is `Other`: its
@@ -274,10 +277,11 @@ async fn call(
         .post(format!("{}/{path}", access.base_url))
         .bearer_auth(access.api_key.as_deref().ok_or(ModelError::MissingKey)?)
         .json(&body);
+    let sent_at = now();
     let response = send(request, access).await?;
     match api {
-        Api::Chat => chat(response, access).await,
-        Api::Responses => responses(response, access).await,
+        Api::Chat => chat(response, access, sent_at).await,
+        Api::Responses => responses(response, access, sent_at).await,
     }
 }
 
@@ -287,7 +291,11 @@ struct Failure {
 }
 
 /// A Chat Completions answer, in chunks.
-async fn chat(response: reqwest::Response, access: &Access) -> Result<Answer, ModelError> {
+async fn chat(
+    response: reqwest::Response,
+    access: &Access,
+    sent_at: i64,
+) -> Result<Answer, ModelError> {
     #[derive(Deserialize)]
     struct Chunk {
         #[serde(default)]
@@ -359,11 +367,16 @@ async fn chat(response: reqwest::Response, access: &Access) -> Result<Answer, Mo
         text,
         finish_reason,
         usage,
+        sent_at,
     })
 }
 
 /// A Responses answer, in events; those about anything but its text are passed over.
-async fn responses(response: reqwest::Response, access: &Access) -> Result<Answer, ModelError> {
+async fn responses(
+    response: reqwest::Response,
+    access: &Access,
+    sent_at: i64,
+) -> Result<Answer, ModelError> {
     #[derive(Deserialize)]
     #[serde(tag = "type")]
     enum Event {
@@ -408,6 +421,7 @@ async fn responses(response: reqwest::Response, access: &Access) -> Result<Answe
         text: String::new(),
         finish_reason: None,
         usage: None,
+        sent_at,
     };
     let mut end = |ended: Ended, finish_reason: Finish| {
         answer.finish_reason = Some(finish_reason);
@@ -594,4 +608,10 @@ fn without_key(text: &str, access: &Access) -> String {
         None | Some("") => text.to_owned(),
         Some(key) => text.replace(key, "***"),
     }
+}
+
+fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
 }

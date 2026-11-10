@@ -119,7 +119,6 @@ pub async fn write_task_draft(
         },
     )
     .await?;
-    let at = now();
     turn.send()?;
     let mut letter = writing::write(
         &ctx.net,
@@ -128,7 +127,7 @@ pub async fn write_task_draft(
             subject: edit.subject,
             body_md: edit.body_md,
         },
-        |purpose, usage| {
+        |purpose, usage, at| {
             model::usage::record_for_email(&ctx.db, &chosen, purpose, Some(edit.id), usage, at)
         },
     )
