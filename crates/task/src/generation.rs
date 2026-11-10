@@ -149,8 +149,7 @@ async fn generate(
                     .retry("record draft usage", || {
                         model::usage::record_for_email(
                             db,
-                            chosen.id,
-                            &chosen.model,
+                            chosen,
                             purpose,
                             Some(claim.id),
                             usage,
@@ -199,8 +198,7 @@ async fn generate(
                                         .retry("record fact check usage", || {
                                             model::usage::record_for_email(
                                                 db,
-                                                chosen.id,
-                                                &chosen.model,
+                                                chosen,
                                                 model::usage::Purpose::FactCheck,
                                                 Some(claim.id),
                                                 usage,

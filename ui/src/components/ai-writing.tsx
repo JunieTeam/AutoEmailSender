@@ -14,7 +14,7 @@ import { call, failureOf, UiError } from "@/api/call";
 import type { FactCheck, Failure, FirstDraftEdit, Letter, ModelConfig, ModelProvider, ReplyTarget } from "@/api/types";
 import { FailureNote } from "@/components/failure";
 import { Confirm } from "@/components/batch-bar";
-import { useModelProviders } from "@/components/model-dialog";
+import { sourceName, useModelProviders } from "@/components/model-dialog";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { changes } from "@/diff";
@@ -154,7 +154,8 @@ export function ModelAction({
   const providers = useModelProviders();
   const agree = useMutation({
     // Only to the provider and address the user was told about, should the configuration have changed since.
-    mutationFn: (m: ModelConfig) => call("agreeModel", { id: m.id, provider: m.provider, baseUrl: m.baseUrl }),
+    mutationFn: (m: ModelConfig) =>
+      call("agreeModel", { id: m.id, provider: m.provider, region: m.region, baseUrl: m.baseUrl }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["listModelConfigs"] }),
   });
   const fallback = models.data?.find((m) => m.isDefault);
@@ -210,8 +211,7 @@ export function ModelAction({
 
 /** What AI features send, and where (docs/design.md#个人资料和配置). */
 function notice(model: ModelConfig, providers: ModelProvider[]): string {
-  // A custom configuration is known by its address.
-  const where = providers.find((p) => p.id === model.provider)?.name ?? model.baseUrl;
+  const where = sourceName(model, providers);
   return `AI 写信、分析匹配度这类功能会把用到的内容发给“${where}”：你的个人资料、材料里的文字、导师的资料、整理时读取的网页标题和文字及链接文字，以及要改写、回复或追问参考的邮件和导师的回信。同意后，用这个模型时不再询问。`;
 }
 

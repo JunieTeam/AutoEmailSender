@@ -26,6 +26,7 @@ import type {
   EnrichField,
   EnrichPlan,
   EnrichSkipReason,
+  ModelRate,
 } from "@/api/types";
 import { ModelAction, AiIcon } from "@/components/ai-writing";
 import { BatchBar, Confirm } from "@/components/batch-bar";
@@ -39,7 +40,7 @@ import { Segments } from "@/components/ui/segments";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PillSelect } from "@/components/ui/pill";
-import { day, time } from "@/format";
+import { costAt, costEstimate, day, hoursNote, time, UNITS } from "@/format";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { desktop } from "@/host";
 import { useKeptScroll } from "@/kept-scroll";
@@ -152,10 +153,6 @@ function Crawls() {
   });
   const models = useQuery({ queryKey: ["listModelConfigs"], queryFn: () => call("listModelConfigs", {}) });
   const chosen = models.data?.find((m) => m.isDefault);
-  const cost =
-    chosen && (chosen.inputPrice !== null || chosen.outputPrice !== null)
-      ? ((chosen.inputPrice ?? 0) * 4000 + (chosen.outputPrice ?? 0) * 1000) / 1_000_000
-      : null;
   const records = useQuery({
     queryKey: ["listCrawls", s.recordPage],
     queryFn: () => call("listCrawls", { page: s.recordPage }),
@@ -193,7 +190,7 @@ function Crawls() {
           aria-invalid={!!urls.trim() && validation.isError}
         />
         <p id="crawl-usage" className="text-sm text-muted-foreground">
-          一位导师约 5000 Token{cost !== null && `，按已填单价约 ${cost.toFixed(3)} 元`}
+          一位导师约 5000 Token{chosen?.rate && `，${costEstimate(chosen.rate, 4000, 1000, 3)}`}
           。实际用量随人数和网页长度变化，另计寻找名单的用量。
         </p>
         <p className="text-sm text-muted-foreground">
@@ -802,6 +799,12 @@ export function EnrichMentorsDialog({ ids, onClose }: { ids: number[]; onClose: 
   );
 }
 /** Once started, `children` tells how it went in place of the plan, which then no longer holds. */
+/** "约 0.12～0.48 元": each mentor reads one to four pages, each about 4000 tokens in and 1000 out. */
+function costRange(rate: ModelRate, mentors: number) {
+  const least = costAt(rate, 4000 * mentors, 1000 * mentors);
+  return `约 ${least.toFixed(2)}～${(least * 4).toFixed(2)} ${UNITS[rate.currency]}${hoursNote(rate)}`;
+}
+
 function EnrichDialog({
   title,
   preview,
@@ -821,10 +824,7 @@ function EnrichDialog({
   const models = useQuery({ queryKey: ["listModelConfigs"], queryFn: () => call("listModelConfigs", {}) });
   const chosen = models.data?.find((m) => m.isDefault);
   const count = preview.data?.ids.length ?? 0;
-  const cost =
-    chosen && (chosen.inputPrice !== null || chosen.outputPrice !== null)
-      ? (((chosen.inputPrice ?? 0) * 4000 + (chosen.outputPrice ?? 0) * 1000) * count) / 1_000_000
-      : null;
+  const rate = chosen?.rate;
   return (
     <Dialog
       open
@@ -846,7 +846,7 @@ function EnrichDialog({
               <p className="text-muted-foreground">
                 每位预计读取 1～4 页，约 5000～20000 Token；本次约 {(count * 5000).toLocaleString()}～
                 {(count * 20000).toLocaleString()} Token
-                {cost !== null && `，约 ${cost.toFixed(2)}～${(cost * 4).toFixed(2)} 元`}
+                {rate && `，${costRange(rate, count)}`}
                 。仅为估算，以实际页面和服务商报告为准。
               </p>
             </>

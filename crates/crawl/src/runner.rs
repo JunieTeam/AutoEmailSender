@@ -415,8 +415,7 @@ impl Reader<'_> {
                     .retry("record crawl usage", || {
                         model::usage::record_crawl(
                             self.db,
-                            self.chosen.id,
-                            &self.chosen.model,
+                            self.chosen,
                             self.claim.crawl,
                             usage,
                             now(),

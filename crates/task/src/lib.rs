@@ -70,9 +70,10 @@ pub struct TaskPlan {
     pub mentors: Vec<Candidate>,
     pub model: Option<String>,
     pub model_config_id: Option<i64>,
+    /// What that model charges now; None unless its prices are filled in.
+    pub rate: Option<model::pricing::Rate>,
     pub input_tokens: i64,
     pub output_tokens: i64,
-    pub cost: Option<f64>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -262,7 +263,7 @@ async fn template_content(
     }
 }
 
-pub async fn plan(db: &SqlitePool, form: &NewTask) -> Result<TaskPlan> {
+pub async fn plan(db: &SqlitePool, form: &NewTask, now: i64) -> Result<TaskPlan> {
     let mut tx = db.begin().await?;
     validate_source(&mut tx, form).await?;
     let mentors = candidates(&mut tx, &form.ids, form.kind, form.source_task_id).await?;
@@ -315,23 +316,21 @@ pub async fn plan(db: &SqlitePool, form: &NewTask) -> Result<TaskPlan> {
             }
         }
     }
-    let config = model::list(db)
-        .await?
-        .into_iter()
-        .find(|c| chosen.as_ref().is_some_and(|m| c.id == m.id));
-    let cost = config.and_then(|c| {
-        Some(
-            (c.input_price? * input_tokens as f64 + c.output_price? * output_tokens as f64)
-                / 1_000_000.0,
-        )
-    });
+    let rate = match &chosen {
+        Some(m) => model::list(db, now)
+            .await?
+            .into_iter()
+            .find(|c| c.id == m.id)
+            .and_then(|c| c.rate),
+        None => None,
+    };
     Ok(TaskPlan {
         mentors,
         model: chosen.as_ref().map(|c| c.model.clone()),
         model_config_id: chosen.map(|c| c.id),
+        rate,
         input_tokens,
         output_tokens,
-        cost,
     })
 }
 

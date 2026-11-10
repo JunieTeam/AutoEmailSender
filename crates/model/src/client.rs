@@ -5,13 +5,16 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use net::Net;
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::time::timeout;
 
+use ts_rs::TS;
+
 use crate::ModelError;
-use crate::providers::NoThinking;
+use crate::pricing::Prices;
+use crate::providers::Provider;
 use crate::usage::Usage;
 
 /// Where and how to call a provider.
@@ -20,13 +23,21 @@ pub struct Access {
     /// Without a trailing slash.
     pub base_url: String,
     pub api_key: Option<String>,
-    pub no_thinking: Option<NoThinking>,
-    pub json_mode: bool,
-    pub quota_is_rate_limit: bool,
+    /// None for an address the user filled in, which is asked only what all models take.
+    pub provider: Option<&'static Provider>,
 }
 
-/// The names of the models the provider offers, sorted.
-pub async fn list_models(net: &Net, access: &Access) -> Result<Vec<String>, ModelError> {
+/// A model the provider offers.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ListedModel {
+    pub name: String,
+    /// Where its provider's list says them.
+    pub prices: Option<Prices>,
+}
+
+/// The models the provider offers, sorted by name.
+pub async fn list_models(net: &Net, access: &Access) -> Result<Vec<ListedModel>, ModelError> {
     #[derive(Deserialize)]
     struct Models {
         data: Vec<Model>,
@@ -34,6 +45,8 @@ pub async fn list_models(net: &Net, access: &Access) -> Result<Vec<String>, Mode
     #[derive(Deserialize)]
     struct Model {
         id: String,
+        #[serde(default)]
+        pricing: Value,
     }
     let request = net
         .http()
@@ -50,9 +63,32 @@ pub async fn list_models(net: &Net, access: &Access) -> Result<Vec<String>, Mode
             e.column()
         ))
     })?;
-    let mut names: Vec<String> = models.data.into_iter().map(|m| m.id).collect();
-    names.sort();
-    Ok(names)
+    let priced = access.provider.is_some_and(|p| p.priced_list);
+    let mut models: Vec<ListedModel> = models
+        .data
+        .into_iter()
+        .map(|m| ListedModel {
+            prices: priced.then(|| listed_prices(&m.pricing)).flatten(),
+            name: m.id,
+        })
+        .collect();
+    models.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(models)
+}
+
+/// Prices per million tokens from OpenRouter's dollars per token, in decimal strings; None for a
+/// model priced otherwise, such as its router, at "-1".
+fn listed_prices(pricing: &Value) -> Option<Prices> {
+    let per_million = |key: &str| {
+        let per_token: f64 = pricing[key].as_str()?.parse().ok()?;
+        // To the digits the price fields keep, which 0.000002 * 1e6 = 1.9999999999999998 is not.
+        (per_token >= 0.0).then(|| (per_token * 1e12).round() / 1e6)
+    };
+    Some(Prices {
+        input: Some(per_million("prompt")?),
+        cache: per_million("input_cache_read"),
+        output: Some(per_million("completion")?),
+    })
 }
 
 /// Gives up on a provider that has sent nothing for this long, however long its whole answer
@@ -196,6 +232,9 @@ async fn call(
     prompt: &Prompt<'_>,
     api: Api,
 ) -> Result<Answer, ModelError> {
+    let (thinking, json_mode) = access
+        .provider
+        .map_or((None, false), |p| p.asking(prompt.model));
     let (path, body) = match api {
         Api::Chat => {
             let messages: Vec<Value> = prompt
@@ -211,10 +250,10 @@ async fn call(
                 // A streamed reply leaves out the tokens it took unless asked.
                 "stream_options": {"include_usage": true},
             });
-            if let Some(no_thinking) = access.no_thinking {
-                no_thinking.apply(&mut body);
+            if let Some(thinking) = thinking {
+                thinking.apply(&mut body);
             }
-            if prompt.json && access.json_mode {
+            if prompt.json && json_mode {
                 body["response_format"] = json!({"type": "json_object"});
             }
             ("chat/completions", body)
@@ -224,7 +263,7 @@ async fn call(
             if let Some(system) = prompt.system {
                 body["instructions"] = system.into();
             }
-            if prompt.json && access.json_mode {
+            if prompt.json && json_mode {
                 body["text"] = json!({"format": {"type": "json_object"}});
             }
             ("responses", body)

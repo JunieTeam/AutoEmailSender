@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO model_config (name, provider, region, base_url, model, api_key, agreed,\n            created_at, currency, input_price, cache_price, output_price, off_peak_input_price,\n            off_peak_cache_price, off_peak_output_price)\n        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 14
+    },
+    "nullable": []
+  },
+  "hash": "11d859a67f7cc3a71d709a459cfcdb3caaff7a72bfbf4e14a0147b29db60ce42"
+}

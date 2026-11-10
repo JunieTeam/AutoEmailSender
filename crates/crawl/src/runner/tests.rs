@@ -177,13 +177,17 @@ async fn config(db: &SqlitePool, address: &str) -> i64 {
         provider: "custom".into(),
         base_url: address.into(),
         model: "fixture".into(),
-        input_price: None,
-        output_price: None,
+        region: None,
+        currency: None,
+        prices: model::pricing::Prices::default(),
+        off_peak: model::pricing::Prices::default(),
     }
     .check()
     .unwrap();
     let id = model::create(db, &f, "fixture", 1).await.unwrap();
-    model::agree(db, id, "custom", Some(address)).await.unwrap();
+    model::agree(db, id, "custom", None, Some(address))
+        .await
+        .unwrap();
     id
 }
 
@@ -195,7 +199,7 @@ async fn extraction_requests_a_json_object(db: SqlitePool) {
     queue::start(&db, &[url], id, 1).await.unwrap();
     let claim = queue::next(&db).await.unwrap().unwrap();
     let mut chosen = model::selected(&db, Some(id)).await.unwrap().unwrap();
-    chosen.access.json_mode = true;
+    chosen.access.provider = model::providers::find("deepseek");
     let reader = Reader {
         writes: &db::Writes::default(),
         db: &db,
@@ -3286,8 +3290,10 @@ async fn regression_deleted_or_changed_config_requeues_and_requires_current_cons
                 provider: "custom".into(),
                 base_url: new_provider.address.clone(),
                 model: "fixture".into(),
-                input_price: None,
-                output_price: None,
+                region: None,
+                currency: None,
+                prices: model::pricing::Prices::default(),
+                off_peak: model::pricing::Prices::default(),
             }
             .check()
             .unwrap();
@@ -3318,7 +3324,7 @@ async fn regression_deleted_or_changed_config_requeues_and_requires_current_cons
         save(&db, &fresh, &outcome).await.unwrap();
         assert!(old_provider.requests.try_recv().is_err());
         assert!(new_provider.requests.try_recv().is_err());
-        model::agree(&db, chosen.id, "custom", Some(&new_provider.address))
+        model::agree(&db, chosen.id, "custom", None, Some(&new_provider.address))
             .await
             .unwrap();
         queue::control(&db, crawl, "resume", 2).await.unwrap();

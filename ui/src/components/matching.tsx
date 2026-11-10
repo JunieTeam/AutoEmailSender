@@ -6,6 +6,7 @@ import type { MentorDetail } from "@/api/types";
 import { AiIcon, ModelAction } from "@/components/ai-writing";
 import { Confirm } from "@/components/batch-bar";
 import { FailureNote } from "@/components/failure";
+import { costEstimate } from "@/format";
 import { refreshMentors } from "@/components/mentor";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -59,7 +60,7 @@ export function MatchingDialog({ ids, onClose }: { ids: number[]; onClose: () =>
               <div className="text-muted-foreground">
                 <p>
                   约 {(data.inputTokens + data.outputTokens).toLocaleString()} Token
-                  {data.cost !== null && `，约 ${data.cost.toFixed(2)} 元`}
+                  {data.rate && `，${costEstimate(data.rate, data.inputTokens, data.outputTokens)}`}
                 </p>
                 <p className="mt-1 text-xs">按字数估算，实际以服务商为准</p>
               </div>

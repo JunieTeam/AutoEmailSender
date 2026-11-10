@@ -1,0 +1,196 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, name, provider, region, base_url, model, currency AS \"currency: Currency\",\n             input_price, cache_price, output_price, off_peak_input_price, off_peak_cache_price,\n             off_peak_output_price,\n             id = coalesce((SELECT default_model_config_id FROM profile),\n                           (SELECT min(id) FROM model_config)) AS \"is_default!: bool\",\n             agreed AS \"agreed: bool\", api_key IS NULL AS \"needs_api_key!: bool\"\n           FROM model_config ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "provider",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "region",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "region"
+          }
+        }
+      },
+      {
+        "name": "base_url",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "base_url"
+          }
+        }
+      },
+      {
+        "name": "model",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "model"
+          }
+        }
+      },
+      {
+        "name": "currency: Currency",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "name": "input_price",
+        "ordinal": 7,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "input_price"
+          }
+        }
+      },
+      {
+        "name": "cache_price",
+        "ordinal": 8,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "cache_price"
+          }
+        }
+      },
+      {
+        "name": "output_price",
+        "ordinal": 9,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "output_price"
+          }
+        }
+      },
+      {
+        "name": "off_peak_input_price",
+        "ordinal": 10,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "off_peak_input_price"
+          }
+        }
+      },
+      {
+        "name": "off_peak_cache_price",
+        "ordinal": 11,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "off_peak_cache_price"
+          }
+        }
+      },
+      {
+        "name": "off_peak_output_price",
+        "ordinal": 12,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "off_peak_output_price"
+          }
+        }
+      },
+      {
+        "name": "is_default!: bool",
+        "ordinal": 13,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "agreed: bool",
+        "ordinal": 14,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "agreed"
+          }
+        }
+      },
+      {
+        "name": "needs_api_key!: bool",
+        "ordinal": 15,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7a3abba71315b0ce77cb1f397d779c3a019b1a170d2ea0a4a8bef3e0da506c53"
+}

@@ -145,8 +145,7 @@ async fn analyze(
                 .retry("record reply processing usage", || {
                     model::usage::record_for_email(
                         db,
-                        chosen.id,
-                        &chosen.model,
+                        &chosen,
                         if todos {
                             model::usage::Purpose::ReplyTodos
                         } else {

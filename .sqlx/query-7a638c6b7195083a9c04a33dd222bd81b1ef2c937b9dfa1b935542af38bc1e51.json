@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE model_config\n        SET agreed = agreed AND provider = ?2 AND region IS ?3 AND base_url IS ?4,\n            provider = ?2, region = ?3, base_url = ?4, name = ?5, model = ?6, api_key = ?7,\n            currency = ?8, input_price = ?9, cache_price = ?10, output_price = ?11,\n            off_peak_input_price = ?12, off_peak_cache_price = ?13, off_peak_output_price = ?14\n        WHERE id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 14
+    },
+    "nullable": []
+  },
+  "hash": "7a638c6b7195083a9c04a33dd222bd81b1ef2c937b9dfa1b935542af38bc1e51"
+}

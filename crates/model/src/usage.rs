@@ -2,6 +2,8 @@
 
 use sqlx::SqlitePool;
 
+use crate::{Chosen, pricing};
+
 /// The tokens one call took.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Usage {
@@ -12,7 +14,7 @@ pub struct Usage {
 }
 
 /// What a call was for.
-#[derive(Debug, Clone, Copy, serde::Serialize, sqlx::Type, ts_rs::TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, sqlx::Type, ts_rs::TS)]
 #[sqlx(rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 #[ts(rename = "UsagePurpose")]
@@ -26,26 +28,36 @@ pub enum Purpose {
     ReplyTodos,
 }
 
+/// Whether the call fell in its provider's off-peak hours, which charge its off-peak prices. Kept
+/// with the call, as the hour it was made does not change.
+fn off_peak(chosen: &Chosen, at: i64) -> bool {
+    pricing::off_peak(
+        chosen.access.provider.and_then(|p| p.peak_hours.as_ref()),
+        at,
+    )
+}
+
 pub async fn record(
     db: &SqlitePool,
-    config_id: i64,
-    model: &str,
+    chosen: &Chosen,
     purpose: Purpose,
     usage: Usage,
     now: i64,
 ) -> Result<(), sqlx::Error> {
+    let off_peak = off_peak(chosen, now);
     // The configuration may have been deleted while the model was answering.
     sqlx::query!(
         "INSERT INTO usage (at, model_config_id, model, purpose, input_tokens, cached_tokens,
-           output_tokens)
-         VALUES (?, (SELECT id FROM model_config WHERE id = ?), ?, ?, ?, ?, ?)",
+           output_tokens, off_peak)
+         VALUES (?, (SELECT id FROM model_config WHERE id = ?), ?, ?, ?, ?, ?, ?)",
         now,
-        config_id,
-        model,
+        chosen.id,
+        chosen.model,
         purpose,
         usage.input,
         usage.cached,
         usage.output,
+        off_peak,
     )
     .execute(db)
     .await?;
@@ -55,24 +67,25 @@ pub async fn record(
 /// Usage is retained even when a claim is invalidated after the provider has answered.
 pub async fn record_crawl(
     db: &SqlitePool,
-    config_id: i64,
-    model: &str,
+    chosen: &Chosen,
     crawl_id: i64,
     usage: Usage,
     now: i64,
 ) -> Result<(), sqlx::Error> {
+    let off_peak = off_peak(chosen, now);
     sqlx::query!(
         r#"INSERT INTO usage (at, model_config_id, model, purpose, crawl_id, input_tokens,
-            cached_tokens, output_tokens)
+            cached_tokens, output_tokens, off_peak)
         VALUES (?, (SELECT id FROM model_config WHERE id = ?), ?, 'crawl',
-            (SELECT id FROM crawl WHERE id = ?), ?, ?, ?)"#,
+            (SELECT id FROM crawl WHERE id = ?), ?, ?, ?, ?)"#,
         now,
-        config_id,
-        model,
+        chosen.id,
+        chosen.model,
         crawl_id,
         usage.input,
         usage.cached,
-        usage.output
+        usage.output,
+        off_peak,
     )
     .execute(db)
     .await?;
@@ -82,26 +95,27 @@ pub async fn record_crawl(
 /// Keep billed calls even if their email was deleted while the provider was answering.
 pub async fn record_for_email(
     db: &SqlitePool,
-    config_id: i64,
-    model: &str,
+    chosen: &Chosen,
     purpose: Purpose,
     email_id: Option<i64>,
     usage: Usage,
     now: i64,
 ) -> Result<(), sqlx::Error> {
+    let off_peak = off_peak(chosen, now);
     sqlx::query!(
         "INSERT INTO usage (at, model_config_id, model, purpose, email_id,
-           input_tokens, cached_tokens, output_tokens)
+           input_tokens, cached_tokens, output_tokens, off_peak)
          VALUES (?, (SELECT id FROM model_config WHERE id = ?), ?, ?,
-           (SELECT id FROM email WHERE id = ?), ?, ?, ?)",
+           (SELECT id FROM email WHERE id = ?), ?, ?, ?, ?)",
         now,
-        config_id,
-        model,
+        chosen.id,
+        chosen.model,
         purpose,
         email_id,
         usage.input,
         usage.cached,
         usage.output,
+        off_peak,
     )
     .execute(db)
     .await?;

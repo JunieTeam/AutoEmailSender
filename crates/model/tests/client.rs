@@ -5,7 +5,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use model::providers::NoThinking;
+use model::pricing::Prices;
 use model::usage::Usage;
 use model::{Access, ModelError};
 use net::Net;
@@ -48,15 +48,19 @@ async fn provider(status: u16, reply: &'static str) -> (String, Received) {
     (address, received)
 }
 
-fn access(base_url: String, no_thinking: Option<NoThinking>) -> Access {
+/// Calls to `base_url` as to the provider with this id, or else as to an address the user filled in.
+fn access(base_url: String, provider: Option<&str>) -> Access {
     Access {
         base_url,
         api_key: Some("sk-test".into()),
-        no_thinking,
-        json_mode: false,
-        quota_is_rate_limit: false,
+        provider: provider.map(|id| model::providers::find(id).unwrap()),
     }
 }
+
+const ANSWER: &str = concat!(
+    r#"data: {"choices":[{"delta":{"content":"{}"},"finish_reason":"stop"}]}"#,
+    "\n\ndata: [DONE]\n\n",
+);
 
 #[tokio::test]
 async fn a_test_asks_the_model_not_to_think() {
@@ -73,7 +77,7 @@ async fn a_test_asks_the_model_not_to_think() {
     )
     .await;
     let net = Net::new(Vec::new()).unwrap();
-    let access = access(address, Some(NoThinking::ThinkingDisabled));
+    let access = access(address, Some("deepseek"));
     model::test(&net, &access, "deepseek-chat").await.unwrap();
 
     let received = received.lock().unwrap();
@@ -86,71 +90,71 @@ async fn a_test_asks_the_model_not_to_think() {
 }
 
 #[tokio::test]
-async fn business_calls_disable_thinking_only_when_the_provider_supports_it() {
+async fn a_known_model_is_asked_not_to_think_as_its_documentation_says() {
     let net = Net::new(Vec::new()).unwrap();
-    for no_thinking in [Some(NoThinking::ThinkingDisabled), None] {
-        let (address, received) = provider(
-            200,
-            concat!(
-                r#"data: {"choices":[{"delta":{"content":"好"},"finish_reason":"stop"}]}"#,
-                "\n\ndata: [DONE]\n\n",
-            ),
-        )
-        .await;
-        let answer = model::ask(
-            &net,
-            &access(address, no_thinking),
-            "deepseek-chat",
-            "规则",
-            "资料",
-            false,
-        )
-        .await
-        .unwrap();
-        assert_eq!(answer.text, "好");
+    let disabled = json!({"thinking": {"type": "disabled"}});
+    for (id, model, expected) in [
+        // Not known: as all the provider's models take, which DeepSeek's do and Bailian's do not.
+        (Some("deepseek"), "deepseek-chat", disabled.clone()),
+        (Some("qwen"), "qwen-plus", json!({})),
+        (Some("doubao"), "doubao-seed-2-1-pro-260915", disabled),
+        (
+            Some("qwen"),
+            "qwen3.8-max",
+            json!({"enable_thinking": false}),
+        ),
+        // Those that cannot stop think as little as they can.
+        (Some("kimi"), "kimi-k3", json!({"reasoning_effort": "low"})),
+        (
+            Some("openai"),
+            "gpt-6.1-terra",
+            json!({"reasoning_effort": "none"}),
+        ),
+        (Some("siliconflow"), "zai-org/GLM-5.3", json!({})),
+        (None, "deepseek-flash", json!({})),
+    ] {
+        let (address, received) = provider(200, ANSWER).await;
+        model::ask(&net, &access(address, id), model, "规则", "资料", false)
+            .await
+            .unwrap();
         let received = received.lock().unwrap();
         let body = &received[0].body;
-        if no_thinking.is_some() {
-            assert_eq!(body["thinking"], json!({"type": "disabled"}));
-        } else {
-            assert!(body.get("thinking").is_none());
-            assert!(body.get("enable_thinking").is_none());
-        }
+        let sent: serde_json::Map<String, Value> =
+            ["thinking", "enable_thinking", "reasoning_effort"]
+                .into_iter()
+                .filter_map(|k| Some((k.to_owned(), body.get(k)?.clone())))
+                .collect();
+        assert_eq!(Value::Object(sent), expected, "{id:?} {model}");
     }
 }
 
 #[tokio::test]
-async fn json_mode_is_only_sent_for_objects_to_supporting_providers() {
+async fn json_mode_is_only_sent_for_objects_to_models_documented_to_take_it() {
     let net = Net::new(Vec::new()).unwrap();
-    for id in ["deepseek", "kimi", "qwen", "custom"] {
-        let (address, received) = provider(
-            200,
-            concat!(
-                r#"data: {"choices":[{"delta":{"content":"{}"},"finish_reason":"stop"}]}"#,
-                "\n\ndata: [DONE]\n\n",
-            ),
-        )
-        .await;
-        let mut access = model::Source::check(id, &address)
-            .unwrap()
-            .access(Some("sk-test".into()));
-        access.base_url = address;
+    for (id, model, takes) in [
+        (Some("deepseek"), "m", true),
+        (Some("kimi"), "m", true),
+        (Some("qwen"), "m", false),
+        (Some("qwen"), "qwen3.8-flash", true),
+        (Some("glm"), "glm-5.3-flash", false),
+        (Some("gemini"), "gemini-3.8-flash", false),
+        (None, "deepseek-flash", false),
+    ] {
+        let (address, received) = provider(200, ANSWER).await;
+        let access = access(address, id);
         for json in [true, false] {
-            model::ask(&net, &access, "m", "只输出 JSON", "资料", json)
+            model::ask(&net, &access, model, "只输出 JSON", "资料", json)
                 .await
                 .unwrap();
         }
-        model::test(&net, &access, "m").await.unwrap();
+        model::test(&net, &access, model).await.unwrap();
         let received = received.lock().unwrap();
         let formats: Vec<_> = received
             .iter()
             .map(|r| r.body.get("response_format").cloned())
             .collect();
-        let expected = match id {
-            "deepseek" | "kimi" => vec![Some(json!({"type":"json_object"})), None, None],
-            _ => vec![None, None, None],
-        };
-        assert_eq!(formats, expected, "{id}");
+        let first = takes.then(|| json!({"type":"json_object"}));
+        assert_eq!(formats, [first, None, None], "{id:?} {model}");
     }
 }
 
@@ -405,11 +409,46 @@ async fn models_are_listed_by_name() {
     let models = model::list_models(&net, &access(address, None))
         .await
         .unwrap();
-    assert_eq!(models, ["deepseek-v3", "qwen-plus"]);
+    let names: Vec<_> = models.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(names, ["deepseek-v3", "qwen-plus"]);
+    assert!(models.iter().all(|m| m.prices.is_none()));
     assert_eq!(
         received.lock().unwrap()[0].line,
         "GET /v1/models HTTP/1.1\r\n"
     );
+}
+
+#[tokio::test]
+async fn openrouter_lists_the_prices_of_each_model_per_million_tokens() {
+    const LIST: &str = r#"{"data":[
+        {"id":"x/free","pricing":{"prompt":"0","completion":"0"}},
+        {"id":"openrouter/auto","pricing":{"prompt":"-1","completion":"-1"}},
+        {"id":"openai/gpt-6.1-sol","pricing":{"prompt":"0.000002","completion":"0.00001",
+            "input_cache_read":"0.0000001","request":"0"}}]}"#;
+    let net = Net::new(Vec::new()).unwrap();
+    let (address, _) = provider(200, LIST).await;
+    let models = model::list_models(&net, &access(address, Some("openrouter")))
+        .await
+        .unwrap();
+    let listed: Vec<_> = models.iter().map(|m| (m.name.as_str(), m.prices)).collect();
+    assert_eq!(
+        listed,
+        [
+            (
+                "openai/gpt-6.1-sol",
+                Some(Prices::official(2.0, Some(0.1), 10.0))
+            ),
+            // Its router is priced by the model it picks.
+            ("openrouter/auto", None),
+            ("x/free", Some(Prices::official(0.0, None, 0.0))),
+        ]
+    );
+    // Prices in another provider's list are not taken for its own.
+    let (address, _) = provider(200, LIST).await;
+    let models = model::list_models(&net, &access(address, None))
+        .await
+        .unwrap();
+    assert!(models.iter().all(|m| m.prices.is_none()));
 }
 
 #[tokio::test]

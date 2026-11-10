@@ -369,7 +369,7 @@ mod tests {
                 .ids,
             vec![id]
         );
-        model::agree(&db, default, "custom", Some("http://127.0.0.1:2"))
+        model::agree(&db, default, "custom", None, Some("http://127.0.0.1:2"))
             .await
             .unwrap();
         assert_eq!(

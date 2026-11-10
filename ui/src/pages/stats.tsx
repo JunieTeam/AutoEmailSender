@@ -4,7 +4,16 @@ import { Link } from "@tanstack/react-router";
 import { cn } from "cn";
 import { call, failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
-import type { ContactProgress, MentorOverview, Range, Trend, TokenUsage, UsagePurpose } from "@/api/types";
+import type {
+  ContactProgress,
+  Costs,
+  MentorOverview,
+  Range,
+  Trend,
+  TokenTotals,
+  TokenUsage,
+  UsagePurpose,
+} from "@/api/types";
 import { BarChart, Legend, type Point, type Series } from "@/components/bar-chart";
 import { Pager } from "@/components/mentor-table";
 import { findSearch } from "@/pages/find";
@@ -12,6 +21,7 @@ import { mentorSearch } from "@/pages/mentors";
 import { Segments } from "@/components/ui/segments";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Loading } from "@/components/loading";
+import { money } from "@/format";
 
 // docs/ui.md 统计. Only the contact progress and token sections follow the range.
 
@@ -443,15 +453,7 @@ function Tokens({ usage }: { usage: TokenUsage }) {
   );
 }
 
-function TokenRow({
-  label,
-  row,
-  total = false,
-}: {
-  label: string;
-  row: { input: number; cached: number; output: number; estimatedCost: number | null };
-  total?: boolean;
-}) {
+function TokenRow({ label, row, total = false }: { label: string; row: TokenTotals; total?: boolean }) {
   return (
     <tr className={cn("border-b border-border", total && "border-b-0 font-medium")}>
       <td className="py-2.5">{label}</td>
@@ -467,9 +469,10 @@ function tokens(n: number): string {
   return n.toLocaleString();
 }
 
-function cost(yuan: number | null): string {
-  if (yuan === null) return "—";
-  return yuan > 0 && yuan < 0.01 ? "不到 0.01 元" : `${yuan.toFixed(2)} 元`;
+/** Each currency apart, as they are not converted: "3.20 元 + 0.45 美元". */
+function cost({ cny, usd }: Costs): string {
+  const amounts = [cny === null ? [] : [money(cny, "cny")], usd === null ? [] : [money(usd, "usd")]].flat();
+  return amounts.length > 0 ? amounts.join(" + ") : "—";
 }
 
 function Empty({ children }: { children: React.ReactNode }) {

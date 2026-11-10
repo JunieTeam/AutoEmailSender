@@ -1099,7 +1099,7 @@ operations! {
         /// 这会允许应用在使用该模型时发送导师、邮件或材料等相关数据。
         "agreeModel" [confirm] => agree_model(ModelAgreement) -> ();
         /// 向给定模型服务请求可用模型名称。
-        "listProviderModels" [none] => list_provider_models(ModelSource) -> Vec<String>;
+        "listProviderModels" [none] => list_provider_models(ModelSource) -> Vec<model::ListedModel>;
         /// 向给定模型服务发送测试请求，检查模型能否响应，可能产生用量。
         "testModel" [none] => test_model(ModelTest) -> ();
     }
@@ -1127,7 +1127,7 @@ async fn plan_matching(
     ctx: &Context,
     input: MatchBatch,
 ) -> Result<matching::MatchEstimate, CallError> {
-    Ok(matching::plan(&ctx.db, &input.ids, input.redo).await?)
+    Ok(matching::plan(&ctx.db, &input.ids, input.redo, now()).await?)
 }
 async fn start_matching(ctx: &Context, input: MatchBatch) -> Result<u64, CallError> {
     matching::ready(&ctx.db).await?;
@@ -1870,6 +1870,8 @@ pub struct ModelSource {
     #[ts(optional)]
     pub id: Option<i64>,
     pub provider: String,
+    /// Only read for a provider with regions, whose first it defaults to.
+    pub region: Option<String>,
     /// Only read for a custom provider.
     pub base_url: String,
     pub api_key: String,
@@ -1902,7 +1904,7 @@ async fn list_model_configs(
     ctx: &Context,
     _: Nothing,
 ) -> Result<Vec<model::ModelConfig>, CallError> {
-    Ok(model::list(&ctx.db).await?)
+    Ok(model::list(&ctx.db, now()).await?)
 }
 
 async fn add_model_config(
@@ -1937,21 +1939,25 @@ async fn set_default_model(ctx: &Context, input: ModelConfigId) -> Result<(), Ca
 pub struct ModelAgreement {
     pub id: i64,
     pub provider: String,
+    pub region: Option<String>,
     pub base_url: Option<String>,
 }
 
 async fn agree_model(ctx: &Context, input: ModelAgreement) -> Result<(), CallError> {
-    let (provider, base_url) = (&input.provider, input.base_url.as_deref());
-    let applied = model::agree(&ctx.db, input.id, provider, base_url).await?;
+    let (region, base_url) = (input.region.as_deref(), input.base_url.as_deref());
+    let applied = model::agree(&ctx.db, input.id, &input.provider, region, base_url).await?;
     require_applied(
         applied,
         "这个模型配置刚被修改或删除。请查看新的说明后再确认。",
     )
 }
 
-async fn list_provider_models(ctx: &Context, input: ModelSource) -> Result<Vec<String>, CallError> {
-    let source =
-        model::Source::check(&input.provider, &input.base_url).map_err(CallError::invalid)?;
+async fn list_provider_models(
+    ctx: &Context,
+    input: ModelSource,
+) -> Result<Vec<model::ListedModel>, CallError> {
+    let source = model::Source::check(&input.provider, input.region.as_deref(), &input.base_url)
+        .map_err(CallError::invalid)?;
     let api_key = entered_or_saved_key(ctx, &input.api_key, input.id, &source).await?;
     model::list_models(&ctx.net, &source.access(Some(api_key)))
         .await
@@ -1999,7 +2005,7 @@ async fn entered_or_saved_key(
             model::ModelError::MissingKey.failure().message,
         )),
         (None, model::Source::Custom(_)) => Ok(String::new()),
-        (None, model::Source::Known(_)) => Err(CallError::invalid(NO_API_KEY.into())),
+        (None, model::Source::Known(..)) => Err(CallError::invalid(NO_API_KEY.into())),
     }
 }
 
@@ -2411,15 +2417,7 @@ async fn write_letter(
         .map(|draft| draft.id);
     turn.send()?;
     writing::write(&ctx.net, &prepared, &current, |purpose, usage| {
-        model::usage::record_for_email(
-            &ctx.db,
-            chosen.id,
-            &chosen.model,
-            purpose,
-            email_id,
-            usage,
-            at,
-        )
+        model::usage::record_for_email(&ctx.db, &chosen, purpose, email_id, usage, at)
     })
     .await
     .map_err(|e| writing_failed(e, input.mentor_id, chosen.id))
@@ -2822,15 +2820,7 @@ async fn write_follow_up(
             body_md: input.body_md,
         },
         |purpose, usage| {
-            model::usage::record_for_email(
-                &ctx.db,
-                chosen.id,
-                &chosen.model,
-                purpose,
-                email_id,
-                usage,
-                at,
-            )
+            model::usage::record_for_email(&ctx.db, &chosen, purpose, email_id, usage, at)
         },
     )
     .await
@@ -2887,15 +2877,7 @@ async fn write_reply(
             body_md: input.body_md,
         },
         |purpose, usage| {
-            model::usage::record_for_email(
-                &ctx.db,
-                chosen.id,
-                &chosen.model,
-                purpose,
-                email_id,
-                usage,
-                at,
-            )
+            model::usage::record_for_email(&ctx.db, &chosen, purpose, email_id, usage, at)
         },
     )
     .await
@@ -3350,14 +3332,16 @@ mod writing_tests {
             provider: model::providers::CUSTOM.into(),
             base_url: address.clone(),
             model: "m".into(),
-            input_price: None,
-            output_price: None,
+            region: None,
+            currency: None,
+            prices: model::pricing::Prices::default(),
+            off_peak: model::pricing::Prices::default(),
         }
         .check()
         .unwrap();
         let id = model::create(&ctx.db, &fields, "", 0).await.unwrap();
         assert!(
-            model::agree(&ctx.db, id, "custom", Some(&address))
+            model::agree(&ctx.db, id, "custom", None, Some(&address))
                 .await
                 .unwrap()
         );
@@ -3468,14 +3452,16 @@ mod writing_tests {
             provider: model::providers::CUSTOM.into(),
             base_url: address.into(),
             model: "m".into(),
-            input_price: None,
-            output_price: None,
+            region: None,
+            currency: None,
+            prices: model::pricing::Prices::default(),
+            off_peak: model::pricing::Prices::default(),
         };
         let id = model::create(&ctx.db, &form(&old_address).check().unwrap(), "", 0)
             .await
             .unwrap();
         assert!(
-            model::agree(&ctx.db, id, "custom", Some(&old_address))
+            model::agree(&ctx.db, id, "custom", None, Some(&old_address))
                 .await
                 .unwrap()
         );
@@ -3519,6 +3505,7 @@ mod writing_tests {
             ModelAgreement {
                 id,
                 provider: "custom".into(),
+                region: None,
                 base_url: Some(new_address),
             },
         )

@@ -236,6 +236,8 @@ export type ConversationPage = { conversations: Array<Conversation>, total: numb
 
 export type ConversationQuery = { unread: boolean, page: number, };
 
+export type Costs = { cny: number | null, usd: number | null, };
+
 export type CrawlDetail = { summary: CrawlSummary, urls: Array<string>, limits: Array<string>, pages: Array<CrawlPage>, runs: Array<CrawlRun>, pageTotal: number, };
 
 export type CrawlDetailQuery = { id: number, page: number, };
@@ -275,6 +277,8 @@ export type Created = { order: number,
  * The payment page, opened in the browser.
  */
 payUrl: string, };
+
+export type Currency = "cny" | "usd";
 
 export type Decisions = { take: Array<Difference>, matches: Array<GroupChoice>, restore: Array<number>, };
 
@@ -454,6 +458,8 @@ export type FollowUpTarget = { messageId: string | null, subject: string, sentAt
 
 export type GroupChoice = { row: number, id: number | null, };
 
+export type Hours = "peak" | "off_peak";
+
 export type ImportCandidate = { id: number, profile: ImportProfile, };
 
 export type ImportMentors = { decisions: Decisions, fileName: string, data: string, setup: ImportSetup, };
@@ -479,6 +485,17 @@ latest: number,
 refunded: boolean, };
 
 export type Kind = "first" | "follow_up";
+
+export type KnownModel = { name: string,
+/**
+ * Its official prices: at peak hours where the provider has them, the lowest band where they
+ * rise with the input's length, and no limited-time discounts.
+ */
+prices: ModelPrices,
+/**
+ * Only where the provider has peak hours.
+ */
+offPeak: ModelPrices | null, };
 
 export type Letter = { subject: string, bodyMd: string, };
 
@@ -540,6 +557,12 @@ export type LibraryUpdateField = "name" | "research" | "sourceUrl" | "title" | "
 
 export type LibraryUpdateGroup = { field: LibraryUpdateField, differences: Array<LibraryUpdate>, };
 
+export type ListedModel = { name: string,
+/**
+ * Where its provider's list says them.
+ */
+prices: ModelPrices | null, };
+
 export type LogDays = { first: number, last: number, };
 
 export type MailAddress = { address: string, };
@@ -585,7 +608,11 @@ export type MatchAnalysis = { result: MatchResult | null, state: MatchState | nu
 
 export type MatchBatch = { ids: Array<number>, redo: boolean, };
 
-export type MatchEstimate = { plan: MatchPlan, model: string | null, hasBasis: boolean, inputTokens: number, outputTokens: number, cost: number | null, };
+export type MatchEstimate = { plan: MatchPlan, model: string | null,
+/**
+ * What the default model charges now; None unless its prices are filled in.
+ */
+rate: ModelRate | null, hasBasis: boolean, inputTokens: number, outputTokens: number, };
 
 export type MatchFilter = { "kind": "atLeast", score: number, } | { "kind": "unanalyzed" };
 
@@ -779,7 +806,7 @@ export type Method = "alipay" | "wxpay";
 
 export type Missing = "email" | "research" | "papers" | "homepage";
 
-export type ModelAgreement = { id: number, provider: string, baseUrl: string | null, };
+export type ModelAgreement = { id: number, provider: string, region: string | null, baseUrl: string | null, };
 
 export type ModelConfig = { id: number,
 /**
@@ -791,6 +818,10 @@ name: string | null,
  */
 provider: string,
 /**
+ * Only for a provider with regions.
+ */
+region: string | null,
+/**
  * Only for `providers::CUSTOM`.
  */
 baseUrl: string | null, model: string,
@@ -801,7 +832,19 @@ isDefault: boolean,
 /**
  * The user agreed to what AI features send to its provider.
  */
-agreed: boolean, needsApiKey: boolean, inputPrice: number | null, outputPrice: number | null, };
+agreed: boolean, needsApiKey: boolean,
+/**
+ * What a call made when it was listed is charged; None unless those prices are filled in.
+ */
+rate: ModelRate | null, currency: Currency,
+/**
+ * At peak hours, where the provider has them.
+ */
+prices: ModelPrices,
+/**
+ * Only where the provider has peak hours.
+ */
+offPeak: ModelPrices, };
 
 export type ModelConfigEdit = { id: number,
 /**
@@ -813,17 +856,70 @@ apiKey: string,
  */
 name: string, provider: string,
 /**
+ * Only read for a provider with regions, whose first it defaults to.
+ */
+region: string | null,
+/**
  * Only read for `providers::CUSTOM`.
  */
-baseUrl: string, model: string, inputPrice: number | null, outputPrice: number | null, };
+baseUrl: string, model: string,
+/**
+ * None: the provider's.
+ */
+currency: Currency | null,
+/**
+ * Left out: none filled in.
+ */
+prices?: ModelPrices,
+/**
+ * Only for a provider with peak hours.
+ */
+offPeak?: ModelPrices, };
 
 export type ModelConfigId = { id: number, };
 
-export type ModelProvider = { id: string, name: string,
+export type ModelEndpoint = {
+/**
+ * None for a provider's only endpoint.
+ */
+region: ModelRegion | null, baseUrl: string,
 /**
  * Where the user gets an API key.
  */
 keyUrl: string, };
+
+export type ModelPrices = { input: number | null,
+/**
+ * Of the input tokens read from the provider's cache, which are otherwise charged as input.
+ */
+cache: number | null, output: number | null, };
+
+export type ModelProvider = { id: string, name: string,
+/**
+ * Where it is called, the first by default: one for each region where its regions have API
+ * keys of their own, else just one.
+ */
+endpoints: Array<ModelEndpoint>, currency: Currency,
+/**
+ * None where it charges the same at all hours.
+ */
+peakHours: PeakHours | null,
+/**
+ * Its main text models, with the prices of its first endpoint.
+ */
+models: Array<KnownModel>, };
+
+export type ModelRate = { input: number, output: number, currency: Currency,
+/**
+ * Only where the provider has peak hours.
+ */
+hours: Hours | null, };
+
+export type ModelRegion = {
+/**
+ * The provider's own id for it, which configurations store.
+ */
+id: string, name: string, };
 
 export type ModelSource = {
 /**
@@ -831,6 +927,10 @@ export type ModelSource = {
  * provider and address stay the same.
  */
 id?: number, provider: string,
+/**
+ * Only read for a provider with regions, whose first it defaults to.
+ */
+region: string | null,
 /**
  * Only read for a custom provider.
  */
@@ -847,9 +947,25 @@ id?: number, apiKey: string,
  */
 name: string, provider: string,
 /**
+ * Only read for a provider with regions, whose first it defaults to.
+ */
+region: string | null,
+/**
  * Only read for `providers::CUSTOM`.
  */
-baseUrl: string, model: string, inputPrice: number | null, outputPrice: number | null, };
+baseUrl: string, model: string,
+/**
+ * None: the provider's.
+ */
+currency: Currency | null,
+/**
+ * Left out: none filled in.
+ */
+prices?: ModelPrices,
+/**
+ * Only for a provider with peak hours.
+ */
+offPeak?: ModelPrices, };
 
 export type NewMailbox = { secret: string, address: string, senderName: string, provider: string, smtp: Server, imap: Server, dailyLimit: number, minIntervalS: number, };
 
@@ -859,9 +975,25 @@ export type NewModelConfig = { apiKey: string,
  */
 name: string, provider: string,
 /**
+ * Only read for a provider with regions, whose first it defaults to.
+ */
+region: string | null,
+/**
  * Only read for `providers::CUSTOM`.
  */
-baseUrl: string, model: string, inputPrice: number | null, outputPrice: number | null, };
+baseUrl: string, model: string,
+/**
+ * None: the provider's.
+ */
+currency: Currency | null,
+/**
+ * Left out: none filled in.
+ */
+prices?: ModelPrices,
+/**
+ * Only for a provider with peak hours.
+ */
+offPeak?: ModelPrices, };
 
 export type NewTag = { mentorIds: Array<number>, name: string, color: string, };
 
@@ -908,6 +1040,16 @@ export type PageStatus = "success" | "failed" | "needs_browser";
 export type PairedPhone = { id: string, name: string, pairedAt: number, seenAt: number | null, online: boolean, };
 
 export type Pause = { until: number, reason: Failure, };
+
+export type PeakHours = {
+/**
+ * The time the hours are in, as the UI says it.
+ */
+zone: string,
+/**
+ * From and until which hour, Monday to Friday.
+ */
+weekdays: Array<[number, number]>, };
 
 export type PhoneAccess = { enabled: boolean, status: RelayStatus, };
 
@@ -995,7 +1137,7 @@ domestic: boolean, setup: Setup, };
 
 export type Purpose = "matching" | "writing" | "attach_by_default";
 
-export type PurposeUsage = { purpose: UsagePurpose, input: number, cached: number, output: number, estimatedCost: number | null, unpricedCalls: number, };
+export type PurposeUsage = { purpose: UsagePurpose, input: number, cached: number, output: number, estimatedCost: Costs, unpricedCalls: number, };
 
 export type Quota = {
 /**
@@ -1160,7 +1302,11 @@ export type TaskMaterial = { materialId: number, taskId: number, id: number, };
 
 export type TaskPage = { tasks: Array<TaskSummary>, total: number, };
 
-export type TaskPlan = { mentors: Array<Candidate>, model: string | null, modelConfigId: number | null, inputTokens: number, outputTokens: number, cost: number | null, };
+export type TaskPlan = { mentors: Array<Candidate>, model: string | null, modelConfigId: number | null,
+/**
+ * What that model charges now; None unless its prices are filled in.
+ */
+rate: ModelRate | null, inputTokens: number, outputTokens: number, };
 
 export type TaskQuery = { page: number, };
 
@@ -1228,7 +1374,7 @@ export type TodoPage = { todos: Array<OpenTodo>, total: number, };
 
 export type TodoQuery = { page: number, };
 
-export type TokenTotals = { input: number, cached: number, output: number, estimatedCost: number | null, unpricedCalls: number, };
+export type TokenTotals = { input: number, cached: number, output: number, estimatedCost: Costs, unpricedCalls: number, };
 
 export type TokenUsage = { purposes: Array<PurposeUsage>, total: TokenTotals, };
 
@@ -1539,7 +1685,7 @@ export interface Operations {
   deleteModelConfig: { input: ModelConfigId; output: null };
   setDefaultModel: { input: ModelConfigId; output: null };
   agreeModel: { input: ModelAgreement; output: null };
-  listProviderModels: { input: ModelSource; output: Array<string> };
+  listProviderModels: { input: ModelSource; output: Array<ListedModel> };
   testModel: { input: ModelTest; output: null };
   logUiError: { input: UiErrorReport; output: null };
   previewFeedback: { input: Nothing; output: FeedbackPreview };

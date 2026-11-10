@@ -66,8 +66,10 @@ async fn setup(db: &SqlitePool) -> (i64, i64) {
 /// A model at this address, which the user has agreed to or not.
 async fn model(db: &SqlitePool, address: &str, agreed: bool) {
     let form = ModelForm {
-        input_price: None,
-        output_price: None,
+        region: None,
+        currency: None,
+        prices: model::pricing::Prices::default(),
+        off_peak: model::pricing::Prices::default(),
         name: String::new(),
         provider: model::providers::CUSTOM.into(),
         base_url: address.into(),
@@ -77,7 +79,9 @@ async fn model(db: &SqlitePool, address: &str, agreed: bool) {
         .await
         .unwrap();
     if agreed {
-        model::agree(db, id, "custom", Some(address)).await.unwrap();
+        model::agree(db, id, "custom", None, Some(address))
+            .await
+            .unwrap();
     }
 }
 
@@ -120,9 +124,7 @@ async fn follow_up_uses_prior_letters_without_private_mentor_fields(db: SqlitePo
         &Net::new(Vec::new()).unwrap(),
         &prepared,
         &blank(),
-        |purpose, usage| {
-            model::usage::record_for_email(&db, chosen.id, &chosen.model, purpose, None, usage, T)
-        },
+        |purpose, usage| model::usage::record_for_email(&db, &chosen, purpose, None, usage, T),
     )
     .await
     .unwrap();
@@ -378,7 +380,7 @@ async fn current_write(
     )
     .await?;
     writing::write(net, &prepared, current, |purpose, usage| {
-        model::usage::record_for_email(db, chosen.id, &chosen.model, purpose, None, usage, now)
+        model::usage::record_for_email(db, &chosen, purpose, None, usage, now)
     })
     .await
 }
@@ -402,8 +404,7 @@ async fn check(
         |usage| {
             model::usage::record_for_email(
                 db,
-                chosen.id,
-                &chosen.model,
+                chosen,
                 model::usage::Purpose::FactCheck,
                 Some(email),
                 usage,
@@ -532,7 +533,7 @@ async fn reply_drafts_and_rewrites_use_the_fixed_target_and_record_their_purpose
         .await
         .unwrap();
         let answer = writing::write(&net, &prepared, letter, |purpose, usage| {
-            model::usage::record_for_email(&db, chosen.id, &chosen.model, purpose, None, usage, T)
+            model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
         })
         .await
         .unwrap();
@@ -618,7 +619,7 @@ async fn reply_context_stops_at_twenty_letters_and_ten_thousand_characters(db: S
         .await
         .unwrap();
         writing::write(&net, &prepared, &blank(), |purpose, usage| {
-            model::usage::record_for_email(&db, chosen.id, &chosen.model, purpose, None, usage, T)
+            model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
         })
         .await
         .unwrap();

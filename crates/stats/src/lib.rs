@@ -5,6 +5,8 @@ pub use period::{Range, Window, first_event};
 mod today;
 pub use today::{TodayDrafts, TodayWork, today_work};
 
+use model::pricing::{Currency, Prices, Pricing};
+use model::usage::{Purpose, Usage};
 use serde::{Deserialize, Serialize};
 use sqlx::{SqliteConnection, SqlitePool, types::Json};
 use ts_rs::TS;
@@ -216,20 +218,44 @@ pub async fn mentor_schools(
     })
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Default, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenTotals {
     pub input: i64,
     pub cached: i64,
     pub output: i64,
-    pub estimated_cost: Option<f64>,
+    pub estimated_cost: Costs,
     pub unpriced_calls: i64,
+}
+
+/// Amounts in each currency, which are not converted; None where no call was priced in it.
+#[derive(Debug, Default, Serialize, TS)]
+pub struct Costs {
+    pub cny: Option<f64>,
+    pub usd: Option<f64>,
+}
+
+impl TokenTotals {
+    fn add(&mut self, usage: Usage, cost: Option<(Currency, f64)>, calls: i64) {
+        self.input += usage.input;
+        self.cached += usage.cached;
+        self.output += usage.output;
+        let Some((currency, amount)) = cost else {
+            self.unpriced_calls += calls;
+            return;
+        };
+        let sum = match currency {
+            Currency::Cny => &mut self.estimated_cost.cny,
+            Currency::Usd => &mut self.estimated_cost.usd,
+        };
+        *sum.get_or_insert(0.0) += amount;
+    }
 }
 
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct PurposeUsage {
-    pub purpose: model::usage::Purpose,
+    pub purpose: Purpose,
     #[serde(flatten)]
     #[ts(flatten)]
     pub tokens: TokenTotals,
@@ -241,40 +267,50 @@ pub struct TokenUsage {
     pub total: TokenTotals,
 }
 
+/// Costs are estimated with the configurations' prices now, and a call's peak or off-peak hours.
 pub async fn tokens(db: &SqlitePool, window: &Window) -> Result<TokenUsage, sqlx::Error> {
     let start = window.start;
     let end = window.end;
     let rows = sqlx::query_file!("src/tokens.sql", start, end)
         .fetch_all(db)
         .await?;
-    let mut total = TokenTotals {
-        input: 0,
-        cached: 0,
-        output: 0,
-        estimated_cost: None,
-        unpriced_calls: 0,
-    };
-    let purposes = rows
-        .into_iter()
-        .map(|r| {
-            total.input += r.input;
-            total.cached += r.cached;
-            total.output += r.output;
-            total.unpriced_calls += r.unpriced_calls;
-            if let Some(cost) = r.estimated_cost {
-                *total.estimated_cost.get_or_insert(0.0) += cost;
-            }
-            PurposeUsage {
-                purpose: r.purpose,
-                tokens: TokenTotals {
-                    input: r.input,
-                    cached: r.cached,
-                    output: r.output,
-                    estimated_cost: r.estimated_cost,
-                    unpriced_calls: r.unpriced_calls,
+    let mut purposes: Vec<PurposeUsage> = Vec::new();
+    let mut total = TokenTotals::default();
+    for r in rows {
+        let usage = Usage {
+            input: r.input,
+            cached: r.cached,
+            output: r.output,
+        };
+        // A deleted configuration leaves its calls unpriced.
+        let cost = r.currency.and_then(|currency| {
+            let pricing = Pricing {
+                currency,
+                prices: Prices {
+                    input: r.input_price,
+                    cache: r.cache_price,
+                    output: r.output_price,
                 },
+                off_peak: Prices {
+                    input: r.off_peak_input_price,
+                    cache: r.off_peak_cache_price,
+                    output: r.off_peak_output_price,
+                },
+            };
+            Some((currency, pricing.cost(r.off_peak, usage)?))
+        });
+        match purposes.last_mut() {
+            Some(last) if last.purpose == r.purpose => last.tokens.add(usage, cost, r.calls),
+            _ => {
+                let mut tokens = TokenTotals::default();
+                tokens.add(usage, cost, r.calls);
+                purposes.push(PurposeUsage {
+                    purpose: r.purpose,
+                    tokens,
+                });
             }
-        })
-        .collect();
+        }
+        total.add(usage, cost, r.calls);
+    }
     Ok(TokenUsage { purposes, total })
 }

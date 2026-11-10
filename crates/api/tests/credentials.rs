@@ -81,5 +81,5 @@ async fn restored_credentials_must_be_refilled_before_editing_or_testing(db: Sql
     }
     edit["apiKey"] = json!("replacement");
     call(&ctx, "updateModelConfig", edit).await.unwrap();
-    assert!(!model::list(&ctx.db).await.unwrap()[0].needs_api_key);
+    assert!(!model::list(&ctx.db, 0).await.unwrap()[0].needs_api_key);
 }

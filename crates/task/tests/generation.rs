@@ -690,9 +690,9 @@ async fn fact_check_switch_controls_generation_and_token_estimates(db: SqlitePoo
         ids: vec![eligible],
         ..form
     };
-    let off = task::plan(&db, &form).await.unwrap();
+    let off = task::plan(&db, &form, 0).await.unwrap();
     profile::set_ai_fact_check(&db, true).await.unwrap();
-    let on = task::plan(&db, &form).await.unwrap();
+    let on = task::plan(&db, &form, 0).await.unwrap();
     assert!(on.input_tokens > off.input_tokens + off.output_tokens);
     assert_eq!(on.output_tokens - off.output_tokens, 300);
     let mut run = Runner::start(&db, Default::default());

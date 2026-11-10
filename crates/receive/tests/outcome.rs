@@ -75,13 +75,17 @@ async fn config(db: &SqlitePool, address: &str) -> i64 {
         provider: "custom".into(),
         base_url: address.into(),
         model: "fixture".into(),
-        input_price: None,
-        output_price: None,
+        region: None,
+        currency: None,
+        prices: model::pricing::Prices::default(),
+        off_peak: model::pricing::Prices::default(),
     }
     .check()
     .unwrap();
     let id = model::create(db, &fields, "", 1).await.unwrap();
-    model::agree(db, id, "custom", Some(address)).await.unwrap();
+    model::agree(db, id, "custom", None, Some(address))
+        .await
+        .unwrap();
     profile_default(db, id).await;
     id
 }

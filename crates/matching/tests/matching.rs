@@ -88,13 +88,19 @@ async fn setup(db: &SqlitePool, address: &str, n: usize) -> Vec<i64> {
         provider: "custom".into(),
         base_url: address.into(),
         model: "m".into(),
-        input_price: Some(1.0),
-        output_price: Some(2.0),
+        region: None,
+        currency: None,
+        prices: model::pricing::Prices {
+            input: Some(1.0),
+            cache: None,
+            output: Some(2.0),
+        },
+        off_peak: model::pricing::Prices::default(),
     }
     .check()
     .unwrap();
     let config = model::create(db, &fields, "", 1).await.unwrap();
-    model::agree(db, config, "custom", Some(address))
+    model::agree(db, config, "custom", None, Some(address))
         .await
         .unwrap();
     profile::update(
@@ -143,13 +149,18 @@ async fn normal_analysis_records_result_usage_and_estimate_with_student_prefix(d
     .await
     .unwrap();
     queue::cancel(&db).await.unwrap();
-    let estimate = matching::plan(&db, &ids, false).await.unwrap();
+    let estimate = matching::plan(&db, &ids, false, 0).await.unwrap();
     assert_eq!(estimate.plan.analyze, 2);
     assert!(estimate.input_tokens > 20_000);
     assert_eq!(estimate.output_tokens, 2 * matching::OUTPUT_TOKENS);
     assert_eq!(
-        estimate.cost,
-        Some((estimate.input_tokens as f64 + 2.0 * estimate.output_tokens as f64) / 1_000_000.0)
+        estimate.rate,
+        Some(model::pricing::Rate {
+            input: 1.0,
+            output: 2.0,
+            currency: model::pricing::Currency::Cny,
+            hours: None,
+        })
     );
     queue::enqueue(&db, &ids, false, false, 2).await.unwrap();
     let mut runner = Runner::start(&db);
@@ -251,14 +262,20 @@ async fn unauthorized_still_pauses_after_name_and_price_edits_then_resumes(db: S
     let ids = setup(&db, &p.address, 1).await;
     let mut runner = Runner::start(&db);
     let old = request(&mut p).await;
-    let config = model::list(&db).await.unwrap().remove(0);
+    let config = model::list(&db, 0).await.unwrap().remove(0);
     let fields = model::ModelForm {
         name: "新名称".into(),
         provider: "custom".into(),
         base_url: p.address.clone(),
         model: config.model,
-        input_price: Some(3.0),
-        output_price: Some(4.0),
+        region: None,
+        currency: None,
+        prices: model::pricing::Prices {
+            input: Some(3.0),
+            cache: None,
+            output: Some(4.0),
+        },
+        off_peak: model::pricing::Prices::default(),
     }
     .check()
     .unwrap();
@@ -615,13 +632,15 @@ async fn startup_recovers_running_concurrency_is_three_and_pause_stops_claiming(
         provider: "custom".into(),
         base_url: p.address.clone(),
         model: "new-default".into(),
-        input_price: None,
-        output_price: None,
+        region: None,
+        currency: None,
+        prices: model::pricing::Prices::default(),
+        off_peak: model::pricing::Prices::default(),
     }
     .check()
     .unwrap();
     let config = model::create(&db, &fields, "", 20).await.unwrap();
-    model::agree(&db, config, "custom", Some(&p.address))
+    model::agree(&db, config, "custom", None, Some(&p.address))
         .await
         .unwrap();
     profile::set_default_model(&db, config).await.unwrap();
@@ -768,7 +787,7 @@ async fn old_configuration_error_requeues_without_pausing_the_new_default(db: Sq
     let old = request(&mut old_provider).await;
     let mut new_provider = Provider::start().await.unwrap();
     setup(&db, &new_provider.address, 0).await;
-    let configs = model::list(&db).await.unwrap();
+    let configs = model::list(&db, 0).await.unwrap();
     profile::set_default_model(&db, configs[1].id)
         .await
         .unwrap();
@@ -809,14 +828,16 @@ async fn old_key_error_does_not_pause_the_updated_configuration(db: SqlitePool) 
     let ids = setup(&db, &p.address, 1).await;
     let mut runner = Runner::start(&db);
     let old = request(&mut p).await;
-    let config = model::list(&db).await.unwrap().remove(0);
+    let config = model::list(&db, 0).await.unwrap().remove(0);
     let fields = model::ModelForm {
         name: "".into(),
         provider: "custom".into(),
         base_url: p.address.clone(),
         model: config.model,
-        input_price: config.input_price,
-        output_price: config.output_price,
+        region: None,
+        currency: None,
+        prices: config.pricing.prices,
+        off_peak: model::pricing::Prices::default(),
     }
     .check()
     .unwrap();
@@ -861,21 +882,23 @@ async fn old_endpoint_error_does_not_pause_the_reconfirmed_configuration(db: Sql
     let mut runner = Runner::start(&db);
     let old = request(&mut old_provider).await;
     let mut new_provider = Provider::start().await.unwrap();
-    let config = model::list(&db).await.unwrap().remove(0);
+    let config = model::list(&db, 0).await.unwrap().remove(0);
     let fields = model::ModelForm {
         name: "".into(),
         provider: "custom".into(),
         base_url: new_provider.address.clone(),
         model: config.model,
-        input_price: config.input_price,
-        output_price: config.output_price,
+        region: None,
+        currency: None,
+        prices: config.pricing.prices,
+        off_peak: model::pricing::Prices::default(),
     }
     .check()
     .unwrap();
     assert!(model::update(&db, config.id, &fields, "").await.unwrap());
     assert!(!model::chosen(&db).await.unwrap().unwrap().agreed);
     assert!(
-        model::agree(&db, config.id, "custom", Some(&new_provider.address))
+        model::agree(&db, config.id, "custom", None, Some(&new_provider.address))
             .await
             .unwrap()
     );
@@ -915,14 +938,16 @@ async fn old_model_name_error_does_not_pause_the_updated_configuration(db: Sqlit
     setup(&db, &p.address, 1).await;
     let mut runner = Runner::start(&db);
     let old = request(&mut p).await;
-    let config = model::list(&db).await.unwrap().remove(0);
+    let config = model::list(&db, 0).await.unwrap().remove(0);
     let fields = model::ModelForm {
         name: "".into(),
         provider: "custom".into(),
         base_url: p.address.clone(),
         model: "new-default".into(),
-        input_price: None,
-        output_price: None,
+        region: None,
+        currency: None,
+        prices: model::pricing::Prices::default(),
+        off_peak: model::pricing::Prices::default(),
     }
     .check()
     .unwrap();

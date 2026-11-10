@@ -232,7 +232,8 @@ pub fn classify(error: ModelError, access: &Access) -> Effect {
         ModelError::Failed(reply) => (Cause::of(0, None, reply), None, None, reply),
         ModelError::NoAnswer { .. } | ModelError::Broken(_) => return Effect::Failed(failure),
     };
-    let rate_limited = status == Some(429) && access.quota_is_rate_limit;
+    let rate_limited =
+        status == Some(429) && access.provider.is_some_and(|p| p.quota_is_rate_limit);
     match cause {
         Cause::TooLong | Cause::ServerError | Cause::Other => Effect::Failed(failure),
         Cause::Quota if !rate_limited => Effect::Pause(Failure::new(NO_BALANCE)),
@@ -294,7 +295,7 @@ mod tests {
             provider: "custom".into(),
             model: "m".into(),
             agreed: true,
-            access: Source::check("custom", "https://relay.example.com/v1")
+            access: Source::check("custom", None, "https://relay.example.com/v1")
                 .unwrap()
                 .access(Some(key.into())),
         };
@@ -377,7 +378,7 @@ mod tests {
     #[test]
     fn a_used_up_balance_pauses_and_a_token_limit_waits() {
         let access = |provider| {
-            Source::check(provider, "https://relay.example.com/v1")
+            Source::check(provider, None, "https://relay.example.com/v1")
                 .unwrap()
                 .access(Some("k".into()))
         };

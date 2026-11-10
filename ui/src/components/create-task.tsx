@@ -16,7 +16,7 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ScheduleFields, scheduleValid, useScheduleCapacity } from "@/components/schedule";
-import { day, fileSize, sentFor } from "@/format";
+import { costEstimate, day, fileSize, sentFor } from "@/format";
 
 export function CreateTaskDialog({
   ids,
@@ -345,7 +345,8 @@ function TaskSteps({
                   <p>模型：{plan.data?.model ?? "尚未添加模型"}</p>
                   <p>
                     约 {((plan.data?.inputTokens ?? 0) + (plan.data?.outputTokens ?? 0)).toLocaleString()} Token
-                    {plan.data?.cost != null && `，约 ${plan.data.cost.toFixed(2)} 元`}
+                    {plan.data?.rate &&
+                      `，${costEstimate(plan.data.rate, plan.data.inputTokens, plan.data.outputTokens)}`}
                   </p>
                   <p className="text-xs text-muted-foreground">按字数估算，实际以服务商为准</p>
                 </div>

@@ -363,7 +363,7 @@ async fn tokens_use_local_days_and_keep_unpriced_usage(db: SqlitePool) {
         ),
         (10000, 2200, 1050, 2)
     );
-    assert!((s.total.estimated_cost.unwrap() - 0.012).abs() < 1e-10);
+    assert!((s.total.estimated_cost.cny.unwrap() - 0.012).abs() < 1e-10);
     assert_eq!(s.purposes.len(), 3);
     assert!(
         s.purposes
@@ -372,7 +372,98 @@ async fn tokens_use_local_days_and_keep_unpriced_usage(db: SqlitePool) {
             .unwrap()
             .tokens
             .estimated_cost
+            .cny
             .is_none()
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn costs_take_cache_prices_and_off_peak_hours_and_keep_currencies_apart(db: SqlitePool) {
+    use model::pricing::Prices;
+    use model::usage::{Purpose, Usage};
+    let config = async |provider: &str, prices, off_peak| {
+        let form = model::ModelForm {
+            name: String::new(),
+            provider: provider.into(),
+            region: None,
+            base_url: String::new(),
+            model: "m".into(),
+            currency: None,
+            prices,
+            off_peak,
+        };
+        let id = model::create(&db, &form.check().unwrap(), "k", 0)
+            .await
+            .unwrap();
+        model::selected(&db, Some(id)).await.unwrap().unwrap()
+    };
+    let deepseek = config(
+        "deepseek",
+        Prices::official(2.0, Some(0.5), 8.0),
+        Prices::official(1.0, Some(0.25), 4.0),
+    )
+    .await;
+    let openai = config(
+        "openai",
+        Prices::official(1.0, Some(0.1), 5.0),
+        Prices::default(),
+    )
+    .await;
+    let tokens = |input, cached, output| Usage {
+        input,
+        cached,
+        output,
+    };
+    // A Tuesday morning is in DeepSeek's peak hours, a Saturday's is not.
+    for (chosen, purpose, usage, time) in [
+        (
+            &deepseek,
+            Purpose::Draft,
+            tokens(1000, 400, 100),
+            "2026-11-10T10:00:00+08:00",
+        ),
+        (
+            &deepseek,
+            Purpose::Draft,
+            tokens(1000, 400, 100),
+            "2026-11-14T10:00:00+08:00",
+        ),
+        (
+            &openai,
+            Purpose::Match,
+            tokens(2000, 1000, 200),
+            "2026-11-14T10:00:00+08:00",
+        ),
+    ] {
+        model::usage::record(&db, chosen, purpose, usage, at(time))
+            .await
+            .unwrap();
+    }
+    let now = at("2026-11-14T12:00:00+08:00");
+    let w = Window::new(Range::Week, "Asia/Shanghai", now, None).unwrap();
+    let s = stats::tokens(&db, &w).await.unwrap();
+    let close = |cost: Option<f64>, expected: f64| {
+        assert!(
+            (cost.unwrap() - expected).abs() < 1e-12,
+            "{cost:?} {expected}"
+        );
+    };
+    // 600 input tokens not from the cache, 400 from it and 100 output at the peak prices, and
+    // the same at half the prices.
+    close(s.total.estimated_cost.cny, 0.0022 + 0.0011);
+    close(s.total.estimated_cost.usd, 0.0021);
+    assert_eq!(s.total.unpriced_calls, 0);
+    let costs: Vec<_> = s
+        .purposes
+        .iter()
+        .map(|p| {
+            let c = &p.tokens.estimated_cost;
+            (p.purpose, c.cny.is_some(), c.usd.is_some())
+        })
+        .collect();
+    assert_eq!(
+        costs,
+        [(Purpose::Draft, true, false), (Purpose::Match, false, true)]
     );
 }
 

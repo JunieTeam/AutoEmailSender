@@ -194,7 +194,7 @@ async fn follow_up_eligibility_and_concurrent_task_creation(db: SqlitePool) {
     email::save_first_draft(&db, ids[3], "草稿", "您好", &[], T)
         .await
         .unwrap();
-    let p = plan(&db, &follow_form(&db, ids.clone()).await)
+    let p = plan(&db, &follow_form(&db, ids.clone()).await, 0)
         .await
         .unwrap();
     for (i, reason) in [
@@ -1110,7 +1110,7 @@ async fn eligibility_is_explicit_and_contacted_mentors_remain_eligible(db: Sqlit
     .await
     .unwrap();
     let f = form(&db, ids.clone()).await;
-    let p = plan(&db, &f).await.unwrap();
+    let p = plan(&db, &f, 0).await.unwrap();
     for id in &ids[..4] {
         assert!(
             p.mentors
@@ -1754,7 +1754,7 @@ async fn mentors_without_research_are_pointed_out_before_writing(db: SqlitePool)
     )
     .await
     .unwrap();
-    let p = plan(&db, &form(&db, vec![vague, known]).await)
+    let p = plan(&db, &form(&db, vec![vague, known]).await, 0)
         .await
         .unwrap();
     assert_eq!(
@@ -2698,7 +2698,7 @@ async fn restart_selects_only_unsuccessful_and_reuses_saved_inputs(db: SqlitePoo
     assert_eq!(next.template_id, None);
     assert_eq!(next.template_source_id, Some(t));
     assert!(matches!(next.schedule, email::schedule::Schedule::Now));
-    let p = plan(&db, &next).await.unwrap();
+    let p = plan(&db, &next, 0).await.unwrap();
     assert_eq!(
         p.mentors
             .iter()
@@ -2767,7 +2767,7 @@ async fn restart_retains_follow_up_kind_and_falls_back_after_model_deletion(db: 
     model::delete(&db, old).await.unwrap();
     template::delete(&db, f.template_id.unwrap()).await.unwrap();
     // The dialog may have opened before either configuration was deleted.
-    let p = plan(&db, &next).await.unwrap();
+    let p = plan(&db, &next, 0).await.unwrap();
     assert_eq!(p.model_config_id, Some(new));
     let t = create(&db, &next, T + 1).await.unwrap();
     assert_eq!(
@@ -2900,7 +2900,7 @@ async fn restart_replaces_only_selected_failed_letters_at_creation(db: SqlitePoo
         let t = failed_task(&db, vec![selected, excluded], generation, kind).await;
         let before = items(&db, t).await;
         let mut next = restart(&db, t).await.unwrap().unwrap();
-        let p = plan(&db, &next).await.unwrap();
+        let p = plan(&db, &next, 0).await.unwrap();
         assert!(p.mentors.iter().all(|m| m.reason.is_none()));
         assert!(items(&db, t).await.iter().all(|d| d.state
             == if generation {
@@ -2982,7 +2982,7 @@ async fn restart_refuses_retried_original_letters_without_canceling_other_failur
         let t = failed_task(&db, vec![retried, failed], generation, Kind::First).await;
         let next = restart(&db, t).await.unwrap().unwrap();
         assert!(
-            plan(&db, &next)
+            plan(&db, &next, 0)
                 .await
                 .unwrap()
                 .mentors
@@ -3002,7 +3002,7 @@ async fn restart_refuses_retried_original_letters_without_canceling_other_failur
         } else {
             assert!(email::retry(&db, d.id, T + 2).await.unwrap());
         }
-        let p = plan(&db, &next).await.unwrap();
+        let p = plan(&db, &next, 0).await.unwrap();
         assert!(
             p.mentors
                 .iter()
@@ -3112,7 +3112,11 @@ async fn restart_refuses_an_original_retry_that_finished_sending(db: SqlitePool)
             .await
             .unwrap();
         assert_eq!(items(&db, t).await[0].state, DraftState::Sent);
-        assert!(plan(&db, &next).await.unwrap().mentors[0].reason.is_some());
+        assert!(
+            plan(&db, &next, 0).await.unwrap().mentors[0]
+                .reason
+                .is_some()
+        );
         assert!(matches!(
             create(&db, &next, T + 4).await,
             Err(Error::Invalid(_))
@@ -3131,7 +3135,11 @@ async fn restart_refuses_a_deleted_source_after_changing_template(db: SqlitePool
         let m = mentor(&db, n, true).await;
         let old = failed_task(&db, vec![m], false, kind).await;
         let mut next = restart(&db, old).await.unwrap().unwrap();
-        assert!(plan(&db, &next).await.unwrap().mentors[0].reason.is_none());
+        assert!(
+            plan(&db, &next, 0).await.unwrap().mentors[0]
+                .reason
+                .is_none()
+        );
         // Choosing a current template must preserve the source constraint.
         next.template_source_id = None;
         let letter = items(&db, old).await.remove(0);
@@ -3142,11 +3150,15 @@ async fn restart_refuses_a_deleted_source_after_changing_template(db: SqlitePool
         .await
         .unwrap();
         assert_eq!(items(&db, old).await[0].state, DraftState::Sent);
-        assert!(plan(&db, &next).await.unwrap().mentors[0].reason.is_some());
+        assert!(
+            plan(&db, &next, 0).await.unwrap().mentors[0]
+                .reason
+                .is_some()
+        );
         delete(&db, old, T).await.unwrap();
         assert!(get(&db, old).await.unwrap().is_none());
 
-        let planned = plan(&db, &next).await;
+        let planned = plan(&db, &next, 0).await;
         let created = create(&db, &next, at + 4).await;
         assert!(matches!(created, Err(Error::Invalid(_))));
         assert!(matches!(planned, Err(Error::Invalid(_))));
@@ -3180,7 +3192,7 @@ async fn restart_requires_an_existing_source_and_all_selected_mentors(db: Sqlite
     missing.source_task_id = Some(999999);
 
     for form in [next, missing] {
-        let planned = plan(&db, &form).await;
+        let planned = plan(&db, &form, 0).await;
         let created = create(&db, &form, T + 2).await;
         assert!(matches!(created, Err(Error::Invalid(_))));
         assert!(matches!(planned, Err(Error::Invalid(_))));

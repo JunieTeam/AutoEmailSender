@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE model_config SET agreed = 1\n        WHERE id = ? AND provider = ? AND region IS ? AND base_url IS ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "2009b8fcff111f0a6a1816f2c5d4a8794c7b84b553eadcd45a40c8900cd17f46"
+}

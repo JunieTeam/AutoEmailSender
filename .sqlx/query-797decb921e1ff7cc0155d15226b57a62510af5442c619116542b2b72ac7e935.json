@@ -1,0 +1,150 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT u.purpose AS \"purpose!: model::usage::Purpose\", u.off_peak AS \"off_peak!: bool\",\n c.currency AS \"currency?: model::pricing::Currency\", c.input_price, c.cache_price, c.output_price,\n c.off_peak_input_price, c.off_peak_cache_price, c.off_peak_output_price,\n sum(u.input_tokens) AS \"input!: i64\", sum(u.cached_tokens) AS \"cached!: i64\",\n sum(u.output_tokens) AS \"output!: i64\", count(*) AS \"calls!: i64\"\nFROM usage u LEFT JOIN model_config c ON c.id=u.model_config_id\nWHERE (?1 IS NULL OR u.at>=?1) AND u.at<?2\nGROUP BY u.purpose, u.model_config_id, u.off_peak ORDER BY u.purpose\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "purpose!: model::usage::Purpose",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "usage",
+            "name": "purpose"
+          }
+        }
+      },
+      {
+        "name": "off_peak!: bool",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "usage",
+            "name": "off_peak"
+          }
+        }
+      },
+      {
+        "name": "currency?: model::pricing::Currency",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "name": "input_price",
+        "ordinal": 3,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "input_price"
+          }
+        }
+      },
+      {
+        "name": "cache_price",
+        "ordinal": 4,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "cache_price"
+          }
+        }
+      },
+      {
+        "name": "output_price",
+        "ordinal": 5,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "output_price"
+          }
+        }
+      },
+      {
+        "name": "off_peak_input_price",
+        "ordinal": 6,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "off_peak_input_price"
+          }
+        }
+      },
+      {
+        "name": "off_peak_cache_price",
+        "ordinal": 7,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "off_peak_cache_price"
+          }
+        }
+      },
+      {
+        "name": "off_peak_output_price",
+        "ordinal": 8,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "model_config",
+            "name": "off_peak_output_price"
+          }
+        }
+      },
+      {
+        "name": "input!: i64",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "cached!: i64",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "output!: i64",
+        "ordinal": 11,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "calls!: i64",
+        "ordinal": 12,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "797decb921e1ff7cc0155d15226b57a62510af5442c619116542b2b72ac7e935"
+}

@@ -81,8 +81,7 @@ pub async fn fact_check_email(
             |usage| {
                 model::usage::record_for_email(
                     &ctx.db,
-                    chosen.id,
-                    &chosen.model,
+                    &chosen,
                     model::usage::Purpose::FactCheck,
                     Some(input.id),
                     usage,

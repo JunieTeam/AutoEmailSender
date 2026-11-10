@@ -3,14 +3,26 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRef, useState } from "react";
 import { call, failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
-import type { ModelConfig, ModelProvider, ModelSource, ModelTest, NewModelConfig } from "@/api/types";
+import type {
+  Currency,
+  ListedModel,
+  ModelConfig,
+  ModelPrices,
+  ModelProvider,
+  ModelSource,
+  ModelTest,
+  NewModelConfig,
+  PeakHours,
+} from "@/api/types";
 import { formClose, Field, TestResult } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Autocomplete } from "@/components/ui/autocomplete";
 import { NumberField } from "@/components/ui/number-field";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select } from "@/components/ui/select";
+import { UNITS } from "@/format";
 
 /** The provider table from the core; it never changes while the app runs. */
 export function useModelProviders() {
@@ -23,26 +35,73 @@ export function useModelProviders() {
 
 const CUSTOM = "custom";
 
-const EMPTY: NewModelConfig = {
+/**
+ * Where a configuration calls, as the user knows it: its provider, with the region where it has
+ * several, or else its address.
+ */
+export function sourceName(c: Pick<ModelConfig, "provider" | "region" | "baseUrl">, providers: ModelProvider[]) {
+  const provider = providers.find((p) => p.id === c.provider);
+  if (!provider) return c.baseUrl ?? c.provider;
+  const region = provider.endpoints.find((e) => e.region !== null && e.region.id === c.region)?.region;
+  return region ? `${provider.name}${region.name}地域` : provider.name;
+}
+
+const NO_PRICES: ModelPrices = { input: null, cache: null, output: null };
+
+/** The form always names its currency, which the core would otherwise take as the provider's, and prices. */
+type Form = Omit<Required<NewModelConfig>, "currency"> & { currency: Currency };
+
+const EMPTY: Form = {
   name: "",
   provider: "",
+  region: null,
   baseUrl: "",
   model: "",
   apiKey: "",
-  inputPrice: null,
-  outputPrice: null,
+  currency: "cny",
+  prices: NO_PRICES,
+  offPeak: NO_PRICES,
 };
 
-function formOf(c: ModelConfig): NewModelConfig {
+function formOf(c: ModelConfig): Form {
   return {
     name: c.name ?? "",
     provider: c.provider,
+    region: c.region,
     baseUrl: c.baseUrl ?? "",
     model: c.model,
     apiKey: "",
-    inputPrice: c.inputPrice,
-    outputPrice: c.outputPrice,
+    currency: c.currency,
+    prices: c.prices,
+    offPeak: c.offPeak,
   };
+}
+
+type Pricing = Pick<Form, "currency" | "prices" | "offPeak">;
+
+/**
+ * The official prices of the model the form names, where they are known: those in the provider
+ * table, which are for the provider's first region, or those its model list gave.
+ */
+function officialPricing(
+  form: Form,
+  provider: ModelProvider | undefined,
+  listed: ListedModel[] | undefined,
+): Pricing | undefined {
+  if (!provider || form.region !== (provider.endpoints[0]?.region?.id ?? null)) return undefined;
+  const model = form.model.trim();
+  const known = provider.models.find((m) => m.name === model);
+  if (known) return { currency: provider.currency, prices: known.prices, offPeak: known.offPeak ?? NO_PRICES };
+  const prices = listed?.find((m) => m.name === model)?.prices;
+  return prices ? { currency: provider.currency, prices, offPeak: NO_PRICES } : undefined;
+}
+
+function samePrices(a: ModelPrices, b: ModelPrices) {
+  return a.input === b.input && a.cache === b.cache && a.output === b.output;
+}
+
+function samePricing(a: Pricing, b: Pricing) {
+  return a.currency === b.currency && samePrices(a.prices, b.prices) && samePrices(a.offPeak, b.offPeak);
 }
 
 /** Adding or editing a model configuration (docs/ui.md#交互). Mounted while open. */
@@ -62,8 +121,7 @@ export function ModelDialog({
   const [form, setForm] = useState(initial);
   const queryClient = useQueryClient();
   const save = useMutation({
-    mutationFn: (f: NewModelConfig) =>
-      config ? call("updateModelConfig", { ...f, id: config.id }) : call("addModelConfig", f),
+    mutationFn: (f: Form) => (config ? call("updateModelConfig", { ...f, id: config.id }) : call("addModelConfig", f)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["listModelConfigs"] });
       onSaved?.();
@@ -75,11 +133,14 @@ export function ModelDialog({
   const providerRef = useRef<HTMLButtonElement>(null);
 
   const provider = providers.find((p) => p.id === form.provider);
+  const endpoint = provider?.endpoints.find((e) => (e.region?.id ?? null) === form.region);
+  const regions = provider?.endpoints.flatMap((e) => (e.region ? [[e.region.id, e.region.name] as const] : [])) ?? [];
   // The core only uses the saved key where it was saved for, and asks again for one a restore
   // left out only there.
   const sameSource =
     config !== null &&
     form.provider === initial.provider &&
+    form.region === initial.region &&
     (form.provider !== CUSTOM || form.baseUrl === initial.baseUrl);
   const keySaved = sameSource && !config.needsApiKey;
   const keyLost = sameSource && config.needsApiKey;
@@ -88,17 +149,41 @@ export function ModelDialog({
     (keySaved || (form.provider === CUSTOM && !keyLost) || form.apiKey.trim() !== "");
   const complete = reachable && form.model.trim() !== "";
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
+  const names = [...new Set([...(provider?.models ?? []), ...(models.data ?? [])].map((m) => m.name))];
 
-  /** Changes the form; an earlier test no longer applies, nor a list from another provider or key. */
-  function edit(next: NewModelConfig) {
+  /**
+   * Changes the form. Prices are in the provider's currency, and only one with peak hours has
+   * off-peak prices. They follow a known model: its official prices replace the others, and go
+   * again, if left as they were, for a model, provider or region whose prices are not known. An
+   * earlier test no longer applies, nor a list from another provider or key.
+   */
+  function edit(change: Partial<Form>) {
+    let next = { ...form, ...change };
+    const nextProvider = providers.find((p) => p.id === next.provider);
+    if (next.provider !== form.provider) {
+      next = {
+        ...next,
+        region: nextProvider?.endpoints[0]?.region?.id ?? null,
+        currency: nextProvider?.currency ?? "cny",
+        offPeak: nextProvider?.peakHours ? next.offPeak : NO_PRICES,
+      };
+    }
+    const moved = next.provider !== form.provider || next.region !== form.region;
+    if (moved || next.model !== form.model) {
+      const before = officialPricing(form, provider, models.data);
+      const after = officialPricing(next, nextProvider, moved ? undefined : models.data);
+      if (after) next = { ...next, ...after };
+      else if (before && samePricing(before, form)) next = { ...next, prices: NO_PRICES, offPeak: NO_PRICES };
+    }
     setForm(next);
     test.reset();
-    if (next.provider !== form.provider || next.baseUrl !== form.baseUrl || next.apiKey !== form.apiKey) {
-      models.reset();
-    }
+    if (moved || next.baseUrl !== form.baseUrl || next.apiKey !== form.apiKey) models.reset();
   }
 
   const pending = save.isPending || test.isPending;
+  const address = endpoint && (
+    <p className="mt-1.5 text-sm break-all text-muted-foreground">接口地址：{endpoint.baseUrl}</p>
+  );
   return (
     <Dialog open onOpenChange={formClose(dirty, save.isPending, onClose)}>
       <DialogContent initialFocus={providerRef}>
@@ -122,9 +207,21 @@ export function ModelDialog({
                     ...providers.map((p) => [p.id, p.name] as const),
                     [CUSTOM, "其他（OpenAI 兼容接口）"] as const,
                   ]}
-                  onChange={(id) => edit({ ...form, provider: id })}
+                  onChange={(id) => edit({ provider: id })}
                 />
+                {regions.length === 0 && address}
               </Field>
+              {regions.length > 0 && (
+                <Field label="地域" id="model-region">
+                  <Select
+                    id="model-region"
+                    value={form.region}
+                    options={regions}
+                    onChange={(region) => edit({ region })}
+                  />
+                  {address}
+                </Field>
+              )}
               {form.provider === CUSTOM && (
                 <Field label="接口地址" id="model-base-url">
                   <Input
@@ -134,7 +231,7 @@ export function ModelDialog({
                     spellCheck={false}
                     placeholder="https://example.com/v1"
                     value={form.baseUrl}
-                    onChange={(e) => edit({ ...form, baseUrl: e.target.value })}
+                    onChange={(e) => edit({ baseUrl: e.target.value })}
                   />
                 </Field>
               )}
@@ -153,13 +250,13 @@ export function ModelDialog({
                           : undefined
                   }
                   value={form.apiKey}
-                  onChange={(e) => edit({ ...form, apiKey: e.target.value })}
+                  onChange={(e) => edit({ apiKey: e.target.value })}
                 />
-                {provider && (
+                {endpoint && (
                   <button
                     type="button"
                     className="mt-1.5 text-sm text-brand-text hover:underline"
-                    onClick={() => void openUrl(provider.keyUrl)}
+                    onClick={() => void openUrl(endpoint.keyUrl)}
                   >
                     获取 API Key
                   </button>
@@ -171,9 +268,9 @@ export function ModelDialog({
                     id="model-model"
                     autoComplete="off"
                     spellCheck={false}
-                    items={models.data ?? []}
+                    items={names}
                     value={form.model}
-                    onValueChange={(model) => edit({ ...form, model })}
+                    onValueChange={(model) => edit({ model })}
                   />
                   <Button
                     type="button"
@@ -196,24 +293,49 @@ export function ModelDialog({
                   {models.isError && <FailureNote className="text-destructive" failure={failureOf(models.error)} />}
                 </div>
               </Field>
-              <div className="grid grid-cols-2 gap-3 phone:grid-cols-1">
-                {(
-                  [
-                    ["inputPrice", "输入单价"],
-                    ["outputPrice", "输出单价"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <Field key={key} label={`${label}（元／百万 Token）`} id={`model-${key}`}>
-                    <NumberField
-                      id={`model-${key}`}
-                      min={0}
-                      decimals={6}
-                      placeholder="选填"
-                      value={form[key]}
-                      onValueChange={(price) => edit({ ...form, [key]: price })}
-                    />
-                  </Field>
-                ))}
+              <div role="group" aria-labelledby="model-prices">
+                <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <span id="model-prices" className="text-sm text-muted-foreground">
+                    单价（{UNITS[form.currency]}／百万 Token）
+                  </span>
+                  <RadioGroup
+                    aria-label="单价的币种"
+                    value={form.currency}
+                    onValueChange={(currency) => edit({ currency })}
+                    className="flex gap-4 text-sm"
+                  >
+                    {(["cny", "usd"] as const).map((c) => (
+                      <label key={c} className="flex items-center gap-2">
+                        <RadioGroupItem value={c} />
+                        {UNITS[c]}
+                      </label>
+                    ))}
+                  </RadioGroup>
+                </div>
+                {provider?.peakHours ? (
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <p className="mb-1.5 text-sm">高峰时段：{hours(provider.peakHours)}</p>
+                      <PriceFields
+                        id="model-peak"
+                        label="高峰时段"
+                        prices={form.prices}
+                        onChange={(prices) => edit({ prices })}
+                      />
+                    </div>
+                    <div>
+                      <p className="mb-1.5 text-sm">空闲时段：其余时间，不填时按高峰时段估算</p>
+                      <PriceFields
+                        id="model-off-peak"
+                        label="空闲时段"
+                        prices={form.offPeak}
+                        onChange={(offPeak) => edit({ offPeak })}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <PriceFields id="model-price" prices={form.prices} onChange={(prices) => edit({ prices })} />
+                )}
               </div>
               <Field label="名称" id="model-name">
                 <Input
@@ -221,7 +343,7 @@ export function ModelDialog({
                   autoComplete="off"
                   placeholder="可以不填，不填时显示模型名"
                   value={form.name}
-                  onChange={(e) => edit({ ...form, name: e.target.value })}
+                  onChange={(e) => edit({ name: e.target.value })}
                 />
               </Field>
             </fieldset>
@@ -251,5 +373,48 @@ export function ModelDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** "北京时间工作日 9:00–12:00、14:00–18:00". */
+function hours(peak: PeakHours) {
+  return `${peak.zone}工作日 ${peak.weekdays.map(([from, until]) => `${from}:00–${until}:00`).join("、")}`;
+}
+
+const PRICES = [
+  ["input", "输入", "选填"],
+  // Short enough for the narrowest phone, where the three fields share a line.
+  ["cache", "缓存命中", "同输入"],
+  ["output", "输出", "选填"],
+] as const;
+
+/** A model's prices for input, input read from the provider's cache, and output. */
+function PriceFields({
+  id,
+  label,
+  prices,
+  onChange,
+}: {
+  id: string;
+  /** Of a group of prices, where there are several. */
+  label?: string;
+  prices: ModelPrices;
+  onChange: (prices: ModelPrices) => void;
+}) {
+  return (
+    <div role="group" aria-label={label} className="grid grid-cols-3 gap-3">
+      {PRICES.map(([key, name, placeholder]) => (
+        <Field key={key} label={name} id={`${id}-${key}`}>
+          <NumberField
+            id={`${id}-${key}`}
+            min={0}
+            decimals={6}
+            placeholder={placeholder}
+            value={prices[key]}
+            onValueChange={(price) => onChange({ ...prices, [key]: price })}
+          />
+        </Field>
+      ))}
+    </div>
   );
 }

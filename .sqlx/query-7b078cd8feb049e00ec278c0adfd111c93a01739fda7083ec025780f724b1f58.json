@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO usage (at, model_config_id, model, purpose, input_tokens, cached_tokens,\n           output_tokens, off_peak)\n         VALUES (?, (SELECT id FROM model_config WHERE id = ?), ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "7b078cd8feb049e00ec278c0adfd111c93a01739fda7083ec025780f724b1f58"
+}

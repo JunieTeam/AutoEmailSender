@@ -4,7 +4,7 @@ import { call, failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
 import type { ModelConfig, ModelProvider } from "@/api/types";
 import { Confirm } from "@/components/batch-bar";
-import { ModelDialog, useModelProviders } from "@/components/model-dialog";
+import { ModelDialog, sourceName, useModelProviders } from "@/components/model-dialog";
 import { DefaultMark } from "@/components/default-mark";
 import { Button } from "@/components/ui/button";
 import { Section } from "./settings";
@@ -49,8 +49,7 @@ function ModelRow({ config: c, providers }: { config: ModelConfig; providers: Mo
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["listModelConfigs"] });
   const remove = useMutation({ mutationFn: () => call("deleteModelConfig", { id: c.id }), onSuccess: refresh });
   const makeDefault = useMutation({ mutationFn: () => call("setDefaultModel", { id: c.id }), onSuccess: refresh });
-  // A custom configuration is known by its address.
-  const source = providers.find((p) => p.id === c.provider)?.name ?? c.baseUrl;
+  const source = sourceName(c, providers);
   return (
     <li className="flex flex-col gap-1.5 py-3">
       <div className="flex flex-wrap items-center gap-2 phone:flex-col phone:items-start">

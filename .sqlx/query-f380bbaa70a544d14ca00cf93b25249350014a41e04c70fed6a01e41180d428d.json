@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, name, provider, base_url, model, input_price, output_price,\n             id = coalesce((SELECT default_model_config_id FROM profile),\n                           (SELECT min(id) FROM model_config)) AS \"is_default!: bool\",\n             agreed AS \"agreed: bool\", api_key IS NULL AS \"needs_api_key!: bool\"\n           FROM model_config ORDER BY id",
+  "query": "SELECT id, provider, region, base_url, model, api_key, agreed AS \"agreed: bool\"\n        FROM model_config\n        WHERE id = coalesce((SELECT id FROM model_config WHERE id = ?1),\n            (SELECT default_model_config_id FROM profile),\n            (SELECT min(id) FROM model_config))",
   "describe": {
     "columns": [
       {
@@ -15,24 +15,24 @@
         }
       },
       {
-        "name": "name",
+        "name": "provider",
         "ordinal": 1,
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "model_config",
-            "name": "name"
+            "name": "provider"
           }
         }
       },
       {
-        "name": "provider",
+        "name": "region",
         "ordinal": 2,
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "model_config",
-            "name": "provider"
+            "name": "region"
           }
         }
       },
@@ -59,36 +59,19 @@
         }
       },
       {
-        "name": "input_price",
+        "name": "api_key",
         "ordinal": 5,
-        "type_info": "Float",
+        "type_info": "Text",
         "origin": {
           "Table": {
             "table": "model_config",
-            "name": "input_price"
+            "name": "api_key"
           }
         }
-      },
-      {
-        "name": "output_price",
-        "ordinal": 6,
-        "type_info": "Float",
-        "origin": {
-          "Table": {
-            "table": "model_config",
-            "name": "output_price"
-          }
-        }
-      },
-      {
-        "name": "is_default!: bool",
-        "ordinal": 7,
-        "type_info": "Integer",
-        "origin": "Expression"
       },
       {
         "name": "agreed: bool",
-        "ordinal": 8,
+        "ordinal": 6,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -96,29 +79,20 @@
             "name": "agreed"
           }
         }
-      },
-      {
-        "name": "needs_api_key!: bool",
-        "ordinal": 9,
-        "type_info": "Integer",
-        "origin": "Expression"
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 1
     },
     "nullable": [
       false,
-      true,
-      false,
-      true,
       false,
       true,
       true,
       false,
-      false,
+      true,
       false
     ]
   },
-  "hash": "94d533d8fcc15c5a881e610ee3ecf4d264cf3bdfd7c86444a9bcf7dab810407e"
+  "hash": "f380bbaa70a544d14ca00cf93b25249350014a41e04c70fed6a01e41180d428d"
 }

@@ -31,7 +31,7 @@ impl From<task::Error> for CallError {
     }
 }
 pub async fn plan_task(ctx: &Context, form: task::NewTask) -> Result<task::TaskPlan, CallError> {
-    Ok(task::plan(&ctx.db, &form).await?)
+    Ok(task::plan(&ctx.db, &form, now()).await?)
 }
 pub async fn create_task(ctx: &Context, form: task::NewTask) -> Result<TaskId, CallError> {
     let id = task::create(&ctx.db, &form, now()).await?;
@@ -129,15 +129,7 @@ pub async fn write_task_draft(
             body_md: edit.body_md,
         },
         |purpose, usage| {
-            model::usage::record_for_email(
-                &ctx.db,
-                chosen.id,
-                &chosen.model,
-                purpose,
-                Some(edit.id),
-                usage,
-                at,
-            )
+            model::usage::record_for_email(&ctx.db, &chosen, purpose, Some(edit.id), usage, at)
         },
     )
     .await

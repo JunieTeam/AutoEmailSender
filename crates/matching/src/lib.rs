@@ -52,13 +52,19 @@ pub async fn ready(db: &SqlitePool) -> Result<(), Error> {
 pub struct MatchEstimate {
     pub plan: queue::MatchPlan,
     pub model: Option<String>,
+    /// What the default model charges now; None unless its prices are filled in.
+    pub rate: Option<model::pricing::Rate>,
     pub has_basis: bool,
     pub input_tokens: i64,
     pub output_tokens: i64,
-    pub cost: Option<f64>,
 }
 
-pub async fn plan(db: &SqlitePool, ids: &[i64], redo: bool) -> Result<MatchEstimate, sqlx::Error> {
+pub async fn plan(
+    db: &SqlitePool,
+    ids: &[i64],
+    redo: bool,
+    now: i64,
+) -> Result<MatchEstimate, sqlx::Error> {
     let plan = queue::plan(db, ids, redo).await?;
     let me = profile::get(db).await?;
     let references = material::for_matching(db).await?;
@@ -68,29 +74,18 @@ pub async fn plan(db: &SqlitePool, ids: &[i64], redo: bool) -> Result<MatchEstim
             input_tokens += tokens(SYSTEM) + tokens(&message(&me, &references, &mentor));
         }
     }
-    let chosen = sqlx::query!(
-        r#"SELECT model, input_price, output_price
-        FROM model_config
-        WHERE id = coalesce((SELECT default_model_config_id FROM profile),
-            (SELECT min(id) FROM model_config))"#
-    )
-    .fetch_optional(db)
-    .await?;
+    let chosen = model::list(db, now)
+        .await?
+        .into_iter()
+        .find(|c| c.is_default);
     let output_tokens = OUTPUT_TOKENS * plan.analyze;
-    // Prices are yuan per million tokens, as shown in model settings.
-    let cost = chosen.as_ref().and_then(|c| {
-        Some(
-            (c.input_price? * input_tokens as f64 + c.output_price? * output_tokens as f64)
-                / 1_000_000.0,
-        )
-    });
     Ok(MatchEstimate {
         plan,
+        rate: chosen.as_ref().and_then(|c| c.rate),
         model: chosen.map(|c| c.model),
         has_basis: me.research_interests.is_some() || !references.is_empty(),
         input_tokens,
         output_tokens,
-        cost,
     })
 }
 
@@ -270,7 +265,7 @@ async fn analyze(
             let at = now();
             writes
                 .retry("record match usage", || {
-                    model::usage::record(db, chosen.id, &chosen.model, Purpose::Match, usage, at)
+                    model::usage::record(db, &chosen, Purpose::Match, usage, at)
                 })
                 .await;
         }

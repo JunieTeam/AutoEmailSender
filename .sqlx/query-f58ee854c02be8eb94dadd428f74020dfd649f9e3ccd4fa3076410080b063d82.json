@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO usage (at, model_config_id, model, purpose, crawl_id, input_tokens,\n            cached_tokens, output_tokens, off_peak)\n        VALUES (?, (SELECT id FROM model_config WHERE id = ?), ?, 'crawl',\n            (SELECT id FROM crawl WHERE id = ?), ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "f58ee854c02be8eb94dadd428f74020dfd649f9e3ccd4fa3076410080b063d82"
+}

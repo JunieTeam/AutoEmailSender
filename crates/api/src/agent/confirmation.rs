@@ -942,13 +942,22 @@ async fn describe(
             let model = model_target(conn, input.id).await?;
             let (provider, address) = if input.provider == model::providers::CUSTOM {
                 (
-                    "自定义模型服务",
+                    "自定义模型服务".to_owned(),
                     input.base_url.unwrap_or_else(|| "未填写服务地址".into()),
                 )
             } else {
-                match model::providers::find(&input.provider) {
-                    Some(provider) => (provider.name, provider.base_url.into()),
-                    None => ("找不到的模型服务商", input.provider),
+                let found = model::providers::find(&input.provider)
+                    .and_then(|p| Some((p, p.endpoint(input.region.as_deref())?)));
+                match found {
+                    // Named with its region, as the settings show it.
+                    Some((p, e)) => (
+                        match e.region {
+                            Some(region) => format!("{}{}地域", p.name, region.name),
+                            None => p.name.to_owned(),
+                        },
+                        e.base_url.into(),
+                    ),
+                    None => ("找不到的模型服务商或地域".to_owned(), input.provider),
                 }
             };
             object(
