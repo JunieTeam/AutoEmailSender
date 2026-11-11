@@ -3,8 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { DayButton, DayPicker, type ChevronProps, type DayButtonProps } from "react-day-picker";
 import { zhCN } from "react-day-picker/locale";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { call } from "@/api/call";
+import { call, failureOf } from "@/api/call";
 import type { Holidays } from "@/api/types";
+import { FailureNote } from "@/components/failure";
+import { Button } from "@/components/ui/button";
 import { cn } from "cn";
 
 /** A `YYYY-MM-DD` day as the calendar has its days: from midnight in the user's time. */
@@ -49,8 +51,25 @@ export function Calendar({ className, ...props }: ComponentProps<typeof DayPicke
         outside: "text-faint",
         disabled: "text-faint opacity-40",
         hidden: "invisible",
+        // As wide as the days, however long the words.
+        footer: "w-0 min-w-full text-destructive",
       }}
       modifiers={holidays.data}
+      // Always there, if empty: a screen reader announces what appears in a live region it already
+      // knows, not always one that appears with its words. A fragment, as the calendar leaves out a
+      // footer that is false.
+      footer={
+        <>
+          {/* Without it, a day off reads the same as any other: say so rather than leave it unmarked. */}
+          {holidays.isLoadingError && (
+            <FailureNote className="px-1 pt-2" lead="节假日标记未能载入：" failure={failureOf(holidays.error)}>
+              <Button variant="ghost" size="sm" className="ml-2" onClick={() => void holidays.refetch()}>
+                重试
+              </Button>
+            </FailureNote>
+          )}
+        </>
+      }
       components={{
         Chevron: CalendarChevron,
         DayButton: HolidayDayButton,
