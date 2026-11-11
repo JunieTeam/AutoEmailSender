@@ -274,6 +274,13 @@ pub async fn scheduled_work(
     Ok(send::plan::work(&ctx.db, now()).await?)
 }
 
+pub async fn list_holidays(
+    _: &Context,
+    _: Nothing,
+) -> Result<&'static holidays::Holidays, CallError> {
+    Ok(&holidays::HOLIDAYS)
+}
+
 pub async fn restart_task(ctx: &Context, key: TaskId) -> Result<task::NewTask, CallError> {
     task::restart(&ctx.db, key.id)
         .await?

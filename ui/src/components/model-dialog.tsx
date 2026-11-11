@@ -410,9 +410,9 @@ export function ModelDialog({
   );
 }
 
-/** "北京时间工作日 9:00–12:00、14:00–18:00". */
+/** "北京时间周一至周五 9:00–12:00、14:00–18:00，法定节假日除外". */
 function hours(peak: PeakHours) {
-  return `${peak.zone}工作日 ${peak.weekdays.map(([from, until]) => `${from}:00–${until}:00`).join("、")}`;
+  return `${peak.zone}周一至周五 ${peak.weekdays.map(([from, until]) => `${from}:00–${until}:00`).join("、")}，法定节假日除外`;
 }
 
 const PRICES = [

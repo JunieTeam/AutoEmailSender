@@ -458,6 +458,12 @@ export type FollowUpTarget = { messageId: string | null, subject: string, sentAt
 
 export type GroupChoice = { row: number, id: number | null, };
 
+export type Holidays = {
+/**
+ * Each holiday's days off, from and until which day.
+ */
+daysOff: Array<[string, string]>, makeUpDays: Array<string>, };
+
 export type Hours = "peak" | "off_peak";
 
 export type ImportCandidate = { id: number, profile: ImportProfile, };
@@ -1047,7 +1053,8 @@ export type PeakHours = {
  */
 zone: string,
 /**
- * From and until which hour, Monday to Friday.
+ * From and until which hour, Monday to Friday, save China's days off: DeepSeek, the only
+ * provider with peak hours, charges its off-peak prices all those days.
  */
 weekdays: Array<[number, number]>, };
 
@@ -1531,6 +1538,7 @@ export interface Operations {
   sendEmailNow: { input: EmailId; output: null };
   sendingPlan: { input: PlanQuery; output: PlanPage };
   scheduledWork: { input: Nothing; output: ScheduledWork };
+  listHolidays: { input: Nothing; output: Holidays };
   cloudSendPreview: { input: CloudSendPreviewInput; output: CloudSendPreview };
   handOffToCloud: { input: CloudHandOff; output: CloudHandedOff };
   withdrawFromCloud: { input: CloudWithdraw; output: CloudWithdrawn };

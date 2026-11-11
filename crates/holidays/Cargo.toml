@@ -1,0 +1,14 @@
+[package]
+name = "holidays"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false }
+serde.workspace = true
+ts-rs.workspace = true

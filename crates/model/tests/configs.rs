@@ -235,6 +235,8 @@ const TUESDAY_NOON: i64 = 1_794_285_000_000;
 const TUESDAY_EVENING: i64 = 1_794_304_800_000;
 /// 2026-11-14, a Saturday, at 10:00.
 const SATURDAY_MORNING: i64 = 1_794_621_600_000;
+/// 2026-10-01, a Thursday off for National Day, at 10:00.
+const HOLIDAY_MORNING: i64 = 1_790_820_000_000;
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_call_is_charged_the_prices_of_the_hours_it_is_made_in(db: SqlitePool) {
@@ -268,7 +270,12 @@ async fn a_call_is_charged_the_prices_of_the_hours_it_is_made_in(db: SqlitePool)
         ..peak
     };
     assert_eq!(rate(TUESDAY_MORNING).await, Some(peak));
-    for at in [TUESDAY_NOON, TUESDAY_EVENING, SATURDAY_MORNING] {
+    for at in [
+        TUESDAY_NOON,
+        TUESDAY_EVENING,
+        SATURDAY_MORNING,
+        HOLIDAY_MORNING,
+    ] {
         assert_eq!(rate(at).await, Some(off_peak), "{at}");
     }
     // A provider charging the same at all hours has no hours to tell.

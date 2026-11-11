@@ -724,6 +724,9 @@ operations! {
         "sendingPlan" [none] => sending_plan(send::plan::PlanQuery) -> send::plan::PlanPage;
         /// 读取已排期邮件的后台进度。
         "scheduledWork" [none] => scheduled_work(Nothing) -> send::plan::ScheduledWork;
+        /// 列出日历上标出的中国节假日：各个假期放假的起止日期和调休上班的日子，按北京时间的日期，
+        /// 格式 YYYY-MM-DD。
+        "listHolidays" [none] => list_holidays(Nothing) -> &'static holidays::Holidays;
         /// 预览交给云端发送：哪些定时的首封能交、各自排好的发件邮箱和时间，不能交的和原因，
         /// 要用到的邮箱和其中哪些要先同意交出授权码，以及大约要上传多少。
         /// emails 不填时预览全部还没发出的已批准定时邮件，填了 task 只看这个任务的；

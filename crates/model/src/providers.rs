@@ -76,7 +76,8 @@ pub struct PeakHours {
     #[serde(skip)]
     #[ts(skip)]
     pub utc_offset: i64,
-    /// From and until which hour, Monday to Friday.
+    /// From and until which hour, Monday to Friday, save China's days off: DeepSeek, the only
+    /// provider with peak hours, charges its off-peak prices all those days.
     pub weekdays: &'static [(u8, u8)],
 }
 
@@ -88,6 +89,7 @@ impl PeakHours {
         let weekday = (hours.div_euclid(24) + 3).rem_euclid(7);
         let hour = hours.rem_euclid(24);
         weekday < 5
+            && !holidays::day_off(at)
             && self
                 .weekdays
                 .iter()

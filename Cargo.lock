@@ -191,6 +191,7 @@ dependencies = [
  "failure",
  "fakemail",
  "getrandom 0.4.3",
+ "holidays",
  "library",
  "mailbox",
  "matching",
@@ -2756,6 +2757,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "holidays"
+version = "3.0.0-alpha.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "ts-rs",
+]
+
+[[package]]
 name = "html2text"
 version = "0.17.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3777,6 +3787,7 @@ version = "3.0.0-alpha.0"
 dependencies = [
  "db",
  "failure",
+ "holidays",
  "net",
  "profile",
  "reqwest",
