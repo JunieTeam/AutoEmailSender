@@ -252,7 +252,11 @@ export type CrawlList = { crawls: Array<CrawlSummary>, total: number, };
 
 export type CrawlOption = { id: number, kind: CrawlKind, url: string | null, university: string | null, school: string | null, createdAt: number, };
 
-export type CrawlPage = { id: number, url: string, kind: PageKind, state: PageState, status: PageStatus, error: Failure | null, };
+export type CrawlPage = { id: number, url: string, kind: PageKind, state: PageState, status: PageStatus, error: Failure | null,
+/**
+ * Failed, and not a page of a candidate already reviewed, which a retry leaves as it is.
+ */
+retryable: boolean, };
 
 export type CrawlQuery = { page: number, };
 
@@ -274,7 +278,11 @@ modelIds: Array<number>,
 /**
  * These and the models of the failed pages: retrying them sets the crawl going again.
  */
-retryModelIds: Array<number>, profiles: number, candidates: number, failed: number, tokens: number | null, stage: CrawlStage, };
+retryModelIds: Array<number>, profiles: number, candidates: number, failed: number,
+/**
+ * The failed pages a retry reads again: not those of candidates already reviewed.
+ */
+retryable: number, tokens: number | null, stage: CrawlStage, };
 
 export type CrawlUrls = { urls: string, };
 

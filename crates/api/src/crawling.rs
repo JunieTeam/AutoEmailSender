@@ -158,36 +158,39 @@ pub(super) async fn retry_crawl(ctx: &Context, input: CrawlRetry) -> Result<u64,
         .fetch_optional(&ctx.db)
         .await?
         .flatten();
-    // A retry sets the crawl going again, so the pages still to read are read too.
-    let enrichment = sqlx::query_scalar!(
+    // A retry reads the failed pages again and sets the crawl going, so the pages still to read
+    // are read too; with no failed page to read again, it leaves the crawl as it is.
+    let pages = sqlx::query!(
         r#"SELECT EXISTS (
+            SELECT 1
+            FROM crawl_page
+            WHERE crawl_id = ?1 AND (?2 IS NULL OR id = ?2) AND work_state = 'done'
+            AND status != 'success' AND (candidate_id IS NULL
+            OR candidate_id IN (SELECT id FROM candidate WHERE review = 'pending'))
+        ) AS "retried!: bool", EXISTS (
+            SELECT 1
+            FROM crawl_page
+            WHERE crawl_id = ?1 AND candidate_id IS NULL AND (work_state != 'done'
+            OR ((?2 IS NULL OR id = ?2) AND status != 'success'))
+        ) AS "ordinary!: bool", EXISTS (
             SELECT 1
             FROM crawl_page
             WHERE crawl_id = ?1 AND candidate_id IS NOT NULL AND (work_state != 'done'
             OR ((?2 IS NULL OR id = ?2) AND status != 'success'
             AND candidate_id IN (SELECT id FROM candidate WHERE review = 'pending')))
-        ) AS "present!: bool""#,
+        ) AS "enrichment!: bool""#,
         input.id,
         input.page
     )
     .fetch_one(&ctx.db)
     .await?;
-    let ordinary = sqlx::query_scalar!(
-        r#"SELECT EXISTS (
-            SELECT 1
-            FROM crawl_page
-            WHERE crawl_id = ?1 AND candidate_id IS NULL AND (work_state != 'done'
-            OR ((?2 IS NULL OR id = ?2) AND status != 'success'))
-        ) AS "present!: bool""#,
-        input.id,
-        input.page
-    )
-    .fetch_one(&ctx.db)
-    .await?;
-    if ordinary {
+    if !pages.retried {
+        return Ok(0);
+    }
+    if pages.ordinary {
         crawl_ready(ctx, id).await?;
     }
-    if enrichment {
+    if pages.enrichment {
         crawl_ready(ctx, None).await?;
     }
     let n = queue::retry(&ctx.db, input.id, input.page, now()).await?;
@@ -462,11 +465,14 @@ mod tests {
                 .await
                 .unwrap()
         );
-        let summary = queue::list(&db, 1).await.unwrap().crawls.remove(0);
-        assert_eq!(summary.model_ids.0, vec![ids[0]]);
-        let mut retried = summary.retry_model_ids.0;
+        let detail = queue::detail(&db, crawl, 1).await.unwrap().unwrap();
+        assert_eq!(detail.summary.model_ids.0, vec![ids[0]]);
+        let mut retried = detail.summary.retry_model_ids.0.clone();
         retried.sort();
         assert_eq!(retried, ids);
+        assert_eq!(detail.summary.retryable, 1);
+        let retryable = detail.pages.iter().filter(|p| p.retryable);
+        assert_eq!(retryable.map(|p| p.id).collect::<Vec<_>>(), vec![failed]);
         let ctx = Context::new(
             db.clone(),
             net::Net::new(vec![]).unwrap(),
@@ -498,5 +504,21 @@ mod tests {
         .await
         .unwrap_err();
         assert!(matches!(error.code, ErrorCode::NeedsAgreement));
+        // The pages of a candidate already reviewed are not read again: a retry reads nothing.
+        sqlx::query("UPDATE candidate SET review = 'rejected'")
+            .execute(&db)
+            .await
+            .unwrap();
+        let detail = queue::detail(&db, crawl, 1).await.unwrap().unwrap();
+        assert_eq!(detail.summary.retryable, 0);
+        assert!(detail.pages.iter().all(|p| !p.retryable));
+        for page in [Some(failed), None] {
+            assert_eq!(
+                retry_crawl(&ctx, CrawlRetry { id: crawl, page })
+                    .await
+                    .unwrap(),
+                0
+            );
+        }
     }
 }

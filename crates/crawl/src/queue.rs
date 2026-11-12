@@ -499,6 +499,8 @@ pub struct CrawlSummary {
     pub profiles: i64,
     pub candidates: i64,
     pub failed: i64,
+    /// The failed pages a retry reads again: not those of candidates already reviewed.
+    pub retryable: i64,
     pub tokens: Option<i64>,
     pub stage: CrawlStage,
 }
@@ -623,6 +625,12 @@ pub(crate) async fn summaries(
             WHERE crawl_id = c.id AND work_state = 'done'
             AND status IN ('failed', 'needs_browser')
         ) AS "failed!: i64", (
+            SELECT count(*)
+            FROM crawl_page
+            WHERE crawl_id = c.id AND work_state = 'done' AND status != 'success'
+            AND (candidate_id IS NULL
+            OR candidate_id IN (SELECT id FROM candidate WHERE review = 'pending'))
+        ) AS "retryable!: i64", (
             SELECT sum(input_tokens + output_tokens)
             FROM usage
             WHERE crawl_id = c.id
@@ -666,6 +674,8 @@ pub struct CrawlPage {
     pub status: PageStatus,
     #[ts(as = "Option<Failure>")]
     pub error: Option<Json<Failure>>,
+    /// Failed, and not a page of a candidate already reviewed, which a retry leaves as it is.
+    pub retryable: bool,
 }
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -696,7 +706,10 @@ pub async fn detail(
     let pages = sqlx::query_as!(
         CrawlPage,
         r#"SELECT id, url, kind AS "kind: PageKind", work_state AS "state: PageState",
-            status AS "status: PageStatus", error AS "error: Json<Failure>"
+            status AS "status: PageStatus", error AS "error: Json<Failure>",
+            work_state = 'done' AND status != 'success' AND (candidate_id IS NULL
+            OR candidate_id IN (SELECT id FROM candidate WHERE review = 'pending'))
+            AS "retryable!: bool"
         FROM crawl_page
         WHERE crawl_id = ?
         ORDER BY status = 'success', id

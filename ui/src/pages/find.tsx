@@ -295,9 +295,7 @@ function CrawlRecord({ crawl: c, expanded }: { crawl: CrawlSummary; expanded: bo
       </div>
       {c.error && <FailureNote failure={c.error} className="mt-2 text-sm text-warning" />}
       {c.failed > 0 && <p className="mt-2 text-sm text-warning">{c.failed} 个页面未能打开，名单可能不完整</p>}
-      {expanded && (
-        <CrawlDetails id={c.id} modelId={c.modelConfigId} modelIds={c.modelIds} retryModelIds={c.retryModelIds} />
-      )}
+      {expanded && <CrawlDetails id={c.id} />}
     </section>
   );
 }
@@ -354,17 +352,7 @@ function CrawlControls({ crawl: c }: { crawl: CrawlSummary }) {
     </>
   );
 }
-function CrawlDetails({
-  id,
-  modelId,
-  modelIds,
-  retryModelIds,
-}: {
-  id: number;
-  modelId: number | null;
-  modelIds: number[];
-  retryModelIds: number[];
-}) {
+function CrawlDetails({ id }: { id: number }) {
   const client = useQueryClient();
   const [page, setPage] = useState(1);
   const detail = useQuery({
@@ -409,14 +397,16 @@ function CrawlDetails({
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="mr-auto font-medium">页面及未打开的原因</h3>
-                <ModelAction
-                  feature="crawl"
-                  modelIds={retryModelIds}
-                  disabled={retry.isPending}
-                  onWrite={() => retry.mutate(null)}
-                >
-                  重试全部未打开页面
-                </ModelAction>
+                {detail.data.summary.retryable > 0 && (
+                  <ModelAction
+                    feature="crawl"
+                    modelIds={detail.data.summary.retryModelIds}
+                    disabled={retry.isPending}
+                    onWrite={() => retry.mutate(null)}
+                  >
+                    重试全部未打开页面
+                  </ModelAction>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 需要浏览器验证、渲染、解密或点击翻页的页面保留已读资料；本次无法接管浏览器
@@ -440,11 +430,14 @@ function CrawlDetails({
                     </p>
                     {p.state === "done" && p.error && <FailureDetails failure={p.error} />}
                   </div>
-                  {p.state === "done" && p.status !== "success" && (
+                  {p.retryable && (
                     // A retry sets the crawl going again, so the pages still to read are read too.
                     <ModelAction
                       feature="crawl"
-                      modelIds={[...modelIds, p.kind.startsWith("enrich_") ? null : modelId]}
+                      modelIds={[
+                        ...detail.data.summary.modelIds,
+                        p.kind.startsWith("enrich_") ? null : detail.data.summary.modelConfigId,
+                      ]}
                       disabled={retry.isPending}
                       onWrite={() => retry.mutate(p.id)}
                     >

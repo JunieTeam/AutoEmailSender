@@ -1,0 +1,35 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (\n            SELECT 1\n            FROM crawl_page\n            WHERE crawl_id = ?1 AND (?2 IS NULL OR id = ?2) AND work_state = 'done'\n            AND status != 'success' AND (candidate_id IS NULL\n            OR candidate_id IN (SELECT id FROM candidate WHERE review = 'pending'))\n        ) AS \"retried!: bool\", EXISTS (\n            SELECT 1\n            FROM crawl_page\n            WHERE crawl_id = ?1 AND candidate_id IS NULL AND (work_state != 'done'\n            OR ((?2 IS NULL OR id = ?2) AND status != 'success'))\n        ) AS \"ordinary!: bool\", EXISTS (\n            SELECT 1\n            FROM crawl_page\n            WHERE crawl_id = ?1 AND candidate_id IS NOT NULL AND (work_state != 'done'\n            OR ((?2 IS NULL OR id = ?2) AND status != 'success'\n            AND candidate_id IN (SELECT id FROM candidate WHERE review = 'pending')))\n        ) AS \"enrichment!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "retried!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "ordinary!: bool",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "enrichment!: bool",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "48f9cf00526892a8cee0164271a80ef1e39af98f32576c0b6215ca9e0c6352b3"
+}

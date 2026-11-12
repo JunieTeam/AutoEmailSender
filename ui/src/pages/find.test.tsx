@@ -119,6 +119,7 @@ function paused(remaining: number): CrawlSummary {
     profiles: 0,
     candidates: 1,
     failed: 1,
+    retryable: 1,
     tokens: null,
     stage: "paused",
   };

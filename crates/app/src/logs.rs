@@ -205,6 +205,7 @@ mod tests {
                 profiles: 0,
                 candidates: 1,
                 failed: 1,
+                retryable: 1,
                 tokens: Some(1200),
                 stage: CrawlStage::Paused,
             },

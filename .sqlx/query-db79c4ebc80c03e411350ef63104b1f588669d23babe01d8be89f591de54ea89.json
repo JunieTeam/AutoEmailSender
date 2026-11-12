@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, url, kind AS \"kind: PageKind\", work_state AS \"state: PageState\",\n            status AS \"status: PageStatus\", error AS \"error: Json<Failure>\"\n        FROM crawl_page\n        WHERE crawl_id = ?\n        ORDER BY status = 'success', id\n        LIMIT 50\n        OFFSET ?",
+  "query": "SELECT id, url, kind AS \"kind: PageKind\", work_state AS \"state: PageState\",\n            status AS \"status: PageStatus\", error AS \"error: Json<Failure>\",\n            work_state = 'done' AND status != 'success' AND (candidate_id IS NULL\n            OR candidate_id IN (SELECT id FROM candidate WHERE review = 'pending'))\n            AS \"retryable!: bool\"\n        FROM crawl_page\n        WHERE crawl_id = ?\n        ORDER BY status = 'success', id\n        LIMIT 50\n        OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -68,6 +68,12 @@
             "name": "error"
           }
         }
+      },
+      {
+        "name": "retryable!: bool",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -79,8 +85,9 @@
       false,
       false,
       false,
+      true,
       true
     ]
   },
-  "hash": "26cf440255007a6fe64714674e52ec42c7a1e828a482a979016c29d336dc8d1c"
+  "hash": "db79c4ebc80c03e411350ef63104b1f588669d23babe01d8be89f591de54ea89"
 }
