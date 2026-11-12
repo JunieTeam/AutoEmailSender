@@ -587,11 +587,10 @@ pub(crate) async fn summaries(
             SELECT json_group_array(id)
             FROM model_config
             WHERE id IN (
-                SELECT CASE WHEN candidate_id IS NULL THEN coalesce(c.model_config_id,
+                SELECT coalesce(CASE WHEN candidate_id IS NULL THEN c.model_config_id END,
+                    (SELECT model_config_id FROM feature_model WHERE feature = 'crawl'),
                     (SELECT default_model_config_id FROM profile),
-                    (SELECT min(id) FROM model_config)) ELSE coalesce((SELECT
-                    default_model_config_id FROM profile),
-                    (SELECT min(id) FROM model_config)) END
+                    (SELECT min(id) FROM model_config))
                 FROM crawl_page
                 WHERE crawl_id = c.id AND (work_state != 'done'
                 OR status != 'success') AND (candidate_id IS NULL

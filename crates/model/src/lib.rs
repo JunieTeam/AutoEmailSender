@@ -31,8 +31,11 @@ pub struct ModelConfig {
     /// Only for `providers::CUSTOM`.
     pub base_url: Option<String>,
     pub model: String,
-    /// The one AI features use: the user's choice, or else the earliest added.
+    /// The one features without a model of their own use: the user's choice, or else the earliest
+    /// added.
     pub is_default: bool,
+    /// The features that use this one instead of the default.
+    pub features: Vec<Feature>,
     /// The user agreed to what AI features send to its provider.
     pub agreed: bool,
     pub needs_api_key: bool,
@@ -41,6 +44,23 @@ pub struct ModelConfig {
     pub pricing: Pricing,
     /// What a call made when it was listed is charged; None unless those prices are filled in.
     pub rate: Option<Rate>,
+}
+
+/// What a model can be chosen for apart from the default (docs/design.md#个人资料和配置).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, TS)]
+#[sqlx(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+#[ts(rename = "ModelFeature")]
+pub enum Feature {
+    /// Crawling and filling in candidates.
+    Crawl,
+    Match,
+    /// Drafting and rewriting letters.
+    Writing,
+    /// AI 核对.
+    Check,
+    /// Marking replies and finding to-dos in them.
+    Reply,
 }
 
 /// A model configuration as the user entered it, without its API key; `check` validates it.
@@ -212,6 +232,10 @@ pub fn checked_key(api_key: &str) -> Result<Option<String>, &'static str> {
 
 /// Every model configuration, oldest first, with what a call at `now` is charged.
 pub async fn list(db: &SqlitePool, now: i64) -> Result<Vec<ModelConfig>, sqlx::Error> {
+    let chosen =
+        sqlx::query!(r#"SELECT feature AS "feature: Feature", model_config_id FROM feature_model"#)
+            .fetch_all(db)
+            .await?;
     let rows = sqlx::query!(
         r#"SELECT id, name, provider, region, base_url, model, currency AS "currency: Currency",
              input_price, cache_price, output_price, off_peak_input_price, off_peak_cache_price,
@@ -248,6 +272,11 @@ pub async fn list(db: &SqlitePool, now: i64) -> Result<Vec<ModelConfig>, sqlx::E
                 base_url: r.base_url,
                 model: r.model,
                 is_default: r.is_default,
+                features: chosen
+                    .iter()
+                    .filter(|c| c.model_config_id == r.id)
+                    .map(|c| c.feature)
+                    .collect(),
                 agreed: r.agreed,
                 needs_api_key: r.needs_api_key,
                 rate: pricing.rate(peak_hours, now),
@@ -364,25 +393,31 @@ pub struct Chosen {
     pub access: Access,
 }
 
-/// The default configuration, as `list` marks it; None when there is none.
+/// The configuration `feature` calls: its own, or else the default as `list` marks it; None when
+/// there is none.
 pub async fn chosen<'a>(
     db: impl sqlx::Executor<'a, Database = sqlx::Sqlite>,
+    feature: Feature,
 ) -> Result<Option<Chosen>, sqlx::Error> {
-    selected(db, None).await
+    selected(db, None, feature).await
 }
 
-/// A task's configuration, falling back to the default only when it has been deleted.
+/// The configuration fixed when work started, such as a task's, falling back to the one its
+/// feature calls only when it has been deleted.
 pub async fn selected<'a>(
     db: impl sqlx::Executor<'a, Database = sqlx::Sqlite>,
     id: Option<i64>,
+    feature: Feature,
 ) -> Result<Option<Chosen>, sqlx::Error> {
     let Some(row) = sqlx::query!(
         r#"SELECT id, provider, region, base_url, model, api_key, agreed AS "agreed: bool"
         FROM model_config
         WHERE id = coalesce((SELECT id FROM model_config WHERE id = ?1),
+            (SELECT model_config_id FROM feature_model WHERE feature = ?2),
             (SELECT default_model_config_id FROM profile),
             (SELECT min(id) FROM model_config))"#,
-        id
+        id,
+        feature
     )
     .fetch_optional(db)
     .await?
@@ -403,6 +438,31 @@ pub async fn selected<'a>(
         agreed: row.agreed,
         access: source.access(row.api_key),
     }))
+}
+
+/// Has `feature` use the configuration, or with None follow the default; false when there is no
+/// such configuration.
+pub async fn set_feature(
+    db: &SqlitePool,
+    feature: Feature,
+    id: Option<i64>,
+) -> Result<bool, sqlx::Error> {
+    let Some(id) = id else {
+        sqlx::query!("DELETE FROM feature_model WHERE feature = ?", feature)
+            .execute(db)
+            .await?;
+        return Ok(true);
+    };
+    let row = sqlx::query!(
+        "INSERT INTO feature_model (feature, model_config_id)
+        SELECT ?, id FROM model_config WHERE id = ?
+        ON CONFLICT (feature) DO UPDATE SET model_config_id = excluded.model_config_id",
+        feature,
+        id
+    )
+    .execute(db)
+    .await?;
+    Ok(row.rows_affected() > 0)
 }
 
 /// Deletes a configuration; what used it keeps the model's name (docs/data-model.md#删除).

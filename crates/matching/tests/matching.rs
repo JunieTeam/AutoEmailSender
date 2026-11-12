@@ -892,7 +892,13 @@ async fn old_endpoint_error_does_not_pause_the_reconfirmed_configuration(db: Sql
     .check()
     .unwrap();
     assert!(model::update(&db, config.id, &fields, "").await.unwrap());
-    assert!(!model::chosen(&db).await.unwrap().unwrap().agreed);
+    assert!(
+        !model::chosen(&db, model::Feature::Match)
+            .await
+            .unwrap()
+            .unwrap()
+            .agreed
+    );
     assert!(model::agree(&db, config.id, &fields.source).await.unwrap());
     while runner.changes.try_recv().is_ok() {}
     old.respond

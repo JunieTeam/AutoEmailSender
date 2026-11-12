@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO feature_model (feature, model_config_id)\n        SELECT ?, id FROM model_config WHERE id = ?\n        ON CONFLICT (feature) DO UPDATE SET model_config_id = excluded.model_config_id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "5bb49767726a4725cb2adbe2d56b6a33f03d429bb3da3cb24dce9c89296e8ecd"
+}

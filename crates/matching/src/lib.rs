@@ -3,7 +3,7 @@
 use failure::Failure;
 use mentor::{MentorDetail, matching as queue};
 use model::{
-    Chosen, ModelError,
+    Chosen, Feature, ModelError,
     background::{Cooldown, Limited, RateLimit, Rounds},
     usage::Purpose,
 };
@@ -37,7 +37,9 @@ impl From<sqlx::Error> for Error {
 }
 
 pub async fn ready(db: &SqlitePool) -> Result<(), Error> {
-    let chosen = model::chosen(db).await?.ok_or(Error::NoModel)?;
+    let chosen = model::chosen(db, Feature::Match)
+        .await?
+        .ok_or(Error::NoModel)?;
     if !chosen.agreed {
         return Err(Error::NotAgreed);
     }
@@ -52,7 +54,7 @@ pub async fn ready(db: &SqlitePool) -> Result<(), Error> {
 pub struct MatchEstimate {
     pub plan: queue::MatchPlan,
     pub model: Option<String>,
-    /// What the default model charges now; None unless its prices are filled in.
+    /// What the model matching calls charges now; None unless its prices are filled in.
     pub rate: Option<model::pricing::Rate>,
     pub has_basis: bool,
     pub input_tokens: i64,
@@ -74,14 +76,19 @@ pub async fn plan(
             input_tokens += tokens(SYSTEM) + tokens(&message(&me, &references, &mentor));
         }
     }
-    let chosen = model::list(db, now)
-        .await?
-        .into_iter()
-        .find(|c| c.is_default);
+    let chosen = model::chosen(db, Feature::Match).await?;
+    let rate = match &chosen {
+        Some(m) => model::list(db, now)
+            .await?
+            .into_iter()
+            .find(|c| c.id == m.id)
+            .and_then(|c| c.rate),
+        None => None,
+    };
     let output_tokens = OUTPUT_TOKENS * plan.analyze;
     Ok(MatchEstimate {
         plan,
-        rate: chosen.as_ref().and_then(|c| c.rate),
+        rate,
         model: chosen.map(|c| c.model),
         has_basis: me.research_interests.is_some() || !references.is_empty(),
         input_tokens,
@@ -215,7 +222,7 @@ async fn analyze(
 ) -> Result<Outcome, sqlx::Error> {
     let id = claim.id;
     let started_at = now();
-    let Some(chosen) = model::chosen(db).await? else {
+    let Some(chosen) = model::chosen(db, Feature::Match).await? else {
         return Ok(Outcome::Pause(Failure::new(NO_MODEL), None));
     };
     if !chosen.agreed {
@@ -317,7 +324,7 @@ async fn requeue(
     }
     if let Some((now, reason)) = pause {
         let is_current = match model {
-            Some(expected) => model::chosen(&mut *tx)
+            Some(expected) => model::chosen(&mut *tx, Feature::Match)
                 .await?
                 .is_some_and(|current| model::background::same_config(&current, expected)),
             None => true,

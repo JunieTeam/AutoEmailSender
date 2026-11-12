@@ -5,8 +5,9 @@ import { useState } from "react";
 import { cn } from "cn";
 import { call, failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
-import type { Material, NewTask, TemplateSummary, Writer, Kind } from "@/api/types";
+import type { Material, ModelEstimate, NewTask, TemplateSummary, Writer, Kind } from "@/api/types";
 import { ModelAction } from "@/components/ai-writing";
+import { featureModel } from "@/components/model-dialog";
 import { Field, formClose } from "@/components/form";
 import { LIBRARY_STATUS } from "@/components/library";
 import { Button } from "@/components/ui/button";
@@ -52,7 +53,7 @@ export function CreateTaskDialog({
       kind={kind}
       materials={materials.data}
       templates={templates.data}
-      modelId={models.data.find((m) => m.isDefault)?.id ?? null}
+      modelId={featureModel(models.data, "writing")?.id ?? null}
       onClose={onClose}
     />
   );
@@ -342,12 +343,8 @@ function TaskSteps({
               )}
               {form.writer === "ai" && (
                 <div className="space-y-1 rounded-lg bg-muted p-3">
-                  <p>模型：{plan.data?.model ?? "尚未添加模型"}</p>
-                  <p>
-                    约 {((plan.data?.inputTokens ?? 0) + (plan.data?.outputTokens ?? 0)).toLocaleString()} Token
-                    {plan.data?.rate &&
-                      `，${costEstimate(plan.data.rate, plan.data.inputTokens, plan.data.outputTokens)}`}
-                  </p>
+                  <ModelUse label={plan.data?.check ? "AI 写信" : "模型"} estimate={plan.data?.writing} />
+                  {plan.data?.check && <ModelUse label="AI 核对" estimate={plan.data.check} />}
                   <p className="text-xs text-muted-foreground">按字数估算，实际以服务商为准</p>
                 </div>
               )}
@@ -397,7 +394,9 @@ function TaskSteps({
             </Button>
           ) : form.writer === "ai" ? (
             <ModelAction
-              modelId={form.modelConfigId}
+              feature="writing"
+              modelIds={[form.modelConfigId]}
+              checked
               disabled={create.isPending || !form.name.trim() || !scheduleValid(form.schedule) || !enoughCapacity}
               onWrite={() => create.mutate()}
             >
@@ -414,5 +413,20 @@ function TaskSteps({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** The model the task calls, and what it is expected to take there. */
+function ModelUse({ label, estimate }: { label: string; estimate: ModelEstimate | undefined }) {
+  return (
+    <>
+      <p>
+        {label}：{estimate?.model ?? "尚未添加模型"}
+      </p>
+      <p>
+        约 {((estimate?.inputTokens ?? 0) + (estimate?.outputTokens ?? 0)).toLocaleString()} Token
+        {estimate?.rate && `，${costEstimate(estimate.rate, estimate.inputTokens, estimate.outputTokens)}`}
+      </p>
+    </>
   );
 }

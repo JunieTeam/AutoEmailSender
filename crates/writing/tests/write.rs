@@ -103,7 +103,10 @@ async fn follow_up_uses_prior_letters_without_private_mentor_fields(db: SqlitePo
         subject: "申请读博".into(),
         body_md: "原信内容".repeat(3000) + "不应发送的尾部",
     }];
-    let chosen = model::chosen(&db).await.unwrap().unwrap();
+    let chosen = model::chosen(&db, model::Feature::Writing)
+        .await
+        .unwrap()
+        .unwrap();
     let references = material::for_writing(&db).await.unwrap();
     let prepared = writing::prepare(
         &db,
@@ -363,7 +366,9 @@ async fn current_write(
     attachments: &[i64],
     now: i64,
 ) -> Result<writing::Letter, writing::Error> {
-    let chosen = model::chosen(db).await?.ok_or(writing::Error::NoModel)?;
+    let chosen = model::chosen(db, model::Feature::Writing)
+        .await?
+        .ok_or(writing::Error::NoModel)?;
     let references = material::for_writing(db).await?;
     let prepared = writing::prepare(
         db,
@@ -507,7 +512,10 @@ async fn reply_drafts_and_rewrites_use_the_fixed_target_and_record_their_purpose
     .await
     .unwrap();
     model(&db, &address, true).await;
-    let chosen = model::chosen(&db).await.unwrap().unwrap();
+    let chosen = model::chosen(&db, model::Feature::Writing)
+        .await
+        .unwrap()
+        .unwrap();
     let references = material::for_writing(&db).await.unwrap();
     let net = Net::new(Vec::new()).unwrap();
     let current = Letter {
@@ -590,7 +598,10 @@ async fn reply_context_stops_at_twenty_letters_and_ten_thousand_characters(db: S
         .await
         .unwrap();
     model(&db, &address, true).await;
-    let chosen = model::chosen(&db).await.unwrap().unwrap();
+    let chosen = model::chosen(&db, model::Feature::Writing)
+        .await
+        .unwrap()
+        .unwrap();
     let net = Net::new(Vec::new()).unwrap();
     for long in [false, true] {
         if long {
@@ -703,7 +714,10 @@ async fn fact_check_keeps_only_exact_distinct_quotes_and_caps_findings(db: Sqlit
         .unwrap()
         .unwrap()
         .id;
-    let chosen = model::chosen(&db).await.unwrap().unwrap();
+    let chosen = model::chosen(&db, model::Feature::Writing)
+        .await
+        .unwrap()
+        .unwrap();
     let references = material::for_writing(&db).await.unwrap();
     let net = Net::new(vec![]).unwrap();
     let work = check(&db, &net, email, &letter, &chosen, &references);
@@ -778,7 +792,10 @@ async fn invalid_fact_check_is_corrected_once_and_records_both_calls(db: SqliteP
         .unwrap()
         .unwrap()
         .id;
-    let chosen = model::chosen(&db).await.unwrap().unwrap();
+    let chosen = model::chosen(&db, model::Feature::Writing)
+        .await
+        .unwrap()
+        .unwrap();
     let net = Net::new(vec![]).unwrap();
     let findings = check(&db, &net, email, &letter, &chosen, &[])
         .await
@@ -812,7 +829,10 @@ async fn incomplete_fact_check_is_an_error_and_still_records_usage(db: SqlitePoo
         .unwrap()
         .unwrap()
         .id;
-    let mut chosen = model::chosen(&db).await.unwrap().unwrap();
+    let mut chosen = model::chosen(&db, model::Feature::Writing)
+        .await
+        .unwrap()
+        .unwrap();
     let net = Net::new(vec![]).unwrap();
     for _ in 0..2 {
         assert!(matches!(

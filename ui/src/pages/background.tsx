@@ -278,6 +278,7 @@ export function BackgroundPage() {
                   </Link>
                   {c.state === "paused" && (
                     <ModelAction
+                      feature="crawl"
                       disabled={crawl.isPending}
                       modelIds={c.modelIds}
                       onWrite={() => crawl.mutate({ op: "resumeCrawl", id: c.id })}
@@ -298,7 +299,11 @@ export function BackgroundPage() {
                       detail={work.matchingPause.reason?.message ?? `还剩 ${work.matching} 位`}
                     />
                   </Link>
-                  <ModelAction disabled={matching.isPending} onWrite={() => matching.mutate("resumeMatching")}>
+                  <ModelAction
+                    feature="match"
+                    disabled={matching.isPending}
+                    onWrite={() => matching.mutate("resumeMatching")}
+                  >
                     继续
                   </ModelAction>
                 </div>
@@ -311,7 +316,11 @@ export function BackgroundPage() {
                   <Link to="/conversations" className={ITEM}>
                     <Entry title="回信处理已暂停" detail={work.repliesPaused.reason.message} />
                   </Link>
-                  <ModelAction disabled={resumeReplies.isPending} onWrite={() => resumeReplies.mutate()}>
+                  <ModelAction
+                    feature="reply"
+                    disabled={resumeReplies.isPending}
+                    onWrite={() => resumeReplies.mutate()}
+                  >
                     继续
                   </ModelAction>
                 </div>

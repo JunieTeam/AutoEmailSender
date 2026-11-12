@@ -476,7 +476,7 @@ export function ReplyProcessingSection() {
         summary="AI 把导师的回信标为有意向、无名额、拒绝或无法判断"
         help={
           <>
-            <p>开启后，导师的回信（包括已经收到的）会发给默认模型的服务商。</p>
+            <p>开启后，导师的回信（包括已经收到的）会发给回信处理所用模型的服务商。</p>
             <p>不开启也可以在往来里手动标记。</p>
           </>
         }
@@ -488,7 +488,7 @@ export function ReplyProcessingSection() {
         summary="AI 从导师的回信里找出要你做的事和截止时间，列进待办"
         help={
           <>
-            <p>开启后，导师的回信会发给默认模型的服务商；已经收到的只提取最近 14 天的。</p>
+            <p>开启后，导师的回信会发给回信处理所用模型的服务商；已经收到的只提取最近 14 天的。</p>
             <p>不开启也可以在往来里手动添加待办。</p>
           </>
         }
@@ -531,6 +531,7 @@ function AiSwitch({
           <SwitchButton label={label} checked disabled={busy} onClick={() => save.mutate(false)} />
         ) : (
           <ModelAction
+            feature="reply"
             disabled={busy}
             onWrite={() => save.mutate(true)}
             renderTrigger={(props) => <SwitchButton label={label} checked={false} {...props} />}

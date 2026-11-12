@@ -29,6 +29,7 @@ import type {
   ModelRate,
 } from "@/api/types";
 import { ModelAction, AiIcon } from "@/components/ai-writing";
+import { featureModel } from "@/components/model-dialog";
 import { BatchBar, Confirm } from "@/components/batch-bar";
 import { IntakeChoices, ProfileDetails } from "@/components/intake-choices";
 import { refreshMentors, placeOf } from "@/components/mentor";
@@ -152,7 +153,7 @@ function Crawls() {
     retry: false,
   });
   const models = useQuery({ queryKey: ["listModelConfigs"], queryFn: () => call("listModelConfigs", {}) });
-  const chosen = models.data?.find((m) => m.isDefault);
+  const chosen = models.data && featureModel(models.data, "crawl");
   const records = useQuery({
     queryKey: ["listCrawls", s.recordPage],
     queryFn: () => call("listCrawls", { page: s.recordPage }),
@@ -197,8 +198,8 @@ function Crawls() {
           自动寻找名单和分类，读取个人页后进入候选审核。网页标题、文字、链接文字和公开的导师资料会发给模型服务商。
         </p>
         <ModelAction
+          feature="crawl"
           disabled={start.isPending || !validation.data || validation.isFetching}
-          modelId={chosen?.id}
           onWrite={() => start.mutate()}
         >
           <AiIcon />
@@ -313,7 +314,12 @@ function CrawlControls({ crawl: c }: { crawl: CrawlSummary }) {
         </Button>
       )}
       {c.state === "paused" && (
-        <ModelAction disabled={mutation.isPending} modelIds={c.modelIds} onWrite={() => mutation.mutate("resumeCrawl")}>
+        <ModelAction
+          feature="crawl"
+          disabled={mutation.isPending}
+          modelIds={c.modelIds}
+          onWrite={() => mutation.mutate("resumeCrawl")}
+        >
           继续
         </ModelAction>
       )}
@@ -378,7 +384,12 @@ function CrawlDetails({ id, modelId, modelIds }: { id: number; modelId: number |
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="mr-auto font-medium">页面及未打开的原因</h3>
-                <ModelAction modelIds={modelIds} disabled={retry.isPending} onWrite={() => retry.mutate(null)}>
+                <ModelAction
+                  feature="crawl"
+                  modelIds={modelIds}
+                  disabled={retry.isPending}
+                  onWrite={() => retry.mutate(null)}
+                >
                   重试全部未打开页面
                 </ModelAction>
               </div>
@@ -406,7 +417,8 @@ function CrawlDetails({ id, modelId, modelIds }: { id: number; modelId: number |
                   </div>
                   {p.state === "done" && p.status !== "success" && (
                     <ModelAction
-                      modelId={p.kind.startsWith("enrich_") ? null : modelId}
+                      feature="crawl"
+                      modelIds={[p.kind.startsWith("enrich_") ? null : modelId]}
                       disabled={retry.isPending}
                       onWrite={() => retry.mutate(p.id)}
                     >
@@ -828,7 +840,7 @@ function EnrichDialog({
 }) {
   const client = useQueryClient();
   const models = useQuery({ queryKey: ["listModelConfigs"], queryFn: () => call("listModelConfigs", {}) });
-  const chosen = models.data?.find((m) => m.isDefault);
+  const chosen = models.data && featureModel(models.data, "crawl");
   const count = preview.data?.ids.length ?? 0;
   const rate = chosen?.rate;
   return (
@@ -848,7 +860,7 @@ function EnrichDialog({
                   补全 {count} 位<SkippedEnrich plan={preview.data} />
                 </p>
               )}
-              <p>模型：{chosen ? `${chosen.name || chosen.model}（${chosen.model}）` : "尚未添加默认模型"}</p>
+              <p>模型：{chosen ? `${chosen.name || chosen.model}（${chosen.model}）` : "尚未添加模型"}</p>
               <p className="text-muted-foreground">
                 每位预计读取 1～4 页，约 5000～20000 Token；本次约 {(count * 5000).toLocaleString()}～
                 {(count * 20000).toLocaleString()} Token
@@ -865,6 +877,7 @@ function EnrichDialog({
             关闭
           </Button>
           <ModelAction
+            feature="crawl"
             disabled={!preview.data || count === 0 || start.isPending || start.isSuccess}
             onWrite={() =>
               start.mutate(undefined, { onError: () => client.invalidateQueries({ queryKey: ["listModelConfigs"] }) })

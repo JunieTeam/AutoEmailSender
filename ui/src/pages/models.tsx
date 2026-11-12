@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { call, failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
-import type { ModelConfig, ModelProvider } from "@/api/types";
+import type { FeatureModel, ModelConfig, ModelFeature, ModelProvider } from "@/api/types";
 import { Confirm } from "@/components/batch-bar";
 import { ModelDialog, sourceName, useModelProviders } from "@/components/model-dialog";
 import { DefaultMark } from "@/components/default-mark";
 import { Button } from "@/components/ui/button";
-import { Section } from "./settings";
+import { Select, type Options } from "@/components/ui/select";
+import { Row, Section } from "./settings";
 
 /** Settings › AI › 模型 (docs/ui.md#交互). */
 export function ModelsSection() {
@@ -34,6 +35,7 @@ export function ModelsSection() {
             <Button onClick={() => setAdding(true)}>添加模型</Button>
           </div>
           {adding && <ModelDialog config={null} providers={providers.data} onClose={() => setAdding(false)} />}
+          {configs.data.length > 1 && <FeatureModels configs={configs.data} providers={providers.data} />}
         </>
       )}
     </Section>
@@ -103,5 +105,63 @@ function ModelRow({ config: c, providers }: { config: ModelConfig; providers: Mo
         />
       )}
     </li>
+  );
+}
+
+// docs/ui.md#交互: the features whose model can be chosen apart from the default.
+const FEATURES: readonly (readonly [ModelFeature, string, string?])[] = [
+  ["crawl", "智能整理", "读网页、整理导师资料，也用于信息补全"],
+  ["match", "匹配分析"],
+  ["writing", "AI 写信", "起草和改写，新建任务时用它"],
+  ["check", "AI 核对"],
+  ["reply", "回信处理", "标记回信结果、提取待办"],
+];
+
+/** Which configuration each feature calls, saved as soon as it is chosen. */
+function FeatureModels({ configs, providers }: { configs: ModelConfig[]; providers: ModelProvider[] }) {
+  const queryClient = useQueryClient();
+  const save = useMutation({
+    mutationFn: (input: FeatureModel) => call("setFeatureModel", input),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["listModelConfigs"] }),
+  });
+  const fallback = configs.find((c) => c.isDefault);
+  const options: Options<number | null> = [
+    [null, `跟随默认（${fallback?.name ?? fallback?.model ?? ""}）`],
+    ...configs.map((c): [number, ReactNode] => [
+      c.id,
+      <>
+        {c.name ?? c.model}
+        <span className="ml-2 text-muted-foreground">{sourceName(c, providers)}</span>
+      </>,
+    ]),
+  ];
+  return (
+    <Row label="各功能用的模型">
+      <p className="text-sm text-muted-foreground">没有单独选的功能用默认的模型</p>
+      <div className="mt-1.5 flex flex-col gap-3">
+        {FEATURES.map(([feature, label, detail]) => (
+          <div
+            key={feature}
+            className="flex items-center justify-between gap-4 phone:flex-col phone:items-stretch phone:gap-1.5"
+          >
+            <div className="min-w-0">
+              <p>{label}</p>
+              {detail && <p className="text-sm text-muted-foreground">{detail}</p>}
+            </div>
+            <Select
+              aria-label={label}
+              className="w-64 shrink-0 phone:w-full"
+              value={configs.find((c) => c.features.includes(feature))?.id ?? null}
+              options={options}
+              disabled={save.isPending}
+              onChange={(id) => save.mutate({ feature, id })}
+            />
+          </div>
+        ))}
+      </div>
+      {save.error && (
+        <FailureNote className="text-sm text-destructive" lead="未能保存：" failure={failureOf(save.error)} />
+      )}
+    </Row>
   );
 }

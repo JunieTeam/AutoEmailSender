@@ -163,7 +163,9 @@ vi.mock("@/api/call", async (importOriginal) => ({
     if (op === "getLetterStyle")
       return { font: null, fontSizePt: 12, lineHeight: 1.5, paragraphSpacingEm: 1, firstLineIndent: false };
     if (op === "listModelConfigs")
-      return [{ id: 1, provider: "custom", baseUrl: "http://model.example", agreed: true, isDefault: true }];
+      return [
+        { id: 1, provider: "custom", baseUrl: "http://model.example", agreed: true, isDefault: true, features: [] },
+      ];
     throw new Error(`unexpected operation: ${op}`);
   },
 }));

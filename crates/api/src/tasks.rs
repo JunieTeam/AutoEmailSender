@@ -91,7 +91,7 @@ pub async fn write_task_draft(
         },
     )
     .await?;
-    let chosen = model::selected(&ctx.db, t.model_config_id)
+    let chosen = model::selected(&ctx.db, t.model_config_id, model::Feature::Writing)
         .await?
         .ok_or(writing::Error::NoModel)?;
     let ids = sqlx::query_scalar!(

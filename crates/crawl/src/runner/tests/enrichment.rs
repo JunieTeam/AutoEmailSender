@@ -516,7 +516,10 @@ async fn enrichment_waiting_for_quota_rechecks_default_deletion_edits_and_consen
         enrich::start(&db, &[id], 2).await.unwrap();
         let c = queue::next(&db).await.unwrap().unwrap();
         assert_eq!(c.model_id, None);
-        let chosen = model::selected(&db, None).await.unwrap().unwrap();
+        let chosen = model::selected(&db, None, model::Feature::Crawl)
+            .await
+            .unwrap()
+            .unwrap();
         let limit = Limit::default();
         let permits = [
             limit.acquire().await,
@@ -585,7 +588,10 @@ async fn enrichment_waiting_for_quota_rechecks_default_deletion_edits_and_consen
             }
         }
         // The replacement configuration must require the same explicit consent.
-        let selected = model::selected(&db, None).await.unwrap().unwrap();
+        let selected = model::selected(&db, None, model::Feature::Crawl)
+            .await
+            .unwrap()
+            .unwrap();
         sqlx::query("UPDATE model_config SET agreed=0 WHERE id=?")
             .bind(selected.id)
             .execute(&db)

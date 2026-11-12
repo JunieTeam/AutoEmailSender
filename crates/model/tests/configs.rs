@@ -2,7 +2,7 @@
 #![cfg(test)]
 
 use model::pricing::{Currency, Hours, Prices, Rate};
-use model::{ModelForm, Source};
+use model::{Feature, ModelForm, Source};
 use sqlx::SqlitePool;
 
 fn form(provider: &str, base_url: &str) -> ModelForm {
@@ -70,10 +70,56 @@ async fn the_earliest_model_is_the_default_until_another_is_chosen(db: SqlitePoo
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_feature_calls_its_own_model_and_otherwise_the_default(db: SqlitePool) {
+    let fields = form("deepseek", "").check().unwrap();
+    let first = model::create(&db, &fields, "k", 0).await.unwrap();
+    let second = model::create(&db, &fields, "k", 0).await.unwrap();
+    let calls = async |feature| model::chosen(&db, feature).await.unwrap().unwrap().id;
+    assert_eq!(calls(Feature::Reply).await, first);
+
+    assert!(
+        model::set_feature(&db, Feature::Reply, Some(second))
+            .await
+            .unwrap()
+    );
+    assert_eq!(calls(Feature::Reply).await, second);
+    assert_eq!(calls(Feature::Match).await, first);
+    let listed = model::list(&db, 0).await.unwrap();
+    assert_eq!(listed[1].features, [Feature::Reply]);
+    // Work that fixed a configuration keeps it.
+    let fixed = model::selected(&db, Some(first), Feature::Reply)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(fixed.id, first);
+
+    assert!(model::set_feature(&db, Feature::Reply, None).await.unwrap());
+    assert_eq!(calls(Feature::Reply).await, first);
+    assert!(
+        model::set_feature(&db, Feature::Reply, Some(second))
+            .await
+            .unwrap()
+    );
+    model::delete(&db, second).await.unwrap();
+    assert_eq!(calls(Feature::Reply).await, first);
+    assert!(
+        !model::set_feature(&db, Feature::Reply, Some(second))
+            .await
+            .unwrap()
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn what_the_user_agreed_to_holds_only_for_the_same_provider(db: SqlitePool) {
     let deepseek = form("deepseek", "").check().unwrap();
     let id = model::create(&db, &deepseek, "k", 0).await.unwrap();
-    let agreed = async || model::chosen(&db).await.unwrap().unwrap().agreed;
+    let agreed = async || {
+        model::chosen(&db, Feature::Writing)
+            .await
+            .unwrap()
+            .unwrap()
+            .agreed
+    };
     assert!(!agreed().await);
 
     // Not to a provider the user was not told about.
@@ -114,7 +160,13 @@ async fn an_address_saved_with_chat_completions_keeps_its_key_after_the_upgrade(
         model::api_key(&db, 1, &source).await.unwrap(),
         Some(Some("sk-relay".into()))
     );
-    assert!(model::chosen(&db).await.unwrap().unwrap().agreed);
+    assert!(
+        model::chosen(&db, Feature::Writing)
+            .await
+            .unwrap()
+            .unwrap()
+            .agreed
+    );
 }
 
 #[test]
@@ -146,7 +198,12 @@ async fn missing_key_is_distinct_from_a_keyless_model_and_pauses_background_work
     let id = model::create(&db, &fields, "", 0).await.unwrap();
     assert!(!model::list(&db, 0).await.unwrap()[0].needs_api_key);
     assert_eq!(
-        model::chosen(&db).await.unwrap().unwrap().access.api_key,
+        model::chosen(&db, Feature::Writing)
+            .await
+            .unwrap()
+            .unwrap()
+            .access
+            .api_key,
         Some(String::new())
     );
     sqlx::query("UPDATE model_config SET api_key = NULL WHERE id = ?")
@@ -155,7 +212,7 @@ async fn missing_key_is_distinct_from_a_keyless_model_and_pauses_background_work
         .await
         .unwrap();
     assert!(model::list(&db, 0).await.unwrap()[0].needs_api_key);
-    let chosen = model::chosen(&db).await.unwrap().unwrap();
+    let chosen = model::chosen(&db, Feature::Writing).await.unwrap().unwrap();
     let net = net::Net::new(vec![]).unwrap();
     let error = model::ask(&net, &chosen.access, &chosen.model, "system", "user", false)
         .await
@@ -197,7 +254,13 @@ async fn agreement_and_key_hold_only_in_the_same_region(db: SqlitePool) {
     model::update(&db, id, &moved.check().unwrap(), "sk-singapore")
         .await
         .unwrap();
-    assert!(!model::chosen(&db).await.unwrap().unwrap().agreed);
+    assert!(
+        !model::chosen(&db, Feature::Writing)
+            .await
+            .unwrap()
+            .unwrap()
+            .agreed
+    );
     assert!(!model::agree(&db, id, &beijing).await.unwrap());
     assert!(model::agree(&db, id, &singapore).await.unwrap());
     assert!(Source::check("qwen", Some("eu-central-1"), "").is_err());
@@ -344,7 +407,13 @@ async fn bailian_keeps_its_key_and_deepseek_calls_learn_their_hours_on_the_upgra
         model::api_key(&db, 1, &beijing).await.unwrap(),
         Some(Some("sk-qwen".into()))
     );
-    assert!(model::selected(&db, Some(1)).await.unwrap().unwrap().agreed);
+    assert!(
+        model::selected(&db, Some(1), Feature::Writing)
+            .await
+            .unwrap()
+            .unwrap()
+            .agreed
+    );
     assert_eq!(
         model::list(&db, 0).await.unwrap()[0].pricing.currency,
         Currency::Cny

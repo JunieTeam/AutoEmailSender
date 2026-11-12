@@ -92,6 +92,8 @@ async fn setup(db: &SqlitePool, address: &str, n: i64) -> (i64, Vec<i64>) {
     .fetch_one(db)
     .await
     .unwrap();
+    // AI 核对 calls it too, as it does when it is the only model.
+    profile::set_default_model(db, config).await.unwrap();
     let mut ids = vec![];
     let offset: i64 = sqlx::query_scalar("SELECT count(*) FROM mentor")
         .fetch_one(db)
@@ -693,8 +695,10 @@ async fn fact_check_switch_controls_generation_and_token_estimates(db: SqlitePoo
     let off = task::plan(&db, &form, 0).await.unwrap();
     profile::set_ai_fact_check(&db, true).await.unwrap();
     let on = task::plan(&db, &form, 0).await.unwrap();
-    assert!(on.input_tokens > off.input_tokens + off.output_tokens);
-    assert_eq!(on.output_tokens - off.output_tokens, 300);
+    // Both on the same model, so counted together.
+    assert!(on.check.is_none());
+    assert!(on.writing.input_tokens > off.writing.input_tokens + off.writing.output_tokens);
+    assert_eq!(on.writing.output_tokens - off.writing.output_tokens, 300);
     let mut run = Runner::start(&db, Default::default());
     request(&mut p)
         .await
@@ -773,6 +777,141 @@ async fn fact_check_switch_controls_generation_and_token_estimates(db: SqlitePoo
             .is_none()
     );
     assert!(p.requests.try_recv().is_err());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn fact_check_calls_its_own_model_which_the_task_does_not_fix(db: SqlitePool) {
+    let mut writer = Provider::start().await.unwrap();
+    let mut checker = Provider::start().await.unwrap();
+    let (id, ids) = setup(&db, &writer.address, 1).await;
+    let config = sqlx::query_scalar::<_, i64>(
+        r#"INSERT INTO model_config (provider, base_url, model, api_key, agreed,
+            created_at)
+        VALUES ('custom', ?, 'checker', '', 1, 0)
+        RETURNING id"#,
+    )
+    .bind(&checker.address)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    model::set_feature(&db, model::Feature::Check, Some(config))
+        .await
+        .unwrap();
+    profile::set_ai_fact_check(&db, true).await.unwrap();
+    let form = NewTask {
+        kind: task::Kind::First,
+        schedule: email::schedule::Schedule::Now,
+        name: "预计用量".into(),
+        ids,
+        writer: Writer::Ai,
+        template_id: None,
+        template_source_id: None,
+        source_task_id: None,
+        model_config_id: None,
+        references: vec![],
+        attachments: vec![],
+    };
+    let plan = task::plan(&db, &form, 0).await.unwrap();
+    assert_eq!(plan.writing.model.as_deref(), Some("fixture"));
+    assert_eq!(plan.check.unwrap().model.as_deref(), Some("checker"));
+
+    let mut run = Runner::start(&db, Default::default());
+    request(&mut writer)
+        .await
+        .respond
+        .send(Response::answer(LETTER))
+        .ok()
+        .unwrap();
+    let check = request(&mut checker).await;
+    assert_eq!(check.body["model"], "checker");
+    check
+        .respond
+        .send(Response::Refused {
+            status: 401,
+            message: "wrong key".into(),
+            retry_after: None,
+        })
+        .ok()
+        .unwrap();
+    run.finished().await;
+    // A key that fails every check holds the task until it is fixed.
+    let t = task::get(&db, id).await.unwrap().unwrap();
+    assert_eq!(t.state, task::TaskState::Paused);
+    assert!(t.pause_reason.unwrap().message.contains("API Key"));
+
+    // Back on the default, the next check goes where the letters are written.
+    model::set_feature(&db, model::Feature::Check, None)
+        .await
+        .unwrap();
+    task::resume(&db, id).await.unwrap();
+    let email: i64 = sqlx::query_scalar("SELECT id FROM email WHERE task_id=?")
+        .bind(id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    task::regenerate(&db, id, Some(email), false, 2)
+        .await
+        .unwrap();
+    run.handle.wake();
+    request(&mut writer)
+        .await
+        .respond
+        .send(Response::answer(LETTER))
+        .ok()
+        .unwrap();
+    let check = request(&mut writer).await;
+    assert_eq!(check.body["model"], "fixture");
+    check.respond.send(Response::answer("[]")).ok().unwrap();
+    run.finished().await;
+    assert!(checker.requests.try_recv().is_err());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn drafts_wait_for_consent_to_a_check_model_chosen_after_the_task_started(db: SqlitePool) {
+    let mut writer = Provider::start().await.unwrap();
+    let mut checker = Provider::start().await.unwrap();
+    let (id, _) = setup(&db, &writer.address, 1).await;
+    let config = sqlx::query_scalar::<_, i64>(
+        r#"INSERT INTO model_config (provider, base_url, model, api_key, agreed,
+            created_at)
+        VALUES ('custom', ?, 'checker', '', 0, 0)
+        RETURNING id"#,
+    )
+    .bind(&checker.address)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    model::set_feature(&db, model::Feature::Check, Some(config))
+        .await
+        .unwrap();
+    profile::set_ai_fact_check(&db, true).await.unwrap();
+    let mut run = Runner::start(&db, Default::default());
+    run.until(&db, id, |t| t.state == task::TaskState::Paused)
+        .await;
+    let t = task::get(&db, id).await.unwrap().unwrap();
+    assert!(t.pause_reason.unwrap().message.contains("AI 核对"));
+    assert!(writer.requests.try_recv().is_err());
+
+    sqlx::query("UPDATE model_config SET agreed = 1 WHERE id = ?")
+        .bind(config)
+        .execute(&db)
+        .await
+        .unwrap();
+    task::resume(&db, id).await.unwrap();
+    run.handle.wake();
+    request(&mut writer)
+        .await
+        .respond
+        .send(Response::answer(LETTER))
+        .ok()
+        .unwrap();
+    request(&mut checker)
+        .await
+        .respond
+        .send(Response::answer("[]"))
+        .ok()
+        .unwrap();
+    run.finished().await;
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -1309,10 +1448,7 @@ async fn fact_check_pause_compares_its_own_configuration_with_the_current_one(db
             .fetch_one(&db)
             .await
             .unwrap();
-            sqlx::query("UPDATE task SET model_config_id=? WHERE id=?")
-                .bind(replacement)
-                .bind(id)
-                .execute(&db)
+            model::set_feature(&db, model::Feature::Check, Some(replacement))
                 .await
                 .unwrap();
         } else if field != "unchanged" {

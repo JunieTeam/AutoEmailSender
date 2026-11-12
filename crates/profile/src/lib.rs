@@ -212,7 +212,9 @@ pub async fn background_notice_shown(db: &SqlitePool) -> Result<bool, sqlx::Erro
 }
 
 /// Whether AI-generated drafts receive a separate check against the student's materials.
-pub async fn ai_fact_check(db: &SqlitePool) -> Result<bool, sqlx::Error> {
+pub async fn ai_fact_check<'a>(
+    db: impl sqlx::Executor<'a, Database = sqlx::Sqlite>,
+) -> Result<bool, sqlx::Error> {
     sqlx::query_scalar!(r#"SELECT ai_fact_check AS "on: bool" FROM profile"#)
         .fetch_one(db)
         .await

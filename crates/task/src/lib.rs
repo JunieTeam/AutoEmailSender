@@ -68,6 +68,16 @@ pub struct Candidate {
 #[serde(rename_all = "camelCase")]
 pub struct TaskPlan {
     pub mentors: Vec<Candidate>,
+    /// AI writing, and AI 核对 with it when both call the same model.
+    pub writing: ModelEstimate,
+    /// AI 核对 on a model of its own.
+    pub check: Option<ModelEstimate>,
+}
+
+/// The tokens the work is expected to take on a model.
+#[derive(Debug, Default, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelEstimate {
     pub model: Option<String>,
     pub model_config_id: Option<i64>,
     /// What that model charges now; None unless its prices are filled in.
@@ -269,7 +279,13 @@ pub async fn plan(db: &SqlitePool, form: &NewTask, now: i64) -> Result<TaskPlan>
     let mentors = candidates(&mut tx, &form.ids, form.kind, form.source_task_id).await?;
     let refs = references(&mut tx, &form.references).await?;
     let template = template_content(&mut tx, form).await?;
-    let chosen = model::selected(&mut *tx, form.model_config_id).await?;
+    let chosen = model::selected(&mut *tx, form.model_config_id, model::Feature::Writing).await?;
+    let fact_check = form.writer == Writer::Ai && profile::ai_fact_check(&mut *tx).await?;
+    let checker = if fact_check {
+        model::chosen(&mut *tx, model::Feature::Check).await?
+    } else {
+        None
+    };
     tx.commit().await?;
     let me = profile::get(db).await?;
     let attached = material::list(db)
@@ -278,8 +294,7 @@ pub async fn plan(db: &SqlitePool, form: &NewTask, now: i64) -> Result<TaskPlan>
         .filter(|m| form.attachments.contains(&m.id))
         .map(|m| m.file_name)
         .collect::<Vec<_>>();
-    let fact_check = profile::ai_fact_check(db).await?;
-    let (mut input_tokens, mut output_tokens) = (0, 0);
+    let (mut writing, mut check) = (ModelEstimate::default(), ModelEstimate::default());
     if form.writer == Writer::Ai {
         for m in mentors.iter().filter(|m| m.reason.is_none()) {
             if let Some(m) = mentor::get(db, m.id).await? {
@@ -306,31 +321,41 @@ pub async fn plan(db: &SqlitePool, form: &NewTask, now: i64) -> Result<TaskPlan>
                         .as_deref()
                         .map_or(writing::Kind::First, writing::Kind::FollowUp),
                 );
-                input_tokens += i;
-                output_tokens += o;
+                writing.input_tokens += i;
+                writing.output_tokens += o;
                 if fact_check {
                     let (i, o) = writing::fact_check::estimate(&me, &refs, o);
-                    input_tokens += i;
-                    output_tokens += o;
+                    check.input_tokens += i;
+                    check.output_tokens += o;
                 }
             }
         }
     }
-    let rate = match &chosen {
-        Some(m) => model::list(db, now)
-            .await?
-            .into_iter()
-            .find(|c| c.id == m.id)
-            .and_then(|c| c.rate),
-        None => None,
+    let configs = model::list(db, now).await?;
+    let on = |estimate: &mut ModelEstimate, chosen: Option<model::Chosen>| {
+        estimate.rate = chosen
+            .as_ref()
+            .and_then(|m| configs.iter().find(|c| c.id == m.id))
+            .and_then(|c| c.rate);
+        estimate.model_config_id = chosen.as_ref().map(|c| c.id);
+        estimate.model = chosen.map(|c| c.model);
+    };
+    let same = checker.as_ref().map(|c| c.id) == chosen.as_ref().map(|c| c.id);
+    on(&mut writing, chosen);
+    let check = if !fact_check {
+        None
+    } else if same {
+        writing.input_tokens += check.input_tokens;
+        writing.output_tokens += check.output_tokens;
+        None
+    } else {
+        on(&mut check, checker);
+        Some(check)
     };
     Ok(TaskPlan {
         mentors,
-        model: chosen.as_ref().map(|c| c.model.clone()),
-        model_config_id: chosen.map(|c| c.id),
-        rate,
-        input_tokens,
-        output_tokens,
+        writing,
+        check,
     })
 }
 
@@ -400,7 +425,7 @@ pub async fn create(db: &SqlitePool, form: &NewTask, now: i64) -> Result<i64> {
     );
     let template_id = template.as_ref().and_then(|t| t.template_id);
     let chosen = if form.writer == Writer::Ai || form.model_config_id.is_some() {
-        model::selected(&mut *tx, form.model_config_id).await?
+        model::selected(&mut *tx, form.model_config_id, model::Feature::Writing).await?
     } else {
         None
     };
@@ -408,7 +433,13 @@ pub async fn create(db: &SqlitePool, form: &NewTask, now: i64) -> Result<i64> {
         let chosen = chosen
             .as_ref()
             .ok_or_else(|| Error::Invalid("尚未添加模型，请先在设置中添加".into()))?;
-        if !chosen.agreed {
+        // AI 核对 follows each draft, on a model that may be another one.
+        let checker = if profile::ai_fact_check(&mut *tx).await? {
+            model::chosen(&mut *tx, model::Feature::Check).await?
+        } else {
+            None
+        };
+        if !chosen.agreed || checker.is_some_and(|c| !c.agreed) {
             return Err(Error::Invalid("请先确认发给模型服务商的内容".into()));
         }
     }

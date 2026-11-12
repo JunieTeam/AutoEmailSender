@@ -1968,7 +1968,14 @@ async fn regeneration_is_local_and_deleted_model_uses_the_new_default(db: Sqlite
     assert_eq!(after[1].body_md, "人工稿");
     model::delete(&db, old).await.unwrap();
     assert_eq!(get(&db, task).await.unwrap().unwrap().model_config_id, None);
-    assert_eq!(model::selected(&db, None).await.unwrap().unwrap().id, new);
+    assert_eq!(
+        model::selected(&db, None, model::Feature::Writing)
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        new
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -2768,7 +2775,7 @@ async fn restart_retains_follow_up_kind_and_falls_back_after_model_deletion(db: 
     template::delete(&db, f.template_id.unwrap()).await.unwrap();
     // The dialog may have opened before either configuration was deleted.
     let p = plan(&db, &next, 0).await.unwrap();
-    assert_eq!(p.model_config_id, Some(new));
+    assert_eq!(p.writing.model_config_id, Some(new));
     let t = create(&db, &next, T + 1).await.unwrap();
     assert_eq!(
         get(&db, t).await.unwrap().unwrap().model_config_id,

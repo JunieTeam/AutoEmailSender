@@ -10,9 +10,10 @@ import { ModelAction, useReplyWritingTarget, useWriting } from "./ai-writing";
 const remote = vi.hoisted(
   (): {
     models: ModelConfig[];
+    factCheck: boolean;
     write?: (input: Record<string, unknown>) => Promise<Letter>;
     canceled: unknown[];
-  } => ({ models: [], canceled: [] }),
+  } => ({ models: [], factCheck: false, canceled: [] }),
 );
 vi.mock("@tanstack/react-router", () => ({ Link: ({ children }: { children: ReactNode }) => <span>{children}</span> }));
 vi.mock("@/api/call", async (importOriginal) => ({
@@ -22,6 +23,7 @@ vi.mock("@/api/call", async (importOriginal) => ({
     if (op === "cancelWriting") return void remote.canceled.push(input.request);
     if (op === "listModelConfigs") return structuredClone(remote.models);
     if (op === "listModelProviders") return [];
+    if (op === "getAiFactCheck") return remote.factCheck;
     if (op === "agreeModel") {
       const model = remote.models.find((m) => m.id === input.id);
       if (!model) throw new Error("missing model");
@@ -36,8 +38,9 @@ function button(name: string) {
   if (!node) throw new Error(`missing button: ${name}`);
   return node;
 }
-it("requires consent to both providers before resuming mixed crawl and enrichment work", async () => {
-  remote.models = [1, 2].map((id) => ({
+it("asks once for every provider the work reaches, AI 核对's included", async () => {
+  remote.factCheck = true;
+  remote.models = [1, 2, 3].map((id) => ({
     id,
     name: null,
     model: "fixture",
@@ -50,7 +53,8 @@ it("requires consent to both providers before resuming mixed crawl and enrichmen
     rate: null,
     agreed: false,
     needsApiKey: false,
-    isDefault: id === 2,
+    isDefault: id === 1,
+    features: id === 3 ? ["check"] : [],
   }));
   let resumed = false;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -62,7 +66,9 @@ it("requires consent to both providers before resuming mixed crawl and enrichmen
       root.render(
         <QueryClientProvider client={client}>
           <ModelAction
-            modelIds={[1, 2]}
+            feature="writing"
+            modelIds={[2]}
+            checked
             disabled={false}
             onWrite={() => {
               resumed = true;
@@ -75,16 +81,13 @@ it("requires consent to both providers before resuming mixed crawl and enrichmen
     );
     await vi.waitFor(() => expect(button("继续").disabled).toBe(false));
     await act(async () => button("继续").click());
-    expect(document.body.textContent).toContain("provider1.example");
-    await act(async () => button("同意并继续").click());
-    await vi.waitFor(() => expect(remote.models[0]?.agreed).toBe(true));
-    expect(resumed).toBe(false);
-    await vi.waitFor(() => expect(button("继续").disabled).toBe(false));
-    await act(async () => button("继续").click());
+    // The task's own model and AI 核对's, not the default.
     expect(document.body.textContent).toContain("provider2.example");
+    expect(document.body.textContent).toContain("provider3.example");
+    expect(document.body.textContent).not.toContain("provider1.example");
     await act(async () => button("同意并继续").click());
     await vi.waitFor(() => expect(resumed).toBe(true));
-    expect(remote.models.every((m) => m.agreed)).toBe(true);
+    expect(remote.models.map((m) => m.agreed)).toEqual([false, true, true]);
   } finally {
     await act(async () => root.unmount());
     client.clear();

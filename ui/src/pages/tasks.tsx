@@ -391,7 +391,9 @@ export function TaskReviewPage() {
           {(t.state === "active" || t.state === "paused") &&
             (t.state === "paused" && t.writer === "ai" ? (
               <ModelAction
-                modelId={t.modelConfigId}
+                feature="writing"
+                modelIds={[t.modelConfigId]}
+                checked
                 disabled={action.isPending}
                 onWrite={() => action.mutate("resumeTask")}
               >

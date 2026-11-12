@@ -374,6 +374,12 @@ export type FactCheck = { "state": "completed", findings: Array<Finding>, } | { 
 
 export type Failure = { message: string, details: string | null, };
 
+export type FeatureModel = { feature: ModelFeature,
+/**
+ * None: the default.
+ */
+id: number | null, };
+
 export type FeedbackInput = { description: string, withLog: boolean, };
 
 export type FeedbackPreview = {
@@ -616,7 +622,7 @@ export type MatchBatch = { ids: Array<number>, redo: boolean, };
 
 export type MatchEstimate = { plan: MatchPlan, model: string | null,
 /**
- * What the default model charges now; None unless its prices are filled in.
+ * What the model matching calls charges now; None unless its prices are filled in.
  */
 rate: ModelRate | null, hasBasis: boolean, inputTokens: number, outputTokens: number, };
 
@@ -832,9 +838,14 @@ region: string | null,
  */
 baseUrl: string | null, model: string,
 /**
- * The one AI features use: the user's choice, or else the earliest added.
+ * The one features without a model of their own use: the user's choice, or else the earliest
+ * added.
  */
 isDefault: boolean,
+/**
+ * The features that use this one instead of the default.
+ */
+features: Array<ModelFeature>,
 /**
  * The user agreed to what AI features send to its provider.
  */
@@ -893,6 +904,14 @@ region: ModelRegion | null, baseUrl: string,
  * Where the user gets an API key.
  */
 keyUrl: string, };
+
+export type ModelEstimate = { model: string | null, modelConfigId: number | null,
+/**
+ * What that model charges now; None unless its prices are filled in.
+ */
+rate: ModelRate | null, inputTokens: number, outputTokens: number, };
+
+export type ModelFeature = "crawl" | "match" | "writing" | "check" | "reply";
 
 export type ModelPrices = { input: number | null,
 /**
@@ -1309,11 +1328,15 @@ export type TaskMaterial = { materialId: number, taskId: number, id: number, };
 
 export type TaskPage = { tasks: Array<TaskSummary>, total: number, };
 
-export type TaskPlan = { mentors: Array<Candidate>, model: string | null, modelConfigId: number | null,
+export type TaskPlan = { mentors: Array<Candidate>,
 /**
- * What that model charges now; None unless its prices are filled in.
+ * AI writing, and AI 核对 with it when both call the same model.
  */
-rate: ModelRate | null, inputTokens: number, outputTokens: number, };
+writing: ModelEstimate,
+/**
+ * AI 核对 on a model of its own.
+ */
+check: ModelEstimate | null, };
 
 export type TaskQuery = { page: number, };
 
@@ -1692,6 +1715,7 @@ export interface Operations {
   updateModelConfig: { input: ModelConfigEdit; output: null };
   deleteModelConfig: { input: ModelConfigId; output: null };
   setDefaultModel: { input: ModelConfigId; output: null };
+  setFeatureModel: { input: FeatureModel; output: null };
   agreeModel: { input: ModelAgreement; output: null };
   listProviderModels: { input: ModelSource; output: Array<ListedModel> };
   testModel: { input: ModelTest; output: null };

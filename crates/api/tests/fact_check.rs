@@ -448,12 +448,21 @@ async fn all_draft_checks_filter_saved_quotes_against_current_edits(db: SqlitePo
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn task_checks_use_task_model_and_references_then_fall_back_after_deletion(db: SqlitePool) {
+async fn task_checks_use_task_references_and_the_check_model_then_fall_back_after_deletion(
+    db: SqlitePool,
+) {
     let ctx = context(db);
     let mut default = Provider::start().await.unwrap();
-    config(&ctx.db, &default.address).await;
-    let mut selected = Provider::start().await.unwrap();
-    let chosen = config(&ctx.db, &selected.address).await;
+    let writer = config(&ctx.db, &default.address).await;
+    let mut checker = Provider::start().await.unwrap();
+    let chosen = config(&ctx.db, &checker.address).await;
+    call(
+        &ctx,
+        "setFeatureModel",
+        json!({"feature":"check","id":chosen}),
+    )
+    .await
+    .unwrap();
     let mentor_id = mentor(&ctx.db).await;
     let task: i64 = sqlx::query_scalar(
         r#"INSERT INTO task (name, kind, writer, model_config_id, schedule, state,
@@ -461,7 +470,7 @@ async fn task_checks_use_task_model_and_references_then_fall_back_after_deletion
         VALUES ('核对', 'first', 'ai', ?, 'now', 'active', 0)
         RETURNING id"#,
     )
-    .bind(chosen)
+    .bind(writer)
     .fetch_one(&ctx.db)
     .await
     .unwrap();
@@ -492,7 +501,7 @@ async fn task_checks_use_task_model_and_references_then_fall_back_after_deletion
         .unwrap();
     let answer = r#"[{"quote":"3 篇论文","reason":"固定资料未提到论文"}]"#;
     let (result, ()) = tokio::join!(call(&ctx, "factCheckEmail", json!({"id":id})), async {
-        let request = selected.requests.recv().await.unwrap();
+        let request = checker.requests.recv().await.unwrap();
         let message = request.body["messages"][1]["content"].as_str().unwrap();
         assert!(message.contains("固定任务资料"));
         assert!(!message.contains("当前全局资料"));

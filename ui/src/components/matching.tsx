@@ -83,6 +83,7 @@ export function MatchingDialog({ ids, onClose }: { ids: number[]; onClose: () =>
         <DialogFooter className="justify-end">
           <DialogClose render={<Button variant="ghost" disabled={start.isPending} />}>取消</DialogClose>
           <ModelAction
+            feature="match"
             disabled={!data || !data.hasBasis || data.plan.analyze === 0 || start.isPending}
             onWrite={() => start.mutate()}
           >
@@ -108,7 +109,7 @@ export function MatchButton({ mentor: m }: { mentor: MentorDetail }) {
   const busy = m.analysis.state?.state === "queued" || m.analysis.state?.state === "running";
   return (
     <div className="space-y-2">
-      <ModelAction disabled={insufficient || busy || run.isPending} onWrite={() => run.mutate()}>
+      <ModelAction feature="match" disabled={insufficient || busy || run.isPending} onWrite={() => run.mutate()}>
         <AiIcon />
         {m.analysis.state?.state === "failed" ? "重试" : m.analysis.result ? "重新分析" : "分析匹配度"}
       </ModelAction>
@@ -144,7 +145,11 @@ export function MatchingProgress() {
             {p.remaining > 0 && (
               <>
                 {p.pause ? (
-                  <ModelAction disabled={action.isPending} onWrite={() => action.mutate("resumeMatching")}>
+                  <ModelAction
+                    feature="match"
+                    disabled={action.isPending}
+                    onWrite={() => action.mutate("resumeMatching")}
+                  >
                     继续
                   </ModelAction>
                 ) : (
@@ -167,7 +172,7 @@ export function MatchingProgress() {
             {p.failed > 0 && (
               <>
                 <span className="text-warning">失败 {p.failed} 位</span>
-                <ModelAction disabled={action.isPending} onWrite={() => action.mutate("retryMatching")}>
+                <ModelAction feature="match" disabled={action.isPending} onWrite={() => action.mutate("retryMatching")}>
                   重试
                 </ModelAction>
               </>

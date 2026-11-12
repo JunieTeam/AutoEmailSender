@@ -7,6 +7,7 @@ import type {
   Currency,
   ListedModel,
   ModelConfig,
+  ModelFeature,
   ModelPrices,
   ModelProvider,
   ModelSource,
@@ -34,6 +35,14 @@ export function useModelProviders() {
 }
 
 const CUSTOM = "custom";
+
+/**
+ * The configuration a feature calls, as the core picks it: the one chosen for the feature, or else
+ * the default.
+ */
+export function featureModel(configs: ModelConfig[], feature: ModelFeature): ModelConfig | undefined {
+  return configs.find((c) => c.features.includes(feature)) ?? configs.find((c) => c.isDefault);
+}
 
 /**
  * Where a configuration calls, as the user knows it: its provider, with the region where it has

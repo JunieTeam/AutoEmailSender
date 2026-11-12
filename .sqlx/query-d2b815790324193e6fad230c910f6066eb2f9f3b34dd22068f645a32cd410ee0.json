@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT feature AS \"feature: Feature\", model_config_id FROM feature_model",
+  "describe": {
+    "columns": [
+      {
+        "name": "feature: Feature",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "feature_model",
+            "name": "feature"
+          }
+        }
+      },
+      {
+        "name": "model_config_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "feature_model",
+            "name": "model_config_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "d2b815790324193e6fad230c910f6066eb2f9f3b34dd22068f645a32cd410ee0"
+}

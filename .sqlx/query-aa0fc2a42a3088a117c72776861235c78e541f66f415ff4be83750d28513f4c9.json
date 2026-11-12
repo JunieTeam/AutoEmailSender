@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, provider, region, base_url, model, api_key, agreed AS \"agreed: bool\"\n        FROM model_config\n        WHERE id = coalesce((SELECT id FROM model_config WHERE id = ?1),\n            (SELECT default_model_config_id FROM profile),\n            (SELECT min(id) FROM model_config))",
+  "query": "SELECT id, provider, region, base_url, model, api_key, agreed AS \"agreed: bool\"\n        FROM model_config\n        WHERE id = coalesce((SELECT id FROM model_config WHERE id = ?1),\n            (SELECT model_config_id FROM feature_model WHERE feature = ?2),\n            (SELECT default_model_config_id FROM profile),\n            (SELECT min(id) FROM model_config))",
   "describe": {
     "columns": [
       {
@@ -82,7 +82,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false,
@@ -94,5 +94,5 @@
       false
     ]
   },
-  "hash": "f380bbaa70a544d14ca00cf93b25249350014a41e04c70fed6a01e41180d428d"
+  "hash": "aa0fc2a42a3088a117c72776861235c78e541f66f415ff4be83750d28513f4c9"
 }

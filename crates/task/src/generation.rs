@@ -2,7 +2,7 @@
 use super::*;
 use failure::Failure;
 use model::{
-    Chosen,
+    Chosen, Feature,
     background::{CONCURRENCY, Cooldown, Effect, LASTING, Limit, Limited, RateLimit, Rounds},
 };
 use std::{
@@ -48,7 +48,8 @@ enum Outcome {
         failure: Option<(Effect, Chosen, u64)>,
     },
     Failed(Failure),
-    Pause(Failure, Option<Chosen>),
+    /// With the configuration that failed, if one did, and what it was called for.
+    Pause(Failure, Option<(Chosen, Feature)>),
     /// With the round the limited request went out in.
     RateLimit(RateLimit, Chosen, u64),
     Requeue,
@@ -77,7 +78,7 @@ async fn generate(
     else {
         return Ok(Outcome::Requeue);
     };
-    let Some(chosen) = model::selected(&mut *tx, t.model_config_id).await? else {
+    let Some(chosen) = model::selected(&mut *tx, t.model_config_id, Feature::Writing).await? else {
         return Ok(Outcome::Pause(
             Failure::new("尚未添加模型，请在设置中添加后继续"),
             None,
@@ -86,7 +87,18 @@ async fn generate(
     if !chosen.agreed {
         return Ok(Outcome::Pause(
             Failure::new("模型配置已改变，请先确认发给服务商的内容"),
-            Some(chosen),
+            Some((chosen, Feature::Writing)),
+        ));
+    }
+    // AI 核对 can have been turned on or moved to another model since the task started; asking
+    // first spares drafts whose checks could not go out.
+    if profile::ai_fact_check(&mut *tx).await?
+        && let Some(checker) = model::chosen(&mut *tx, Feature::Check).await?
+        && !checker.agreed
+    {
+        return Ok(Outcome::Pause(
+            Failure::new("请先确认 AI 核对发给模型服务商的内容"),
+            Some((checker, Feature::Check)),
         ));
     }
     let refs = sqlx::query_as!(
@@ -173,7 +185,7 @@ async fn generate(
                 if !emails::valid(db, claim).await? {
                     return Ok(Outcome::Requeue);
                 }
-                match model::selected(db, t.model_config_id).await? {
+                match model::chosen(db, Feature::Check).await? {
                     Some(check_config) => {
                         note_sent();
                         let result = writing::fact_check::check(
@@ -265,7 +277,7 @@ async fn generate(
                 "draft model failed: {error}"
             );
             match model::background::classify(error, &chosen.access) {
-                Effect::Pause(reason) => Outcome::Pause(reason, Some(chosen)),
+                Effect::Pause(reason) => Outcome::Pause(reason, Some((chosen, Feature::Writing))),
                 Effect::RateLimit(limit) => {
                     Outcome::RateLimit(limit, chosen, sent.load(Ordering::Relaxed))
                 }
@@ -286,7 +298,7 @@ async fn generate(
 pub async fn requeue(
     db: &SqlitePool,
     claim: emails::Claim,
-    pause: Option<(&Failure, Option<&Chosen>)>,
+    pause: Option<(&Failure, Option<(&Chosen, Feature)>)>,
     at: i64,
 ) -> std::result::Result<bool, sqlx::Error> {
     let mut tx = db.begin().await?;
@@ -300,23 +312,32 @@ pub async fn requeue(
     Ok(true)
 }
 
+/// Pauses the task's drafts, unless what failed was a configuration the feature no longer calls:
+/// the writing one the task fixed, or AI 核对's, which no task fixes.
 async fn pause_task(
     conn: &mut SqliteConnection,
     task: i64,
     reason: &Failure,
-    expected: Option<&Chosen>,
+    expected: Option<(&Chosen, Feature)>,
     at: i64,
 ) -> std::result::Result<(), sqlx::Error> {
-    let id = sqlx::query_scalar!("SELECT model_config_id FROM task WHERE id = ?", task)
-        .fetch_optional(&mut *conn)
-        .await?
-        .flatten();
-    let current = model::selected(&mut *conn, id).await?;
-    if expected.is_none_or(|e| {
-        current
-            .as_ref()
-            .is_some_and(|c| model::background::same_config(c, e))
-    }) {
+    let still_called = match expected {
+        Some((expected, feature)) => {
+            let fixed = if feature == Feature::Writing {
+                sqlx::query_scalar!("SELECT model_config_id FROM task WHERE id = ?", task)
+                    .fetch_optional(&mut *conn)
+                    .await?
+                    .flatten()
+            } else {
+                None
+            };
+            model::selected(&mut *conn, fixed, feature)
+                .await?
+                .is_some_and(|c| model::background::same_config(&c, expected))
+        }
+        None => true,
+    };
+    if still_called {
         sqlx::query!(
             r#"UPDATE task
             SET state = 'paused', generation_paused_at = ?,
@@ -357,14 +378,22 @@ async fn apply(
             )
             .await?;
             if applied && let Some((Effect::Pause(reason), config, _)) = failure {
-                pause_task(&mut tx, claim.task, reason, Some(config), at).await?;
+                pause_task(
+                    &mut tx,
+                    claim.task,
+                    reason,
+                    Some((config, Feature::Check)),
+                    at,
+                )
+                .await?;
             }
             tx.commit().await?;
             Ok(applied)
         }
         Outcome::Failed(reason) => emails::fail(&mut *db.acquire().await?, claim, reason, at).await,
         Outcome::Pause(reason, config) => {
-            requeue(db, claim, Some((reason, config.as_ref())), at).await
+            let expected = config.as_ref().map(|(c, feature)| (c, *feature));
+            requeue(db, claim, Some((reason, expected)), at).await
         }
         Outcome::RateLimit(..) | Outcome::Requeue => requeue(db, claim, None, at).await,
     }
@@ -485,7 +514,7 @@ pub async fn run(
                                         &chosen,
                                     ) =>
                             {
-                                Outcome::Pause(limit.lasting, Some(chosen))
+                                Outcome::Pause(limit.lasting, Some((chosen, Feature::Writing)))
                             }
                             // The draft got through, which starts the limits afresh; the check
                             // after it was limited.

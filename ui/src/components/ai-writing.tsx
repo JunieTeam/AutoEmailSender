@@ -11,10 +11,19 @@ import {
 import { Link } from "@tanstack/react-router";
 import { TriangleAlert } from "lucide-react";
 import { call, failureOf, UiError } from "@/api/call";
-import type { FactCheck, Failure, FirstDraftEdit, Letter, ModelConfig, ModelProvider, ReplyTarget } from "@/api/types";
-import { FailureNote } from "@/components/failure";
+import type {
+  FactCheck,
+  Failure,
+  FirstDraftEdit,
+  Letter,
+  ModelConfig,
+  ModelFeature,
+  ModelProvider,
+  ReplyTarget,
+} from "@/api/types";
+import { FailureDetails, FailureNote } from "@/components/failure";
 import { Confirm } from "@/components/batch-bar";
-import { sourceName, useModelProviders } from "@/components/model-dialog";
+import { featureModel, sourceName, useModelProviders } from "@/components/model-dialog";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { changes } from "@/diff";
@@ -108,8 +117,8 @@ export function forgetWriting(queryClient: QueryClient, mutationKey: QueryKey) {
 }
 
 /**
- * "AI 起草" for a blank letter and "AI 改写" otherwise. Before the first call to a model's provider,
- * says what goes there and waits for the user to agree.
+ * "AI 起草" for a blank letter and "AI 改写" otherwise, on a task's model when it is a task's. Before
+ * the first call to a model's provider, says what goes there and waits for the user to agree.
  */
 export function AiButton({
   blank,
@@ -123,7 +132,13 @@ export function AiButton({
   modelId?: number | null;
 }) {
   return (
-    <ModelAction modelId={modelId} disabled={disabled} onWrite={onWrite}>
+    <ModelAction
+      feature="writing"
+      modelIds={modelId === undefined ? undefined : [modelId]}
+      checked
+      disabled={disabled}
+      onWrite={onWrite}
+    >
       <AiIcon />
       {blank ? "AI 起草" : "AI 改写"}
     </ModelAction>
@@ -131,19 +146,23 @@ export function AiButton({
 }
 
 /**
- * The same provider consent for every AI entry point. The entry point is an AI button unless
- * `renderTrigger` draws another control.
+ * The same provider consent for every AI entry point, for the models `feature` calls. The entry
+ * point is an AI button unless `renderTrigger` draws another control.
  */
 export function ModelAction({
-  modelId,
+  feature,
   modelIds,
+  checked,
   children,
   renderTrigger,
   disabled,
   onWrite,
 }: {
-  modelId?: number | null;
-  modelIds?: number[];
+  feature: ModelFeature;
+  /** The configurations the work fixed, such as a task's; one deleted since is the feature's. */
+  modelIds?: (number | null)[];
+  /** AI 核对 follows what the model writes, on a model of its own, when it is turned on. */
+  checked?: boolean;
   children?: ReactNode;
   renderTrigger?: (props: { disabled: boolean; onClick?: () => void }) => ReactElement;
   disabled: boolean;
@@ -152,20 +171,26 @@ export function ModelAction({
   const queryClient = useQueryClient();
   const models = useQuery({ queryKey: ["listModelConfigs"], queryFn: () => call("listModelConfigs", {}) });
   const providers = useModelProviders();
+  const factCheck = useQuery({ ...aiFactCheck, enabled: checked === true });
   const agree = useMutation({
     // Only to the provider and address the user was told about, should the configuration have changed since.
-    mutationFn: (m: ModelConfig) =>
-      call("agreeModel", { id: m.id, provider: m.provider, region: m.region, baseUrl: m.baseUrl }),
+    mutationFn: (ms: ModelConfig[]) =>
+      Promise.all(
+        ms.map((m) => call("agreeModel", { id: m.id, provider: m.provider, region: m.region, baseUrl: m.baseUrl })),
+      ),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["listModelConfigs"] }),
   });
-  const fallback = models.data?.find((m) => m.isDefault);
-  const required =
-    modelIds && modelIds.length > 0
-      ? modelIds.map((id) => models.data?.find((m) => m.id === id) ?? fallback).filter((m) => m !== undefined)
-      : [models.data?.find((m) => m.id === modelId) ?? fallback].filter((m) => m !== undefined);
-  const chosen = required.find((m) => !m.agreed) ?? required[0];
+  const configs = models.data ?? [];
+  const own = featureModel(configs, feature);
+  const required = [
+    ...(modelIds && modelIds.length > 0 ? modelIds.map((id) => configs.find((m) => m.id === id) ?? own) : [own]),
+    checked && factCheck.data ? featureModel(configs, "check") : undefined,
+  ].filter((m, i, all): m is ModelConfig => m !== undefined && all.findIndex((o) => o?.id === m.id) === i);
+  const unagreed = required.filter((m) => !m.agreed);
   const button = (onClick?: () => void) => {
-    const off = disabled || !models.data || !providers.data || agree.isPending;
+    // Until the setting is read, whether AI 核对's model is needed too is not known.
+    const off =
+      disabled || !models.data || !providers.data || (checked && factCheck.data === undefined) || agree.isPending;
     return renderTrigger ? (
       renderTrigger({ disabled: off, onClick })
     ) : (
@@ -174,10 +199,10 @@ export function ModelAction({
       </Button>
     );
   };
-  const error = models.error ?? providers.error ?? agree.error;
+  const error = models.error ?? providers.error ?? factCheck.error ?? agree.error;
   return (
     <>
-      {!chosen ? (
+      {required.length === 0 ? (
         <Popover>
           <PopoverTrigger render={button()} />
           <PopoverContent align="start" className="w-72 p-3 text-sm">
@@ -188,18 +213,12 @@ export function ModelAction({
             里添加
           </PopoverContent>
         </Popover>
-      ) : !chosen.agreed ? (
+      ) : unagreed.length > 0 ? (
         <Confirm
           trigger={button()}
-          message={notice(chosen, providers.data ?? [])}
+          message={notice(unagreed, providers.data ?? [])}
           action="同意并继续"
-          onConfirm={() =>
-            agree.mutate(chosen, {
-              onSuccess: () => {
-                if (required.every((m) => m.id === chosen.id || m.agreed)) onWrite();
-              },
-            })
-          }
+          onConfirm={() => agree.mutate(unagreed, { onSuccess: onWrite })}
         />
       ) : (
         button(onWrite)
@@ -210,9 +229,9 @@ export function ModelAction({
 }
 
 /** What AI features send, and where (docs/design.md#个人资料和配置). */
-function notice(model: ModelConfig, providers: ModelProvider[]): string {
-  const where = sourceName(model, providers);
-  return `AI 写信、分析匹配度这类功能会把用到的内容发给“${where}”：你的个人资料、材料里的文字、导师的资料、整理时读取的网页标题和文字及链接文字，以及要改写、回复或追问参考的邮件和导师的回信。同意后，用这个模型时不再询问。`;
+function notice(models: ModelConfig[], providers: ModelProvider[]): string {
+  const where = [...new Set(models.map((m) => `“${sourceName(m, providers)}”`))].join("和");
+  return `AI 写信、分析匹配度这类功能会把用到的内容发给${where}：你的个人资料、材料里的文字、导师的资料、整理时读取的网页标题和文字及链接文字，以及要改写、回复或追问参考的邮件和导师的回信。同意后，用${models.length > 1 ? "这些" : "这个"}模型时不再询问。`;
 }
 
 const aiFactCheck = { queryKey: ["getAiFactCheck"], queryFn: () => call("getAiFactCheck", {}) };
@@ -274,11 +293,23 @@ export function FactCheckStatus({
         : null;
   return (
     reason !== null && (
-      <FailureNote className="text-sm text-destructive" lead="AI 核对未能完成：" failure={reason}>
-        <Button variant="quiet" size="sm" onClick={check.start}>
-          重试
-        </Button>
-      </FailureNote>
+      <div className="text-sm text-destructive">
+        <div className="flex flex-wrap items-center gap-x-2">
+          <p className="wrap-anywhere">AI 核对未能完成：{reason.message}</p>
+          {/* On AI 核对's model, which may be one not agreed to yet. */}
+          <ModelAction
+            feature="check"
+            disabled={false}
+            onWrite={check.start}
+            renderTrigger={(props) => (
+              <Button variant="quiet" size="sm" {...props}>
+                重试
+              </Button>
+            )}
+          />
+        </div>
+        <FailureDetails failure={reason} />
+      </div>
     )
   );
 }

@@ -1098,6 +1098,9 @@ operations! {
         "deleteModelConfig" [confirm] => delete_model_config(ModelConfigId) -> ();
         /// 设置默认模型配置。
         "setDefaultModel" [none] => set_default_model(ModelConfigId) -> ();
+        /// 给一项功能单独选模型配置；id 为空时跟随默认模型。
+        /// 功能：crawl 智能整理和信息补全，match 匹配分析，writing AI 写信，check AI 核对，reply 回信处理。
+        "setFeatureModel" [none] => set_feature_model(FeatureModel) -> ();
         /// 同意将数据发送到指定模型服务商和地址。
         /// 这会允许应用在使用该模型时发送导师、邮件或材料等相关数据。
         "agreeModel" [confirm] => agree_model(ModelAgreement) -> ();
@@ -1936,6 +1939,18 @@ async fn set_default_model(ctx: &Context, input: ModelConfigId) -> Result<(), Ca
     require_applied(applied, "找不到这个模型，可能已被删除")
 }
 
+#[derive(Debug, Deserialize, TS)]
+pub struct FeatureModel {
+    pub feature: model::Feature,
+    /// None: the default.
+    pub id: Option<i64>,
+}
+
+async fn set_feature_model(ctx: &Context, input: FeatureModel) -> Result<(), CallError> {
+    let applied = model::set_feature(&ctx.db, input.feature, input.id).await?;
+    require_applied(applied, "找不到这个模型，可能已被删除")
+}
+
 /// What the user was told AI features send to, and agreed to.
 #[derive(Debug, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -2411,7 +2426,7 @@ async fn write_letter(
         subject: input.subject,
         body_md: input.body_md,
     };
-    let chosen = model::chosen(&ctx.db)
+    let chosen = model::chosen(&ctx.db, model::Feature::Writing)
         .await?
         .ok_or(writing::Error::NoModel)?;
     let references = material::for_writing(&ctx.db).await?;
@@ -2805,7 +2820,7 @@ async fn write_follow_up(
     }: Writing<FirstDraftEdit>,
 ) -> Result<writing::Letter, CallError> {
     let turn = ctx.writing_turn(request).await?;
-    let chosen = model::chosen(&ctx.db)
+    let chosen = model::chosen(&ctx.db, model::Feature::Writing)
         .await?
         .ok_or(writing::Error::NoModel)?;
     let references = material::for_writing(&ctx.db).await?;
@@ -2860,7 +2875,7 @@ async fn write_reply(
     }: Writing<ReplyDraftEdit>,
 ) -> Result<writing::Letter, CallError> {
     let turn = ctx.writing_turn(request).await?;
-    let chosen = model::chosen(&ctx.db)
+    let chosen = model::chosen(&ctx.db, model::Feature::Writing)
         .await?
         .ok_or(writing::Error::NoModel)?;
     let references = material::for_writing(&ctx.db).await?;

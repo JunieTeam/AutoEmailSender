@@ -39,7 +39,7 @@ pub async fn get_ai_reply_todos(ctx: &Context, _: Nothing) -> Result<bool, CallE
 
 pub async fn set_ai_reply_todos(ctx: &Context, input: AiReplyTodos) -> Result<(), CallError> {
     if input.enabled {
-        let chosen = model::chosen(&ctx.db)
+        let chosen = model::chosen(&ctx.db, model::Feature::Reply)
             .await?
             .ok_or_else(|| CallError::invalid("请先在“设置 › AI › 模型”里添加模型".into()))?;
         if !chosen.agreed {

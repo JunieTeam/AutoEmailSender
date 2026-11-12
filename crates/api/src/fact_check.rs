@@ -28,29 +28,19 @@ pub async fn fact_check_email(
     .ok_or_else(|| CallError::invalid("这封邮件已不在待审核状态，请刷新后重试".into()))?;
     let (id, claim) = (input.id, row.generation_claim);
     let result: Result<Option<FactCheck>, CallError> = async {
-        let (chosen, references) = if let Some(task_id) = row.task_id {
-            let config =
-                sqlx::query_scalar!("SELECT model_config_id FROM task WHERE id = ?", task_id)
-                    .fetch_one(&ctx.db)
-                    .await?;
-            let chosen = model::selected(&ctx.db, config)
-                .await?
-                .ok_or(writing::Error::NoModel)?;
+        let chosen = model::chosen(&ctx.db, model::Feature::Check)
+            .await?
+            .ok_or(writing::Error::NoModel)?;
+        let references = if let Some(task_id) = row.task_id {
             let ids = sqlx::query_scalar!(
                 "SELECT material_id FROM task_material WHERE task_id = ? AND role = 'reference'",
                 task_id
             )
             .fetch_all(&ctx.db)
             .await?;
-            let references = task::references(&mut *ctx.db.acquire().await?, &ids).await?;
-            (chosen, references)
+            task::references(&mut *ctx.db.acquire().await?, &ids).await?
         } else {
-            (
-                model::chosen(&ctx.db)
-                    .await?
-                    .ok_or(writing::Error::NoModel)?,
-                material::for_writing(&ctx.db).await?,
-            )
+            material::for_writing(&ctx.db).await?
         };
         // Reply subjects live on the target message until approval fixes the outgoing subject.
         let subject = if row.kind == "reply" {

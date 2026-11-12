@@ -332,9 +332,10 @@ impl Reader<'_> {
                 {
                     return Err(ReadError::Gone);
                 }
-                let current = model::selected(&mut *conn, self.claim.model_id)
-                    .await
-                    .map_err(database("read model configuration", MODEL_READ_FAILED))?;
+                let current =
+                    model::selected(&mut *conn, self.claim.model_id, model::Feature::Crawl)
+                        .await
+                        .map_err(database("read model configuration", MODEL_READ_FAILED))?;
                 if !current.as_ref().is_some_and(|m| {
                     m.agreed
                         && m.provider == self.chosen.provider
@@ -459,7 +460,7 @@ async fn process(
         kind = ?c.kind,
         "page started"
     );
-    let Some(chosen) = model::selected(db, c.model_id).await? else {
+    let Some(chosen) = model::selected(db, c.model_id, model::Feature::Crawl).await? else {
         tracing::info!(reason = "missing_model", "crawl cannot continue");
         return Ok(Outcome::Pause(
             Failure::new("尚未添加模型，请在“设置 › AI › 模型”中添加后继续"),
@@ -997,7 +998,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
             )
             .execute(&mut *tx)
             .await?;
-            let current = model::selected(&mut *tx, c.model_id).await?;
+            let current = model::selected(&mut *tx, c.model_id, model::Feature::Crawl).await?;
             if expected.as_ref().is_none_or(|e| {
                 current
                     .as_ref()

@@ -196,7 +196,10 @@ async fn extraction_requests_a_json_object(db: SqlitePool) {
     let url = PageUrl::parse("https://school.example.edu/").unwrap();
     queue::start(&db, &[url], id, 1).await.unwrap();
     let claim = queue::next(&db).await.unwrap().unwrap();
-    let mut chosen = model::selected(&db, Some(id)).await.unwrap().unwrap();
+    let mut chosen = model::selected(&db, Some(id), model::Feature::Crawl)
+        .await
+        .unwrap()
+        .unwrap();
     chosen.access.provider = model::providers::find("deepseek");
     let reader = Reader {
         writes: &db::Writes::default(),
@@ -3252,7 +3255,10 @@ async fn regression_deleted_or_changed_config_requeues_and_requires_current_cons
             .await
             .unwrap();
         let c = queue::next(&db).await.unwrap().unwrap();
-        let chosen = model::selected(&db, Some(old_id)).await.unwrap().unwrap();
+        let chosen = model::selected(&db, Some(old_id), model::Feature::Crawl)
+            .await
+            .unwrap()
+            .unwrap();
         let limit = Limit::default();
         let permits = [
             limit.acquire().await,
@@ -3313,7 +3319,10 @@ async fn regression_deleted_or_changed_config_requeues_and_requires_current_cons
                 .unwrap()
         );
         let fresh = queue::next(&db).await.unwrap().unwrap();
-        let chosen = model::selected(&db, fresh.model_id).await.unwrap().unwrap();
+        let chosen = model::selected(&db, fresh.model_id, model::Feature::Crawl)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(chosen.id, if deleted { fallback } else { old_id });
         let outcome = process(&db, &net, &fetcher, &limit, &fresh, &cooldown)
             .await

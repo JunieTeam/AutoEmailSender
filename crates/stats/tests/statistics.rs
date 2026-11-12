@@ -395,7 +395,10 @@ async fn costs_take_cache_prices_and_off_peak_hours_and_keep_currencies_apart(db
         let id = model::create(&db, &form.check().unwrap(), "k", 0)
             .await
             .unwrap();
-        model::selected(&db, Some(id)).await.unwrap().unwrap()
+        model::selected(&db, Some(id), model::Feature::Match)
+            .await
+            .unwrap()
+            .unwrap()
     };
     let deepseek = config(
         "deepseek",

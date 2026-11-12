@@ -3,7 +3,7 @@
 use email::outcome::{self as queue, ReplyOutcome};
 use failure::Failure;
 use model::{
-    Chosen, ModelError,
+    Chosen, Feature, ModelError,
     background::{Cooldown, Limited, RateLimit, Rounds},
 };
 use serde::Deserialize;
@@ -108,7 +108,7 @@ async fn analyze(
         if cooldown.until().is_some() {
             return Ok(Outcome::Wait);
         }
-        let Some(chosen) = model::chosen(db).await? else {
+        let Some(chosen) = model::chosen(db, Feature::Reply).await? else {
             return Ok(Outcome::Pause(Failure::new(NO_MODEL), Guard::Missing));
         };
         if !chosen.agreed {
@@ -217,7 +217,7 @@ async fn requeue(
     .fetch_one(&mut *tx)
     .await?;
     if let Some((at, reason)) = pause {
-        let current = model::chosen(&mut *tx).await?;
+        let current = model::chosen(&mut *tx, Feature::Reply).await?;
         let same = match expected {
             Some(Guard::Model(expected)) => {
                 current.is_some_and(|current| model::background::same_config(&current, expected))
