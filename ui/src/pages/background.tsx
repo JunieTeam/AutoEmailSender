@@ -13,7 +13,7 @@ import { scheduledAt } from "@/components/schedule";
 import { refreshTasks } from "@/components/task-cache";
 import { Button } from "@/components/ui/button";
 import { useReceive } from "@/pages/conversations";
-import { crawlName, findSearch, refreshCrawls } from "@/pages/find";
+import { crawlName, findSearch, refreshCrawls, ResumeCrawl } from "@/pages/find";
 import { useResume } from "@/pages/mailboxes";
 
 /** Today in the user's time zone, which the core cannot know. */
@@ -277,14 +277,11 @@ export function BackgroundPage() {
                     />
                   </Link>
                   {c.state === "paused" && (
-                    <ModelAction
-                      feature="crawl"
+                    <ResumeCrawl
+                      crawl={c}
                       disabled={crawl.isPending}
-                      modelIds={c.modelIds}
-                      onWrite={() => crawl.mutate({ op: "resumeCrawl", id: c.id })}
-                    >
-                      继续
-                    </ModelAction>
+                      onResume={() => crawl.mutate({ op: "resumeCrawl", id: c.id })}
+                    />
                   )}
                 </div>
                 {c.error && <FailureDetails failure={c.error} />}

@@ -158,13 +158,14 @@ pub(super) async fn retry_crawl(ctx: &Context, input: CrawlRetry) -> Result<u64,
         .fetch_optional(&ctx.db)
         .await?
         .flatten();
+    // A retry sets the crawl going again, so the pages still to read are read too.
     let enrichment = sqlx::query_scalar!(
         r#"SELECT EXISTS (
             SELECT 1
             FROM crawl_page
-            WHERE crawl_id = ?1 AND (?2 IS NULL OR id = ?2)
-            AND candidate_id IN (SELECT id FROM candidate WHERE review = 'pending')
-            AND status != 'success'
+            WHERE crawl_id = ?1 AND candidate_id IS NOT NULL AND (work_state != 'done'
+            OR ((?2 IS NULL OR id = ?2) AND status != 'success'
+            AND candidate_id IN (SELECT id FROM candidate WHERE review = 'pending')))
         ) AS "present!: bool""#,
         input.id,
         input.page
@@ -175,8 +176,8 @@ pub(super) async fn retry_crawl(ctx: &Context, input: CrawlRetry) -> Result<u64,
         r#"SELECT EXISTS (
             SELECT 1
             FROM crawl_page
-            WHERE crawl_id = ?1 AND (?2 IS NULL OR id = ?2)
-            AND candidate_id IS NULL AND status != 'success'
+            WHERE crawl_id = ?1 AND candidate_id IS NULL AND (work_state != 'done'
+            OR ((?2 IS NULL OR id = ?2) AND status != 'success'))
         ) AS "present!: bool""#,
         input.id,
         input.page
@@ -401,9 +402,7 @@ mod tests {
         assert_eq!(summary[0].model_ids.0, vec![default]);
     }
     #[sqlx::test(migrator = "db::MIGRATOR")]
-    async fn going_on_needs_the_models_of_pages_left_and_retrying_those_of_failed_pages_too(
-        db: SqlitePool,
-    ) {
+    async fn going_on_and_retrying_need_the_models_of_the_pages_they_read(db: SqlitePool) {
         let mut ids = Vec::new();
         for (address, agreed) in [("http://127.0.0.1:1", true), ("http://127.0.0.1:2", false)] {
             let id = sqlx::query_scalar::<_, i64>(
@@ -452,6 +451,12 @@ mod tests {
         .execute(&db)
         .await
         .unwrap();
+        let failed =
+            sqlx::query_scalar::<_, i64>("SELECT id FROM crawl_page WHERE candidate_id = ?")
+                .bind(candidate)
+                .fetch_one(&db)
+                .await
+                .unwrap();
         assert!(
             model::set_feature(&db, model::Feature::Crawl, Some(ids[1]))
                 .await
@@ -478,5 +483,20 @@ mod tests {
         .unwrap_err();
         assert!(matches!(error.code, ErrorCode::NeedsAgreement));
         resume_crawl(&ctx, CrawlId { id: crawl }).await.unwrap();
+        // Retrying one page goes on with the list page too, now on a model not agreed to.
+        sqlx::query("UPDATE model_config SET agreed = NOT agreed")
+            .execute(&db)
+            .await
+            .unwrap();
+        let error = retry_crawl(
+            &ctx,
+            CrawlRetry {
+                id: crawl,
+                page: Some(failed),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error.code, ErrorCode::NeedsAgreement));
     }
 }

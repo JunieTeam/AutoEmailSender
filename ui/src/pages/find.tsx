@@ -295,8 +295,30 @@ function CrawlRecord({ crawl: c, expanded }: { crawl: CrawlSummary; expanded: bo
       </div>
       {c.error && <FailureNote failure={c.error} className="mt-2 text-sm text-warning" />}
       {c.failed > 0 && <p className="mt-2 text-sm text-warning">{c.failed} 个页面未能打开，名单可能不完整</p>}
-      {expanded && <CrawlDetails id={c.id} modelId={c.modelConfigId} retryModelIds={c.retryModelIds} />}
+      {expanded && (
+        <CrawlDetails id={c.id} modelId={c.modelConfigId} modelIds={c.modelIds} retryModelIds={c.retryModelIds} />
+      )}
     </section>
+  );
+}
+/** "继续" of a paused crawl, which reads only the pages still to read; with none left, it calls no model. */
+export function ResumeCrawl({
+  crawl: c,
+  disabled,
+  onResume,
+}: {
+  crawl: CrawlSummary;
+  disabled: boolean;
+  onResume: () => void;
+}) {
+  return c.remaining > 0 ? (
+    <ModelAction feature="crawl" disabled={disabled} modelIds={c.modelIds} onWrite={onResume}>
+      继续
+    </ModelAction>
+  ) : (
+    <Button variant="quiet" disabled={disabled} onClick={onResume}>
+      继续
+    </Button>
   );
 }
 function CrawlControls({ crawl: c }: { crawl: CrawlSummary }) {
@@ -314,14 +336,7 @@ function CrawlControls({ crawl: c }: { crawl: CrawlSummary }) {
         </Button>
       )}
       {c.state === "paused" && (
-        <ModelAction
-          feature="crawl"
-          disabled={mutation.isPending}
-          modelIds={c.modelIds}
-          onWrite={() => mutation.mutate("resumeCrawl")}
-        >
-          继续
-        </ModelAction>
+        <ResumeCrawl crawl={c} disabled={mutation.isPending} onResume={() => mutation.mutate("resumeCrawl")} />
       )}
       {(c.state === "running" || c.state === "paused") && (
         <Confirm
@@ -339,7 +354,17 @@ function CrawlControls({ crawl: c }: { crawl: CrawlSummary }) {
     </>
   );
 }
-function CrawlDetails({ id, modelId, retryModelIds }: { id: number; modelId: number | null; retryModelIds: number[] }) {
+function CrawlDetails({
+  id,
+  modelId,
+  modelIds,
+  retryModelIds,
+}: {
+  id: number;
+  modelId: number | null;
+  modelIds: number[];
+  retryModelIds: number[];
+}) {
   const client = useQueryClient();
   const [page, setPage] = useState(1);
   const detail = useQuery({
@@ -416,9 +441,10 @@ function CrawlDetails({ id, modelId, retryModelIds }: { id: number; modelId: num
                     {p.state === "done" && p.error && <FailureDetails failure={p.error} />}
                   </div>
                   {p.state === "done" && p.status !== "success" && (
+                    // A retry sets the crawl going again, so the pages still to read are read too.
                     <ModelAction
                       feature="crawl"
-                      modelIds={[p.kind.startsWith("enrich_") ? null : modelId]}
+                      modelIds={[...modelIds, p.kind.startsWith("enrich_") ? null : modelId]}
                       disabled={retry.isPending}
                       onWrite={() => retry.mutate(p.id)}
                     >
