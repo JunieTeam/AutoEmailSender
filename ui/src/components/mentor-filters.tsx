@@ -124,7 +124,7 @@ export function MentorFilters({
   return (
     <div
       ref={scrollsSideways}
-      className="flex flex-wrap items-center gap-2 px-7 pb-3 phone:flex-nowrap phone:overflow-x-auto phone:px-4 phone:pb-2.5 phone:[scrollbar-width:none]"
+      className="flex flex-wrap items-center gap-2 px-7 pb-3 phone:flex-nowrap phone:overflow-x-auto phone:px-4 phone:pb-2.5 phone:scrollbar-none"
     >
       <PillSelect
         label="匹配度"

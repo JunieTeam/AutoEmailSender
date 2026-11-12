@@ -50,7 +50,7 @@ export function BatchBar({
             failure={e.failure}
           />
         ))}
-        <div ref={scrollsSideways} className="flex items-center gap-1 overflow-x-auto p-1.5 [scrollbar-width:none]">
+        <div ref={scrollsSideways} className="flex items-center gap-1 overflow-x-auto p-1.5 scrollbar-none">
           <Button variant="ghost" size="icon" aria-label="取消选择" onClick={onClear}>
             <X strokeWidth={1.6} />
           </Button>

@@ -38,7 +38,7 @@ export function Segments<T>({
         ref={scrollsSideways}
         aria-label={label}
         className={cn(
-          "relative z-0 inline-flex max-w-full gap-0.5 overflow-x-auto rounded-full bg-muted p-[3px] [scrollbar-width:none]",
+          "relative z-0 inline-flex max-w-full gap-0.5 overflow-x-auto rounded-full bg-muted p-[3px] scrollbar-none",
           className,
         )}
       >

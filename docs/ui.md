@@ -321,7 +321,7 @@
 
 ### 滚动条
 
-自己画，不隐藏：细（滑块宽 6px）、圆角、轨道透明，滑块用正文色的 18%，悬停时加深，跟着深浅模式变；两端离开容器的边 12px，不碰内容页、面板和弹窗的圆角。WebKit（macOS 的 WKWebView、iOS Safari）和 Chromium（Windows 的 WebView2）都用 `::-webkit-scrollbar` 画；它们在设了 `scrollbar-width` 或 `scrollbar-color` 的元素上不用这些样式，所以这两个标准属性只给不认 `::-webkit-scrollbar` 的浏览器（Firefox）。
+自己画，不隐藏：细（滑块宽 6px）、圆角、轨道透明，滑块用正文色的 18%，悬停时加深，跟着深浅模式变；两端离开容器的边 12px，不碰内容页、面板和弹窗的圆角。WebKit（macOS 的 WKWebView、iOS Safari）和 Chromium（Windows 的 WebView2）都用 `::-webkit-scrollbar` 画；它们在设了 `scrollbar-width` 或 `scrollbar-color` 的元素上不用这些样式，所以这两个标准属性只给不认 `::-webkit-scrollbar` 的浏览器（Firefox）。左右滑动、不显示滚动条的那几行用 `scrollbar-none`，两种写法都设上：Safari 18.2 以前的 WebKit 不认 `scrollbar-width`。
 
 ### 动效
 
