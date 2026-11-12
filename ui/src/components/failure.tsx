@@ -13,7 +13,9 @@ export function FailureDetails({ failure, className }: { failure: Failure; class
     <Collapsible className={cn("text-xs", className)}>
       <CollapsibleTrigger className="min-h-6">详细信息</CollapsibleTrigger>
       <CollapsibleContent className="pb-1">
-        <p className="text-left whitespace-pre-wrap text-muted-foreground wrap-anywhere">{failure.details}</p>
+        <p className="text-left whitespace-pre-wrap text-muted-foreground wrap-anywhere select-text">
+          {failure.details}
+        </p>
       </CollapsibleContent>
     </Collapsible>
   );

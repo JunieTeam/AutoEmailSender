@@ -8,7 +8,7 @@ import { AccountDialog, TermsNotice, useAccount } from "@/components/account";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { day, time } from "@/format";
-import { Row, SwitchButton } from "./settings";
+import { Row, SwitchButton, SwitchRow } from "./settings";
 
 const MAX_PHONES = 5;
 
@@ -70,35 +70,27 @@ function Phones() {
   const full = (phones.data?.length ?? 0) >= MAX_PHONES;
   return (
     <>
-      <div>
-        <label className="flex items-center justify-between gap-4">
-          <span>允许手机连接</span>
+      <SwitchRow
+        label="允许手机连接"
+        summary="用手机浏览器远程使用这台电脑上的应用"
+        help={<p>手机经官方中继连到这台电脑，内容端到端加密，中继看不到。这台电脑上的应用开着时才能用。</p>}
+        control={
           <SwitchButton
             label="允许手机连接"
             checked={enabled}
             disabled={access.data === undefined || save.isPending}
             onClick={() => save.mutate(!enabled)}
           />
-        </label>
-        <p className="mt-2 text-sm text-muted-foreground">
-          手机经官方中继连到这台电脑，内容端到端加密，中继看不到。这台电脑上的应用开着时才能用。
-        </p>
+        }
+      >
         {enabled && access.data && <StatusLine status={access.data.status} />}
         {access.error && (
-          <FailureNote
-            className="mt-2 text-sm text-destructive"
-            lead="设置未能加载："
-            failure={failureOf(access.error)}
-          />
+          <FailureNote className="text-sm text-destructive" lead="设置未能加载：" failure={failureOf(access.error)} />
         )}
         {save.error && (
-          <FailureNote
-            className="mt-2 text-sm text-destructive"
-            lead="设置未能保存："
-            failure={failureOf(save.error)}
-          />
+          <FailureNote className="text-sm text-destructive" lead="设置未能保存：" failure={failureOf(save.error)} />
         )}
-      </div>
+      </SwitchRow>
       {enabled && (
         <div className="flex flex-col gap-3">
           <div className="flex flex-col items-start gap-1.5">
@@ -164,11 +156,11 @@ function Phones() {
 }
 
 function StatusLine({ status }: { status: RelayStatus }) {
-  if (status.kind === "online") return <p className="mt-2 text-sm text-success">手机现在可以连接</p>;
+  if (status.kind === "online") return <p className="text-sm text-success">手机现在可以连接</p>;
   if (status.kind === "failed") {
-    return <p className="mt-2 text-sm text-warning">无法连接服务器：{status.reason}（会自动重试）</p>;
+    return <p className="text-sm text-warning">无法连接服务器：{status.reason}（会自动重试）</p>;
   }
-  return <p className="mt-2 text-sm text-muted-foreground">正在连接服务器…</p>;
+  return <p className="text-sm text-muted-foreground">正在连接服务器…</p>;
 }
 
 /** The code to scan, then the question about the phone that scanned it (docs/ui.md). */

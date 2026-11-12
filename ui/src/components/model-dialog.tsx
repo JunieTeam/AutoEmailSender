@@ -201,7 +201,7 @@ export function ModelDialog({
 
   const pending = save.isPending || test.isPending;
   const address = endpoint && (
-    <p className="mt-1.5 text-sm break-all text-muted-foreground">接口地址：{endpoint.baseUrl}</p>
+    <p className="mt-1.5 text-sm break-all text-muted-foreground select-text">接口地址：{endpoint.baseUrl}</p>
   );
   return (
     <Dialog open onOpenChange={formClose(dirty, save.isPending, onClose)}>

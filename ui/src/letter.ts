@@ -9,7 +9,7 @@ const FONTS: Record<LetterFont, string> = {
 
 /** How the app shows a letter's body, in the editor and in the correspondence. */
 export const LETTER_BODY =
-  "leading-relaxed [&_a]:text-brand-text [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-6 [&>*+*]:mt-3 [&_ul]:list-disc [&_ul]:pl-6";
+  "select-text leading-relaxed [&_a]:text-brand-text [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-6 [&>*+*]:mt-3 [&_ul]:list-disc [&_ul]:pl-6";
 
 /** A letter's body as the HTML sent, in the letter style. Styles are inline: mail apps drop style sheets. */
 export function letterHtml(markdown: string, style: LetterStyle): string {
@@ -20,8 +20,10 @@ export function letterHtml(markdown: string, style: LetterStyle): string {
     if (style.firstLineIndent && !p.closest("li")) p.style.textIndent = "2em";
   }
   for (const list of doc.querySelectorAll<HTMLElement>("ul, ol")) {
-    list.style.margin = list.parentElement?.closest("li") ? "0" : spacing;
-    list.style.paddingLeft = "2em";
+    const nested = list.parentElement?.closest("li");
+    list.style.margin = nested ? "0" : spacing;
+    // Indented paragraphs move a list in as far: its markers would otherwise stand out before them.
+    list.style.paddingLeft = !nested && style.firstLineIndent ? "4em" : "2em";
     // Written out, as the app's own styles turn list markers off where the letter is previewed.
     list.style.listStyleType = list.tagName === "OL" ? "decimal" : "disc";
   }

@@ -1,5 +1,4 @@
-import { crawlName, refreshCrawls, findSearch } from "@/pages/find";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useLocation, useNavigate, useRouterState } from "@tanstack/react-router";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -8,35 +7,32 @@ import {
   ListTodo,
   LoaderCircle,
   MessagesSquare,
+  PanelLeft,
   Search,
   Settings,
   Users,
   X,
+  type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "cn";
-import { FailureDetails, FailureNote } from "@/components/failure";
 import appIcon from "../../../docs/icon.svg";
-import { call, errorMessage, failureOf } from "@/api/call";
+import { call, errorMessage } from "@/api/call";
 import { startupFailure } from "@/api/app";
 import type { MatchFinished, DraftsFinished, CrawlFinished } from "@/api/types";
 import { refreshTasks } from "@/components/task-cache";
-import { scheduledAt } from "@/components/schedule";
-import { ModelAction } from "@/components/ai-writing";
 import { refreshMentors, refreshReplyOutcomes } from "@/components/mentor";
 import { refreshTodos } from "@/components/todos";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import { StartupFailure } from "@/components/startup-failure";
 import { showsFeedbackLog } from "@/components/feedback";
 import { AgentRequests } from "@/components/agent-requests";
-import { LibraryUpdatesDialog } from "@/components/library";
 import { TermsUpdate, useAccount } from "@/components/account";
 import { UpdateEntry } from "@/components/update";
-import { useResume } from "@/pages/mailboxes";
-import { desktop, dragsWindow } from "@/host";
-import { useReceive } from "@/pages/conversations";
+import { desktop, dragsWindow, titleBar } from "@/host";
+import { useBackground } from "@/pages/background";
+import { findSearch, refreshCrawls } from "@/pages/find";
 
 const NAV = [
   { to: "/mentors", label: "导师", icon: Users },
@@ -88,6 +84,13 @@ export function Shell() {
   const [completed, setCompleted] = useState<string | null>(null);
   const navigate = useNavigate();
   const pathname = useLocation({ select: (l) => l.pathname });
+  // docs/ui.md#布局: kept on this computer for the next start.
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar") === "collapsed");
+  const collapse = (to: boolean) => {
+    if (to) localStorage.setItem("sidebar", "collapsed");
+    else localStorage.removeItem("sidebar");
+    setCollapsed(to);
+  };
   // docs/ui.md#快捷键: ⌘K (Ctrl+K on Windows) searches mentors from anywhere.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -184,26 +187,44 @@ export function Shell() {
   if (failure.isPending) return null;
   if (failure.data) return <StartupFailure failure={failure.data} />;
   return (
-    <div className="flex h-dvh phone:flex-col phone:pt-(--title-bar)" {...dragsWindow()}>
+    <div className="relative flex h-dvh phone:flex-col phone:pt-(--title-bar)" {...dragsWindow()}>
+      <SidebarToggle collapsed={collapsed} onClick={() => collapse(!collapsed)} />
       <aside
-        className="flex w-[228px] shrink-0 flex-col px-3 pt-[calc(var(--title-bar)+16px)] pb-4 phone:hidden"
+        className={cn(
+          "flex shrink-0 flex-col overflow-hidden px-3 pb-4 transition-[width] phone:hidden",
+          // Below the macOS window's buttons; elsewhere below the toggle.
+          titleBar > 0 ? "pt-[calc(var(--title-bar)+16px)]" : "pt-16",
+          // docs/ui.md#动效: what goes away goes faster.
+          collapsed ? "w-[66px] duration-160 ease-in" : "w-[228px] duration-240 ease-out",
+        )}
         {...dragsWindow("deep")}
       >
-        <div className="flex items-center gap-2.5 px-2 pb-5 font-semibold">
-          <img src={appIcon} alt="" className="size-[30px]" />
-          Auto Email Sender
+        {/* At the width it ends at: as the sidebar widens, the names are uncovered, not squeezed. */}
+        <div className={cn("flex min-h-0 flex-1 flex-col", collapsed ? "w-[42px]" : "w-[204px]")}>
+          <div className="flex items-center gap-2.5 px-1.5 pb-5 font-semibold">
+            <img src={appIcon} alt="" className="size-[30px] shrink-0" />
+            <span className={collapsed ? "sr-only" : "whitespace-nowrap"}>Auto Email Sender</span>
+          </div>
+          <nav className="flex flex-col gap-0.5">
+            {NAV.map((item) => (
+              <NavLink
+                key={item.to}
+                {...item}
+                collapsed={collapsed}
+                onClick={returnTo(item.to)}
+                count={item.to === "/conversations" ? "unread" : undefined}
+              />
+            ))}
+          </nav>
+          <div className="grow" />
+          <div className="flex flex-col gap-0.5">
+            {desktop && <UpdateEntry collapsed={collapsed} />}
+            <BackgroundEntry collapsed={collapsed} />
+            <AccountRow collapsed={collapsed} />
+          </div>
         </div>
-        <nav className="flex flex-col gap-0.5">
-          {NAV.map((item) => (
-            <NavLink key={item.to} {...item} onClick={returnTo(item.to)} />
-          ))}
-        </nav>
-        <div className="grow" />
-        {desktop && <UpdateEntry />}
-        <Background />
-        <AccountRow />
       </aside>
-      <main className="relative my-3 mr-3 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-background phone:m-0 phone:min-h-0 phone:rounded-none">
+      <main className="relative mt-[max(var(--title-bar),16px)] mr-4 mb-4 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-background phone:m-0 phone:min-h-0 phone:rounded-none">
         <div key={page} className="flex min-h-0 flex-1 animate-enter flex-col">
           <Outlet />
         </div>
@@ -247,24 +268,74 @@ export function Shell() {
   );
 }
 
+/**
+ * docs/ui.md#布局: shows the sidebar as icons only, or in full. It stays where it is either way:
+ * right of the macOS window's buttons, at the top of the sidebar elsewhere.
+ */
+function SidebarToggle({ collapsed, onClick }: { collapsed: boolean; onClick: () => void }) {
+  const label = collapsed ? "展开侧边栏" : "收起侧边栏";
+  return (
+    <Tooltip content={label} side="bottom">
+      <button
+        type="button"
+        aria-label={label}
+        onClick={onClick}
+        className={cn(
+          "absolute z-10 grid place-items-center rounded-md text-muted-foreground hover:bg-press phone:hidden",
+          titleBar > 0 ? "top-[calc(var(--title-bar)/2_-_14px)] left-[76px] size-7" : "top-4 left-3 h-10 w-[42px]",
+        )}
+      >
+        <PanelLeft className="size-[18px]" strokeWidth={1.6} />
+      </button>
+    </Tooltip>
+  );
+}
+
+/** Where a count sits with the sidebar collapsed: on the icon's corner, as on the phone's tabs. */
+const ON_ICON = "absolute -top-1.5 left-2.5 min-w-4 px-1 text-[10px] leading-4";
+
+/** An entry of the sidebar; collapsed, only its icon, with its name in a hint. */
 function NavLink({
   to,
   label,
   icon: Icon,
+  spin,
+  count,
+  collapsed,
   onClick,
-}: Omit<(typeof NAV)[number] | typeof SETTINGS, "label"> & { label: string; onClick?: React.MouseEventHandler }) {
+}: {
+  to: (typeof NAV)[number]["to"] | typeof SETTINGS.to | "/background";
+  label: string;
+  icon: LucideIcon;
+  spin?: boolean;
+  /** What the entry counts: new replies, or what waits for the user. */
+  count?: "unread" | "waiting";
+  collapsed: boolean;
+  onClick?: React.MouseEventHandler;
+}) {
+  const badge =
+    count === "unread" ? (
+      <UnreadBadge className={collapsed ? ON_ICON : "ml-auto"} />
+    ) : (
+      count === "waiting" && <WaitingCount onIcon={collapsed} />
+    );
   return (
-    <Link
-      to={to}
-      onClick={onClick}
-      className="flex h-10 items-center gap-3 rounded-md px-3"
-      activeProps={{ className: "bg-background font-medium text-brand-text" }}
-      inactiveProps={{ className: "text-muted-foreground hover:bg-press" }}
-    >
-      <Icon className="size-[18px] shrink-0" strokeWidth={1.6} />
-      <span className="truncate">{label}</span>
-      {to === "/conversations" && <UnreadBadge className="ml-auto" />}
-    </Link>
+    <Tooltip content={collapsed ? label : undefined} side="right">
+      <Link
+        to={to}
+        onClick={onClick}
+        className="flex h-10 items-center gap-3 rounded-md px-3 whitespace-nowrap"
+        activeProps={{ className: "bg-background font-medium text-brand-text" }}
+        inactiveProps={{ className: "text-muted-foreground hover:bg-press" }}
+      >
+        <span className="relative shrink-0">
+          <Icon className={cn("size-[18px]", spin && "animate-spin")} strokeWidth={1.6} />
+          {collapsed && badge}
+        </span>
+        <span className={collapsed ? "sr-only" : "truncate"}>{label}</span>
+        {!collapsed && badge}
+      </Link>
+    </Tooltip>
   );
 }
 
@@ -286,154 +357,7 @@ function UnreadBadge({ className }: { className?: string }) {
   );
 }
 
-/** What runs in the background and what of it waits for the user (docs/ui.md#后台). */
-/** Today in the user's time zone, which the core cannot know. */
-function localToday() {
-  const now = new Date();
-  return {
-    start: new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(),
-    end: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime(),
-  };
-}
-
-function useBackground() {
-  const tasks = useQuery({
-    queryKey: ["taskWork"],
-    queryFn: () => call("taskWork", {}),
-    refetchInterval: 3000,
-  });
-  const matching = useQuery({
-    queryKey: ["matchingProgress"],
-    queryFn: () => call("matchingProgress", {}),
-    refetchInterval: 3000,
-  });
-  const crawls = useQuery({
-    queryKey: ["crawlWork"],
-    queryFn: () => call("crawlWork", localToday()),
-    refetchInterval: 3000,
-  });
-  const done = useQuery({
-    queryKey: ["todayWork"],
-    queryFn: () => call("todayWork", localToday()),
-    refetchInterval: 3000,
-  });
-  const scheduled = useQuery({
-    queryKey: ["scheduledWork"],
-    queryFn: () => call("scheduledWork", {}),
-    refetchInterval: 3000,
-  });
-  const replies = useQuery({
-    queryKey: ["replyProcessing"],
-    queryFn: () => call("replyProcessing", {}),
-    refetchInterval: 3000,
-  });
-  const mailboxes = useQuery({
-    queryKey: ["listMailboxes"],
-    queryFn: () => call("listMailboxes", {}),
-    refetchInterval: 3000,
-  });
-  const library = useQuery({
-    queryKey: ["libraryUpdateCount"],
-    queryFn: () => call("libraryUpdateCount", {}),
-    // Only a synchronization, at most hourly, adds to it; changes the user makes refresh it directly.
-    refetchInterval: 60_000,
-  });
-  const cloud = useQuery({
-    queryKey: ["getCloudBackup"],
-    queryFn: () => call("getCloudBackup", {}),
-    // Backups run at most hourly; the backup page refreshes it after its own.
-    refetchInterval: 60_000,
-  });
-  const libraryFailure = useQuery({
-    queryKey: ["libraryFailure"],
-    queryFn: () => call("libraryFailure", {}),
-    // Synchronization runs at most hourly.
-    refetchInterval: 60_000,
-  });
-  const storage = useQuery({
-    queryKey: ["storageFailure"],
-    queryFn: () => call("storageFailure", {}),
-    refetchInterval: 3000,
-  });
-  const today = new Date(crawls.dataUpdatedAt).toDateString();
-  const work = {
-    storage: storage.data ?? null,
-    // Failed and unsendable letters, whichever task they are in, wait together in the sending plan.
-    emails: scheduled.data?.pending ?? 0,
-    mailboxes: mailboxes.data?.flatMap(({ id, address, pause }) => (pause ? [{ id, address, pause }] : [])) ?? [],
-    // Only waiting for its time, or for the secret to be fixed here.
-    cloudPaused:
-      mailboxes.data?.flatMap(({ id, address, cloudPause, cloudEmails }) =>
-        cloudPause ? [{ id, address, pause: cloudPause, count: cloudEmails }] : [],
-      ) ?? [],
-    // A round that could not reach a mailbox still counts as received; the reason stays on the mailbox.
-    unreceived:
-      mailboxes.data?.flatMap(({ id, address, receiveError }) =>
-        receiveError ? [{ id, address, receiveError }] : [],
-      ) ?? [],
-    paused: tasks.data?.filter((t) => t.state === "paused") ?? [],
-    crawlsPending: crawls.data?.filter((c) => c.state === "paused" || c.state === "failed" || c.failed > 0) ?? [],
-    crawling: crawls.data?.filter((c) => c.state === "running") ?? [],
-    generating: tasks.data?.filter((t) => t.generating > 0 && t.state !== "paused") ?? [],
-    matching: matching.data?.remaining ?? 0,
-    matchingPause: matching.data?.pause ?? null,
-    receiving: (mailboxes.data?.length ?? 0) > 0,
-    repliesPaused: replies.data?.pause ?? null,
-    libraryUpdates: library.data ?? 0,
-    cloudFailure: lasting(cloud.data?.enabled ? cloud.data.failure : null, cloud.dataUpdatedAt),
-    libraryFailure: lasting(libraryFailure.data, libraryFailure.dataUpdatedAt),
-    marking: replies.data?.pause ? 0 : (replies.data?.remaining ?? 0),
-    crawled:
-      crawls.data?.filter((c) => c.state === "done" && new Date(c.finishedAt ?? 0).toDateString() === today) ?? [],
-    drafted: done.data?.drafts ?? [],
-    matched: done.data?.matched ?? 0,
-    sent: done.data?.sent ?? 0,
-    next: scheduled.data?.nextAt ?? null,
-    nextToday: scheduled.data?.today ?? 0,
-    error:
-      storage.error ??
-      tasks.error ??
-      matching.error ??
-      scheduled.error ??
-      crawls.error ??
-      mailboxes.error ??
-      replies.error ??
-      library.error ??
-      libraryFailure.error ??
-      cloud.error ??
-      done.error,
-  };
-  return {
-    ...work,
-    finished: work.crawled.length + work.drafted.length + (work.matched > 0 ? 1 : 0) + (work.sent > 0 ? 1 : 0),
-    running:
-      work.crawling.length +
-      work.generating.length +
-      (work.matching > 0 && !work.matchingPause ? 1 : 0) +
-      (work.marking > 0 ? 1 : 0),
-    waiting:
-      (work.storage ? 1 : 0) +
-      (work.emails > 0 ? 1 : 0) +
-      work.mailboxes.length +
-      work.cloudPaused.length +
-      work.unreceived.length +
-      work.paused.length +
-      work.crawlsPending.length +
-      (work.matching > 0 && work.matchingPause ? 1 : 0) +
-      (work.repliesPaused ? 1 : 0) +
-      (work.libraryUpdates > 0 ? 1 : 0) +
-      (work.cloudFailure ? 1 : 0) +
-      (work.libraryFailure ? 1 : 0),
-  };
-}
-
-/** Work retried hourly in the background; only a failure lasting days needs the user. */
-function lasting(failure: { since: number; message: string } | null | undefined, now: number) {
-  const days = failure ? Math.floor((now - failure.since) / 86_400_000) : 0;
-  return failure && days >= 3 ? { days, message: failure.message } : null;
-}
-
-/** On a phone the background panel is under "更多", and the tab lights up when something waits. */
+/** On a phone the background page is under "更多", and the tab lights up when something waits. */
 function WaitingDot() {
   const { waiting } = useBackground();
   return (
@@ -447,343 +371,53 @@ function WaitingDot() {
   );
 }
 
-function Background({ className }: { className?: string }) {
-  const queryClient = useQueryClient();
-  const work = useBackground();
-  const crawl = useMutation({
-    mutationFn: ({ op, id }: { op: "pauseCrawl" | "resumeCrawl"; id: number }) => call(op, { id }),
-    onSuccess: () => refreshCrawls(queryClient),
-  });
-  const matching = useMutation({
-    mutationFn: (op: "pauseMatching" | "resumeMatching") => call(op, {}),
-    onSettled: () => refreshMentors(queryClient),
-  });
-  const pauseTask = useMutation({
-    mutationFn: (id: number) => call("pauseTask", { id }),
-    onSuccess: () => refreshTasks(queryClient),
-  });
-  const resumeReplies = useMutation({
-    mutationFn: () => call("resumeReplyProcessing", {}),
-    onSuccess: () => refreshReplyOutcomes(queryClient),
-  });
-  const resume = useResume();
-  const { receive, receiving, receiveError, received } = useReceive();
-  const [open, setOpen] = useState(false);
-  const [libraryUpdates, setLibraryUpdates] = useState(false);
-  const error =
-    work.error ??
-    crawl.error ??
-    matching.error ??
-    pauseTask.error ??
-    resume.error ??
-    resumeReplies.error ??
-    receiveError;
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <button
-            className={cn(
-              "mb-0.5 flex h-10 items-center gap-3 rounded-md px-3 text-muted-foreground hover:bg-press",
-              className,
-            )}
-          />
-        }
-      >
-        {work.running > 0 ? (
-          <LoaderCircle className="size-[18px] animate-spin" strokeWidth={1.6} />
-        ) : (
-          <Activity className="size-[18px]" strokeWidth={1.6} />
-        )}
-        后台
-        {work.waiting > 0 && (
-          <Tooltip content={`${work.waiting} 项待处理`}>
-            <span className="ml-auto min-w-5 rounded-full bg-warning-soft px-1.5 text-center text-xs leading-5 text-warning">
-              {work.waiting}
-            </span>
-          </Tooltip>
-        )}
-      </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="max-h-96 w-80 space-y-4 overflow-y-auto p-4 text-sm">
-        {work.waiting > 0 && (
-          <Group title="待处理" className="text-warning">
-            {work.storage && (
-              <Link to="/settings/about" className={ITEM}>
-                <Entry title="数据暂时无法保存" detail={work.storage} />
-              </Link>
-            )}
-            {work.emails > 0 && (
-              <Link to="/tasks" search={{ tab: "plan" }} className={ITEM}>
-                <Entry title={`${work.emails} 封邮件待处理`} detail="去发送计划里处理" />
-              </Link>
-            )}
-            {work.mailboxes.map((m) => (
-              <div key={m.id}>
-                <div className="flex items-center gap-2">
-                  <Link to="/settings/mailboxes" className={ITEM}>
-                    <Entry
-                      title={m.address}
-                      detail={`发信暂停到 ${scheduledAt(m.pause.until)}：${m.pause.reason.message}`}
-                    />
-                  </Link>
-                  <Button variant="quiet" size="sm" disabled={resume.isPending} onClick={() => resume.mutate(m.id)}>
-                    恢复
-                  </Button>
-                </div>
-                <FailureDetails failure={m.pause.reason} />
-              </div>
-            ))}
-            {work.cloudPaused.map((m) => (
-              <div key={m.id}>
-                <Link to="/settings/mailboxes" className={ITEM}>
-                  <Entry
-                    title={m.address}
-                    detail={`云端发信暂停到 ${scheduledAt(m.pause.until)}，${m.count} 封在等：${m.pause.reason.message}`}
-                  />
-                </Link>
-                <FailureDetails failure={m.pause.reason} />
-              </div>
-            ))}
-            {work.unreceived.map((m) => (
-              <div key={m.id}>
-                <Link to="/settings/mailboxes" className={ITEM}>
-                  <Entry title={m.address} detail={`收信失败：${m.receiveError.message}`} />
-                </Link>
-                <FailureDetails failure={m.receiveError} />
-              </div>
-            ))}
-            {work.paused.map((t) => (
-              <div key={t.id}>
-                <Link to="/tasks/$id" params={{ id: t.id }} className={ITEM}>
-                  <Entry title={t.name} detail={t.pauseReason?.message ?? "已暂停"} />
-                </Link>
-                {t.pauseReason && <FailureDetails failure={t.pauseReason} />}
-              </div>
-            ))}
-            {work.crawlsPending.map((c) => (
-              <div key={c.id}>
-                <div className="flex items-center gap-2">
-                  <Link to="/find" search={findSearch({ tab: "crawl", detail: c.id })} className={ITEM}>
-                    <Entry
-                      title={crawlName(c)}
-                      detail={c.error?.message ?? (c.state === "paused" ? "已暂停" : `${c.failed} 个页面未能打开`)}
-                    />
-                  </Link>
-                  {c.state === "paused" && (
-                    <ModelAction
-                      disabled={crawl.isPending}
-                      modelIds={c.modelIds}
-                      onWrite={() => crawl.mutate({ op: "resumeCrawl", id: c.id })}
-                    >
-                      继续
-                    </ModelAction>
-                  )}
-                </div>
-                {c.error && <FailureDetails failure={c.error} />}
-              </div>
-            ))}
-            {work.matching > 0 && work.matchingPause && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <Link to="/mentors" className={ITEM}>
-                    <Entry
-                      title="匹配度分析已暂停"
-                      detail={work.matchingPause.reason?.message ?? `还剩 ${work.matching} 位`}
-                    />
-                  </Link>
-                  <ModelAction disabled={matching.isPending} onWrite={() => matching.mutate("resumeMatching")}>
-                    继续
-                  </ModelAction>
-                </div>
-                {work.matchingPause.reason && <FailureDetails failure={work.matchingPause.reason} />}
-              </div>
-            )}
-            {work.repliesPaused && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <Link to="/conversations" className={ITEM}>
-                    <Entry title="回信处理已暂停" detail={work.repliesPaused.reason.message} />
-                  </Link>
-                  <ModelAction disabled={resumeReplies.isPending} onWrite={() => resumeReplies.mutate()}>
-                    继续
-                  </ModelAction>
-                </div>
-                <FailureDetails failure={work.repliesPaused.reason} />
-              </div>
-            )}
-            {work.libraryUpdates > 0 && (
-              <button
-                className={cn(ITEM, "w-full text-left")}
-                onClick={() => {
-                  setOpen(false);
-                  setLibraryUpdates(true);
-                }}
-              >
-                <Entry title={`导师库有 ${work.libraryUpdates} 位导师的资料有更新`} detail="打开去选" />
-              </button>
-            )}
-            {work.cloudFailure && (
-              <Link to="/settings/backup" className={ITEM}>
-                <Entry title={`云端备份已连续 ${work.cloudFailure.days} 天未成功`} detail={work.cloudFailure.message} />
-              </Link>
-            )}
-            {work.libraryFailure && (
-              <Link to="/find" search={findSearch({ tab: "library" })} className={ITEM}>
-                <Entry
-                  title={`导师库已连续 ${work.libraryFailure.days} 天未能同步`}
-                  detail={work.libraryFailure.message}
-                />
-              </Link>
-            )}
-          </Group>
-        )}
-        {work.running > 0 && (
-          <Group title="进行中">
-            {work.crawling.map((c) => (
-              <div key={c.id} className="flex items-center gap-2">
-                <Link to="/find" search={findSearch({ tab: "crawl", detail: c.id })} className={ITEM}>
-                  {c.stage === "enrich" ? (
-                    <Entry title="信息补全" detail={`还剩 ${c.enrichRemaining} 位`} />
-                  ) : (
-                    <Entry
-                      title={crawlName(c)}
-                      detail={`已读 ${c.pages} 页，找到 ${c.candidates} 位候选${c.enrichRemaining > 0 ? `，补全还剩 ${c.enrichRemaining} 位` : ""}`}
-                    />
-                  )}
-                </Link>
-                <Button
-                  variant="quiet"
-                  size="sm"
-                  disabled={crawl.isPending}
-                  onClick={() => crawl.mutate({ op: "pauseCrawl", id: c.id })}
-                >
-                  暂停
-                </Button>
-              </div>
-            ))}
-            {work.generating.map((t) => (
-              <div key={t.id} className="flex items-center gap-2">
-                <Link to="/tasks/$id" params={{ id: t.id }} className={ITEM}>
-                  <Entry title={t.name} detail={`生成草稿，还剩 ${t.generating} 封`} />
-                </Link>
-                <Button variant="quiet" size="sm" disabled={pauseTask.isPending} onClick={() => pauseTask.mutate(t.id)}>
-                  暂停
-                </Button>
-              </div>
-            ))}
-            {work.matching > 0 && !work.matchingPause && (
-              <div className="flex items-center gap-2">
-                <Link to="/mentors" className={ITEM}>
-                  <Entry title="匹配度分析" detail={`还剩 ${work.matching} 位`} />
-                </Link>
-                <Button
-                  variant="quiet"
-                  size="sm"
-                  disabled={matching.isPending}
-                  onClick={() => matching.mutate("pauseMatching")}
-                >
-                  暂停
-                </Button>
-              </div>
-            )}
-            {work.marking > 0 && (
-              <Link to="/conversations" className={ITEM}>
-                <Entry title="处理回信" detail={`还剩 ${work.marking} 项`} />
-              </Link>
-            )}
-          </Group>
-        )}
-        {(work.next !== null || work.receiving) && (
-          <Group title="按计划进行">
-            {work.next !== null && (
-              <Link to="/tasks" search={{ tab: "plan", column: "upcoming" }} className={ITEM}>
-                <Entry title={`下一封 ${scheduledAt(work.next)}`} detail={`今天还剩 ${work.nextToday} 封`} />
-              </Link>
-            )}
-            {work.receiving && (
-              <div className="flex items-center gap-2">
-                <Link to="/conversations" className={ITEM}>
-                  <Entry title="收信" detail={received ?? "尚未收信"} />
-                </Link>
-                <Button variant="quiet" size="sm" disabled={receiving} onClick={receive}>
-                  立即收信
-                </Button>
-              </div>
-            )}
-          </Group>
-        )}
-        {work.finished > 0 && (
-          <Group title="今天完成">
-            {work.crawled.map((c) => (
-              <Link key={c.id} to="/find" search={findSearch({ crawl: c.id })} className={ITEM}>
-                <Entry
-                  title={crawlName(c)}
-                  detail={
-                    c.kind === "mentors" ? `补全 ${c.candidates} 位，去审核` : `找到 ${c.candidates} 位候选，去审核`
-                  }
-                />
-              </Link>
-            ))}
-            {work.drafted.map((t) => (
-              <Link key={t.id} to="/tasks/$id" params={{ id: t.id }} className={ITEM}>
-                <Entry title={t.name} detail={`生成 ${t.generated} 封草稿，去任务`} />
-              </Link>
-            ))}
-            {work.matched > 0 && (
-              <Link to="/mentors" className={ITEM}>
-                <Entry title="匹配度分析" detail={`分析了 ${work.matched} 位，去导师列表`} />
-              </Link>
-            )}
-            {work.sent > 0 && (
-              <Link to="/tasks" search={{ tab: "plan", column: "history" }} className={ITEM}>
-                <Entry title="发信" detail={`发出 ${work.sent} 封，去发送历史`} />
-              </Link>
-            )}
-          </Group>
-        )}
-        {work.waiting === 0 && work.running === 0 && work.next === null && !work.receiving && work.finished === 0 && (
-          <p className="text-muted-foreground">当前无后台工作</p>
-        )}
-        {error && <FailureNote className="text-destructive" failure={failureOf(error)} />}
-      </PopoverContent>
-      {libraryUpdates && <LibraryUpdatesDialog onClose={() => setLibraryUpdates(false)} />}
-    </Popover>
-  );
-}
-
-function Group({ title, className, children }: { title: string; className?: string; children: ReactNode }) {
-  return (
-    <section>
-      <h2 className={cn("mb-1 text-xs font-medium text-muted-foreground", className)}>{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-const ITEM = "-mx-2 block min-w-0 grow rounded-md px-2 py-1.5 hover:bg-press";
-
-function Entry({ title, detail }: { title: string; detail: string }) {
-  return (
-    <>
-      <span className="block truncate">{title}</span>
-      <span className="block text-xs text-muted-foreground">{detail}</span>
-    </>
-  );
-}
-
 /** The account row's label: the account's email once there is one. */
 function useSettingsLabel() {
   const account = useAccount().data;
   return account && account.kind !== "loggedOut" ? account.email : SETTINGS.label;
 }
 
-function AccountRow() {
+function AccountRow({ collapsed }: { collapsed: boolean }) {
   const label = useSettingsLabel();
-  return <NavLink {...SETTINGS} label={label} />;
+  return <NavLink {...SETTINGS} label={label} collapsed={collapsed} />;
+}
+
+/** docs/ui.md#后台: turning while work runs, with how many things wait for the user. */
+function BackgroundEntry({ collapsed }: { collapsed: boolean }) {
+  const work = useBackground();
+  return (
+    <NavLink
+      to="/background"
+      label="后台"
+      icon={work.running > 0 ? LoaderCircle : Activity}
+      spin={work.running > 0}
+      collapsed={collapsed}
+      count="waiting"
+    />
+  );
+}
+
+/** How many things wait for the user, in the background's yellow (docs/ui.md#交互). */
+function WaitingCount({ onIcon }: { onIcon: boolean }) {
+  const count = useBackground().waiting;
+  if (count === 0) return null;
+  const badge = (
+    <span
+      className={cn(
+        "min-w-5 rounded-full bg-warning-soft px-1.5 text-center text-xs leading-5 text-warning",
+        onIcon ? ON_ICON : "ml-auto",
+      )}
+    >
+      {count}
+    </span>
+  );
+  // On the icon, the entry's own hint shows instead.
+  return onIcon ? badge : <Tooltip content={`${count} 项待处理`}>{badge}</Tooltip>;
 }
 
 export function MorePage() {
   const settings = useSettingsLabel();
+  const work = useBackground();
   return (
     <div className="p-5">
       <h1 className="mb-5 text-2xl font-semibold">更多</h1>
@@ -799,7 +433,11 @@ export function MorePage() {
         <Settings className="size-5 shrink-0" />
         <span className="truncate">{settings}</span>
       </Link>
-      <Background className="h-12 w-full rounded-md bg-muted px-4 text-foreground [&>svg]:size-5" />
+      <Link to="/background" className="flex h-12 items-center gap-3 rounded-md bg-muted px-4">
+        {work.running > 0 ? <LoaderCircle className="size-5 animate-spin" /> : <Activity className="size-5" />}
+        后台
+        <WaitingCount onIcon={false} />
+      </Link>
     </div>
   );
 }

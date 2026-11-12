@@ -8,10 +8,10 @@ export const desktop = import.meta.env.MODE !== "phone";
 
 /**
  * docs/ui.md#布局: the height in px of the band at the top of the macOS app's window, where the
- * window's buttons sit over the page, which keeps clear of them and moves the window when dragged;
- * 0 elsewhere.
+ * window's buttons sit, centred 16px down; the page keeps clear of it, and dragging it moves the
+ * window. 0 elsewhere.
  */
-export const titleBar = isTauri() && navigator.userAgent.includes("Mac") ? 28 : 0;
+export const titleBar = isTauri() && navigator.userAgent.includes("Mac") ? 32 : 0;
 
 /**
  * Lets the macOS window be moved by dragging the element, and zoomed by double-clicking it: only

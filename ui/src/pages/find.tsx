@@ -364,7 +364,7 @@ function CrawlDetails({ id, modelId, modelIds }: { id: number; modelId: number |
       <ErrorText error={detail.error ?? retry.error} />
       {detail.data && (
         <>
-          <div className="space-y-1 break-all">
+          <div className="space-y-1 break-all select-text">
             {detail.data.urls.map((url) => (
               <p key={url}>{url}</p>
             ))}
@@ -388,7 +388,7 @@ function CrawlDetails({ id, modelId, modelIds }: { id: number; modelId: number |
               {detail.data.pages.map((p) => (
                 <div key={p.id} className="flex items-start gap-2 rounded-md bg-muted p-3">
                   <div className="min-w-0 grow">
-                    <p className="break-all">{p.url}</p>
+                    <p className="break-all select-text">{p.url}</p>
                     <p
                       className={
                         p.status !== "success" && p.state === "done"

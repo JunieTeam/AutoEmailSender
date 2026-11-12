@@ -21,6 +21,7 @@ import { ModelAction } from "@/components/ai-writing";
 import { refreshReplyOutcomes } from "@/components/mentor";
 import { UpdateDialog, useUpdate } from "@/components/update";
 import { Button } from "@/components/ui/button";
+import { Help } from "@/components/ui/help";
 import { Segments } from "@/components/ui/segments";
 import { desktop } from "@/host";
 import { COMPACT } from "@/layout";
@@ -138,10 +139,46 @@ export function Section({ title, children }: { title: string; children: ReactNod
   );
 }
 
-export function Row({ label, children }: { label: string; children: ReactNode }) {
+/** A part of a section under its name, with details behind a "?" (docs/ui.md#控件 说明). */
+export function Row({ label, help, children }: { label: string; help?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <h2 className="font-medium">{label}</h2>
+      <h2 className="flex items-center gap-1 font-medium">
+        {label}
+        {help && <Help label={label}>{help}</Help>}
+      </h2>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * A setting turned on and off by its switch alone (docs/ui.md#控件): its name, with details behind a
+ * "?", and a line on what it does; failures and what the setting shows go underneath.
+ */
+export function SwitchRow({
+  label,
+  help,
+  summary,
+  control,
+  children,
+}: {
+  label: string;
+  help?: ReactNode;
+  summary?: ReactNode;
+  control: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-1">
+          {label}
+          {help && <Help label={label}>{help}</Help>}
+        </div>
+        {control}
+      </div>
+      {summary && <p className="text-sm text-muted-foreground">{summary}</p>}
       {children}
     </div>
   );
@@ -176,7 +213,7 @@ export function AboutSection() {
   return (
     <Section title="关于和日志">
       <Row label="版本">
-        <p className="text-sm text-muted-foreground">{version.data ?? " "}</p>
+        <p className="text-sm text-muted-foreground select-text">{version.data ?? " "}</p>
         {desktop && <CheckUpdate />}
       </Row>
       {desktop && <ComputerSide />}
@@ -201,7 +238,7 @@ function ComputerSide() {
     <>
       {feedback && <FeedbackDialog onClose={() => setFeedback(false)} />}
       <Row label="数据位置">
-        <p className="text-sm break-all text-muted-foreground">{location.data ?? " "}</p>
+        <p className="text-sm break-all text-muted-foreground select-text">{location.data ?? " "}</p>
         <div className="flex items-center gap-3">
           <Button variant="quiet" disabled={open.isPending} onClick={() => open.mutate()}>
             打开
@@ -260,19 +297,19 @@ export function NotificationsSection() {
         get="getReplyNotifications"
         set="setReplyNotifications"
         label="新回信时发系统通知"
-        description="应用不在前台时，导师回信会弹出系统通知"
+        summary="应用不在前台时，导师回信会弹出系统通知"
       />
       <Toggle
         get="getBackgroundNotifications"
         set="setBackgroundNotifications"
         label="后台工作做完时通知"
-        description="应用不在前台时，匹配分析等后台工作完成后弹出系统通知；在前台时在内容页提醒"
+        summary="应用不在前台时，匹配分析等后台工作完成后弹出系统通知；在前台时在内容页提醒"
       />
       <Toggle
         get="getTodoReminders"
         set="setTodoReminders"
         label="待办提醒"
-        description="有截止日期的待办，在截止前一天上午 9:00 弹出系统通知"
+        summary="有截止日期的待办，在截止前一天上午 9:00 弹出系统通知"
       />
     </Section>
   );
@@ -344,7 +381,13 @@ export function ChecksSection() {
         get="getAiFactCheck"
         set="setAiFactCheck"
         label="AI 核对"
-        description="用过 AI 起草或改写的信，AI 会找出其中你的经历、成果和数字在个人资料和写信参考材料里找不到依据的地方。这会把信、个人资料里的姓名和意向研究方向、写信参考材料发给模型服务商，每封多调用一次模型。"
+        summary="用过 AI 起草或改写的信，由 AI 找出其中没有依据的经历、成果和数字"
+        help={
+          <>
+            <p>依据是个人资料和写信参考材料，找到的问题列在正文下方。</p>
+            <p>核对时会把信、个人资料里的姓名和意向研究方向、写信参考材料发给模型服务商，每封多调用一次模型。</p>
+          </>
+        }
       />
     </Section>
   );
@@ -354,12 +397,14 @@ function Toggle({
   get,
   set,
   label,
-  description,
+  summary,
+  help,
 }: {
   get: "getReplyNotifications" | "getBackgroundNotifications" | "getTodoReminders" | "getAiFactCheck";
   set: "setReplyNotifications" | "setBackgroundNotifications" | "setTodoReminders" | "setAiFactCheck";
   label: string;
-  description: string;
+  summary: string;
+  help?: ReactNode;
 }) {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: [get], queryFn: () => call(get, {}) });
@@ -371,24 +416,26 @@ function Toggle({
     },
   });
   return (
-    <div>
-      <label className="flex items-center justify-between gap-4">
-        <span>{label}</span>
+    <SwitchRow
+      label={label}
+      help={help}
+      summary={summary}
+      control={
         <SwitchButton
           label={label}
           checked={query.data ?? false}
           disabled={query.data === undefined || save.isPending}
           onClick={() => save.mutate(!query.data)}
         />
-      </label>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+      }
+    >
       {query.error && (
-        <FailureNote className="mt-2 text-sm text-destructive" lead="设置未能加载：" failure={failureOf(query.error)} />
+        <FailureNote className="text-sm text-destructive" lead="设置未能加载：" failure={failureOf(query.error)} />
       )}
       {save.error && (
-        <FailureNote className="mt-2 text-sm text-destructive" lead="设置未能保存：" failure={failureOf(save.error)} />
+        <FailureNote className="text-sm text-destructive" lead="设置未能保存：" failure={failureOf(save.error)} />
       )}
-    </div>
+    </SwitchRow>
   );
 }
 
@@ -426,13 +473,25 @@ export function ReplyProcessingSection() {
         get="getAiReplyOutcome"
         set="setAiReplyOutcome"
         label="AI 标记回信结果"
-        description="开启后，导师的回信（包括已经收到的）会发给默认模型的服务商，标出有意向、无名额、拒绝或无法判断。不开启也可以在往来里手动标记。"
+        summary="AI 把导师的回信标为有意向、无名额、拒绝或无法判断"
+        help={
+          <>
+            <p>开启后，导师的回信（包括已经收到的）会发给默认模型的服务商。</p>
+            <p>不开启也可以在往来里手动标记。</p>
+          </>
+        }
       />
       <AiSwitch
         get="getAiReplyTodos"
         set="setAiReplyTodos"
         label="回信待办"
-        description="开启后，导师的回信会发给默认模型的服务商，找出导师要你做的事和截止时间，列进待办；已收到的只提取最近 14 天的。不开启也可以在往来里手动添加待办。"
+        summary="AI 从导师的回信里找出要你做的事和截止时间，列进待办"
+        help={
+          <>
+            <p>开启后，导师的回信会发给默认模型的服务商；已经收到的只提取最近 14 天的。</p>
+            <p>不开启也可以在往来里手动添加待办。</p>
+          </>
+        }
       />
     </Section>
   );
@@ -442,12 +501,14 @@ function AiSwitch({
   get,
   set,
   label,
-  description,
+  summary,
+  help,
 }: {
   get: "getAiReplyOutcome" | "getAiReplyTodos";
   set: "setAiReplyOutcome" | "setAiReplyTodos";
   label: string;
-  description: string;
+  summary: string;
+  help: ReactNode;
 }) {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: [get], queryFn: () => call(get, {}) });
@@ -461,10 +522,12 @@ function AiSwitch({
   });
   const busy = query.data === undefined || save.isPending;
   return (
-    <div>
-      <div className="flex items-center justify-between gap-4">
-        <span>{label}</span>
-        {query.data ? (
+    <SwitchRow
+      label={label}
+      help={help}
+      summary={summary}
+      control={
+        query.data ? (
           <SwitchButton label={label} checked disabled={busy} onClick={() => save.mutate(false)} />
         ) : (
           <ModelAction
@@ -472,16 +535,16 @@ function AiSwitch({
             onWrite={() => save.mutate(true)}
             renderTrigger={(props) => <SwitchButton label={label} checked={false} {...props} />}
           />
-        )}
-      </div>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+        )
+      }
+    >
       {query.error && (
-        <FailureNote className="mt-2 text-sm text-destructive" lead="设置未能加载：" failure={failureOf(query.error)} />
+        <FailureNote className="text-sm text-destructive" lead="设置未能加载：" failure={failureOf(query.error)} />
       )}
       {save.error && (
-        <FailureNote className="mt-2 text-sm text-destructive" lead="设置未能保存：" failure={failureOf(save.error)} />
+        <FailureNote className="text-sm text-destructive" lead="设置未能保存：" failure={failureOf(save.error)} />
       )}
-    </div>
+    </SwitchRow>
   );
 }
 
@@ -495,26 +558,27 @@ export function BackgroundSection() {
   });
   return (
     <Section title="后台运行">
-      <div>
-        <label className="flex items-center justify-between gap-4">
-          <span>开机时自动启动</span>
+      <SwitchRow
+        label="开机时自动启动"
+        summary="开机后在后台运行，不打开窗口，定时发送和收信不受影响"
+        control={
           <SwitchButton
             label="开机时自动启动"
             checked={query.data ?? false}
             disabled={query.data === undefined || save.isPending}
             onClick={() => save.mutate(!query.data)}
           />
-        </label>
-        <p className="mt-2 text-sm text-muted-foreground">开机后在后台运行，不打开窗口，定时发送和收信不受影响</p>
+        }
+      >
         {query.error && (
           <FailureNote
-            className="mt-2 text-sm text-destructive"
+            className="text-sm text-destructive"
             lead="开机启动的设置未能读取："
             failure={failureOf(query.error)}
           />
         )}
-        {save.error && <FailureNote className="mt-2 text-sm text-destructive" failure={failureOf(save.error)} />}
-      </div>
+        {save.error && <FailureNote className="text-sm text-destructive" failure={failureOf(save.error)} />}
+      </SwitchRow>
       <p className="text-sm text-muted-foreground">
         关闭窗口后，应用也留在后台继续工作，可以从托盘或菜单栏里的图标打开或退出
       </p>

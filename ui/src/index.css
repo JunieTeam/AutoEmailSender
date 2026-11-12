@@ -4,7 +4,7 @@
 @custom-variant narrow (@media (width <= 1240px));
 @custom-variant phone (@media (width <= 760px));
 /*
- * The content page is as narrow as on a phone: the sidebar and its margin take 240px. Pages split in
+ * The content page is as narrow as on a phone: the expanded sidebar and its margin take 244px. Pages split in
  * panes show one at a time (src/layout.ts holds the same query).
  */
 @custom-variant compact (@media (width <= 1000px));
@@ -47,7 +47,8 @@
   --avatar-3: #e2e8f2;
   --avatar-4: #e3eedf;
   --avatar-5: #ece3f1;
-  --scroll: color-mix(in srgb, var(--foreground) 20%, transparent);
+  --scroll: color-mix(in srgb, var(--foreground) 18%, transparent);
+  --scroll-hover: color-mix(in srgb, var(--foreground) 34%, transparent);
   --pop-shadow: rgb(41 37 36 / 0.16);
 }
 
@@ -169,6 +170,21 @@
     font-variant-numeric: tabular-nums;
     background: var(--sidebar);
     color: var(--foreground);
+    /* docs/ui.md#控件: the interface's own words are not selected by a drag or ⌘A, and show the arrow. */
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /*
+   * What is typed, and what may be copied, can be selected; elsewhere the content marks itself with
+   * select-text. WebKit inherits user-select, so fields and editors say so themselves.
+   */
+  :where(input, textarea, [contenteditable]:not([contenteditable="false"]), pre, code, dd) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  :where(button, [role="button"]) {
+    -webkit-user-select: none;
+    user-select: none;
   }
   /* docs/ui.md#颜色: keyboard focus in the brand colour instead of the system blue. */
   :focus-visible {
@@ -190,7 +206,7 @@
     [role="checkbox"],
     [role="radio"],
     [role="switch"],
-    label:has([role="checkbox"], [role="radio"], [role="switch"])
+    label:has([role="checkbox"], [role="radio"])
   ) {
     cursor: pointer;
   }
@@ -203,22 +219,40 @@
     animation-duration: 240ms;
     animation-timing-function: var(--ease-out);
   }
-  /* docs/ui.md#滚动条 */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--scroll) transparent;
-  }
+  /*
+   * docs/ui.md#滚动条. WebKit and Chromium (WebView2) draw these; both ignore them on an element
+   * where scrollbar-width or scrollbar-color is set, so those are left to Firefox.
+   */
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  /* Clear of the rounded corners of what scrolls: the page, panels and dialogs. */
+  ::-webkit-scrollbar-track:vertical {
+    margin: 12px 0;
+  }
+  ::-webkit-scrollbar-track:horizontal {
+    margin: 0 12px;
   }
   ::-webkit-scrollbar-thumb {
+    min-height: 32px;
+    min-width: 32px;
     border: 3px solid transparent;
     border-radius: 999px;
     background: var(--scroll) padding-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    background-color: var(--scroll-hover);
+  }
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scroll) transparent;
+    }
   }
   /*
    * docs/ui.md#动效: nothing moves, scales or spins; colours and the fades of menus and dialogs still

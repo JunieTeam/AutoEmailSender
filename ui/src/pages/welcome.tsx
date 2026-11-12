@@ -405,7 +405,7 @@ function TestLetterPreview({ mailbox, materials }: { mailbox: Mailbox; materials
   return (
     <div className="flex flex-col gap-3">
       {/* On white whatever the app's theme, as mail apps show letters. */}
-      <article className="rounded-lg border border-border bg-white px-6 py-5 text-black">
+      <article className="rounded-lg border border-border bg-white px-6 py-5 text-black select-text">
         <h3 className="mb-3 font-semibold break-words">{l.subject || "（无主题）"}</h3>
         <div onClick={openLinks} dangerouslySetInnerHTML={{ __html: letterHtml(l.bodyMd, style.data) }} />
       </article>

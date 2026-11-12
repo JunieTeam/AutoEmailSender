@@ -6,6 +6,7 @@ import { failureOf } from "@/api/call";
 import type { UpdateStatus } from "@/api/types";
 import { FailureNote } from "@/components/failure";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { day, fileSize } from "@/format";
 
@@ -15,19 +16,22 @@ export function useUpdate() {
 }
 
 /** The sidebar entry shown while a newer version is known. */
-export function UpdateEntry() {
+export function UpdateEntry({ collapsed }: { collapsed: boolean }) {
   const status = useUpdate().data;
   const [open, setOpen] = useState(false);
   if (!status || status.kind === "current") return null;
+  const label = `新版本 ${status.update.version}`;
   return (
     <>
-      <button
-        className="mb-0.5 flex h-10 items-center gap-3 rounded-md px-3 text-brand-text hover:bg-press"
-        onClick={() => setOpen(true)}
-      >
-        <ArrowDownToLine className="size-[18px]" strokeWidth={1.6} />
-        新版本 {status.update.version}
-      </button>
+      <Tooltip content={collapsed ? label : undefined} side="right">
+        <button
+          className="flex h-10 items-center gap-3 rounded-md px-3 whitespace-nowrap text-brand-text hover:bg-press"
+          onClick={() => setOpen(true)}
+        >
+          <ArrowDownToLine className="size-[18px] shrink-0" strokeWidth={1.6} />
+          <span className={collapsed ? "sr-only" : undefined}>{label}</span>
+        </button>
+      </Tooltip>
       {open && <UpdateDialog status={status} onClose={() => setOpen(false)} />}
     </>
   );

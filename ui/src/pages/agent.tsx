@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, ExpandChevron } from "@/components/ui/collapsible";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { PhonesRow } from "./phones";
-import { Row, Section, SwitchButton } from "./settings";
+import { Row, Section, SwitchButton, SwitchRow } from "./settings";
 
 const MAC = navigator.userAgent.includes("Mac");
 
@@ -40,37 +40,35 @@ function AgentRows() {
   return (
     <>
       <Row label="Agent">
-        <label className="flex items-center justify-between gap-4">
-          <span>允许 Agent 连接</span>
-          <SwitchButton
-            label="允许 Agent 连接"
-            checked={access.data ?? false}
-            disabled={access.data === undefined || save.isPending}
-            onClick={() => save.mutate(!access.data)}
-          />
-        </label>
-        <div className="mt-2 space-y-2 text-sm text-muted-foreground">
-          <p>
-            开启后，你自己的 Agent（Claude、Cursor 这类聊天和编程助手，或你写的脚本）可以通过 MCP
-            或命令行使用这个应用。界面上能做的它都能做，包括替你填写邮箱授权码和 API Key，但看不到已保存的。
-          </p>
-          <p>发信给导师、永久删除、同意把数据发给模型服务商之前，应用会弹出“Agent 请求”，你点“允许”后才会执行</p>
-          <p>Agent 读到的导师资料、邮件和材料文字，会交给它所用的模型服务商。应用开着时 Agent 才能连上。</p>
-        </div>
-        {access.error && (
-          <FailureNote
-            className="mt-2 text-sm text-destructive"
-            lead="设置未能加载："
-            failure={failureOf(access.error)}
-          />
-        )}
-        {save.error && (
-          <FailureNote
-            className="mt-2 text-sm text-destructive"
-            lead="设置未能保存："
-            failure={failureOf(save.error)}
-          />
-        )}
+        <SwitchRow
+          label="允许 Agent 连接"
+          summary="让你自己的 Agent 通过 MCP 或命令行使用这个应用"
+          help={
+            <>
+              <p>
+                Agent 指 Claude、Cursor 这类聊天和编程助手，或你写的脚本。界面上能做的它都能做，包括替你填写邮箱授权码和
+                API Key，但看不到已保存的。
+              </p>
+              <p>发信给导师、永久删除、同意把数据发给模型服务商之前，应用会弹出“Agent 请求”，你点“允许”后才会执行。</p>
+              <p>Agent 读到的导师资料、邮件和材料文字，会交给它所用的模型服务商。应用开着时 Agent 才能连上。</p>
+            </>
+          }
+          control={
+            <SwitchButton
+              label="允许 Agent 连接"
+              checked={access.data ?? false}
+              disabled={access.data === undefined || save.isPending}
+              onClick={() => save.mutate(!access.data)}
+            />
+          }
+        >
+          {access.error && (
+            <FailureNote className="text-sm text-destructive" lead="设置未能加载：" failure={failureOf(access.error)} />
+          )}
+          {save.error && (
+            <FailureNote className="text-sm text-destructive" lead="设置未能保存：" failure={failureOf(save.error)} />
+          )}
+        </SwitchRow>
       </Row>
       {access.data && (
         <>
@@ -176,14 +174,14 @@ function McpDialog({ client, onClose, onWritten }: { client: McpClient; onClose:
                   </pre>
                   {!p.writeUnavailable && (
                     <p className="text-muted-foreground">
-                      Claude Code 把配置存在 <span className="break-all">{p.path}</span>。
+                      Claude Code 把配置存在 <span className="break-all select-text">{p.path}</span>。
                     </p>
                   )}
                 </>
               ) : (
                 <>
                   <p>会改这个文件，其他内容不动：</p>
-                  <p className="break-all text-muted-foreground">{p.path}</p>
+                  <p className="break-all text-muted-foreground select-text">{p.path}</p>
                 </>
               )}
               <p>{p.exists ? "里面已经有 autoemail，会换成：" : "加入的内容："}</p>
@@ -233,16 +231,16 @@ function CliRow() {
         {state?.kind === "installed" ? (
           <>
             已安装，在{MAC ? "" : "新开的"}终端里输入 <code>autoemail</code> 使用，比如 <code>autoemail list</code>{" "}
-            列出能做的事。装在 <span className="break-all">{cli.data?.location}</span>。
+            列出能做的事。装在 <span className="break-all select-text">{cli.data?.location}</span>。
           </>
         ) : state?.kind === "oldLocation" ? (
           <>
-            终端里的 autoemail 还指向以前的应用（<span className="break-all">{state.target}</span>
+            终端里的 autoemail 还指向以前的应用（<span className="break-all select-text">{state.target}</span>
             ），更新后将改用当前应用
           </>
         ) : state?.kind === "occupied" ? (
           <>
-            <span className="break-all">{cli.data?.location}</span>{" "}
+            <span className="break-all select-text">{cli.data?.location}</span>{" "}
             已是其他程序，为避免覆盖，未安装。将它删除或改名后，回到这里安装。
           </>
         ) : (

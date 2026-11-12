@@ -170,7 +170,7 @@ export function TaskLetter({
     <div className="flex flex-col gap-3 px-5 py-4 phone:px-3">
       {review && !readOnly && <Rewrite {...review} />}
       {readOnly ? (
-        <article className="min-w-0">
+        <article className="min-w-0 select-text">
           <h3 className="mb-3 font-semibold break-words">{letter.subject || "（无主题）"}</h3>
           <LetterBody markdown={letter.bodyMd} />
         </article>
@@ -178,7 +178,7 @@ export function TaskLetter({
         <div className={review ? "hidden" : "flex flex-col gap-2"}>
           {task.kind === "follow_up" ? (
             <div className="min-w-0">
-              <p className="break-words text-sm font-medium">{letter.subject || "（无主题）"}</p>
+              <p className="break-words text-sm font-medium select-text">{letter.subject || "（无主题）"}</p>
               <p className="text-xs text-muted-foreground">主题自动沿用上一封</p>
             </div>
           ) : (
@@ -211,8 +211,10 @@ export function TaskLetter({
             </span>
           </CollapsibleTrigger>
           <CollapsibleContent className="pb-1.5">
-            <p className="mt-1 break-words text-xs text-muted-foreground">{draft.previous.attribution}</p>
-            <p className="mt-2 whitespace-pre-wrap break-words">{draft.previous.bodyText}</p>
+            <div className="select-text">
+              <p className="mt-1 break-words text-xs text-muted-foreground">{draft.previous.attribution}</p>
+              <p className="mt-2 whitespace-pre-wrap break-words">{draft.previous.bodyText}</p>
+            </div>
           </CollapsibleContent>
         </Collapsible>
       )}

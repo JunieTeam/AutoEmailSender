@@ -10,7 +10,8 @@ import { TRACKING_CAVEAT } from "@/components/tracking";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { day, sentence } from "@/format";
 import { useNow } from "@/now";
-import { Section, SwitchButton } from "./settings";
+import { Help } from "@/components/ui/help";
+import { Section, SwitchButton, SwitchRow } from "./settings";
 
 /**
  * Settings › 邮件 › 邮件追踪 (docs/ui.md#交互). The quota lives on the server and packs are paid for
@@ -41,35 +42,33 @@ export function TrackingSection() {
   const quota = server?.tracking;
   return (
     <Section title="邮件追踪">
-      <div>
-        <div className="flex items-center justify-between gap-4">
-          <span>邮件追踪</span>
+      <SwitchRow
+        label="邮件追踪"
+        summary="在首封和追问里放一张看不见的小图片，看导师是否打开了邮件"
+        help={
+          <>
+            <p>导师打开邮件、加载图片时记一次，往来里能看到打开了几次。回复不放。</p>
+            <p>
+              官方服务器能看到每封邮件的随机编号、打开时间、打开者的 IP
+              和设备信息，只保存编号、次数和时间，看不到收件人和邮件内容。
+            </p>
+            <p>{TRACKING_CAVEAT}</p>
+          </>
+        }
+        control={
           <SwitchButton
             label="邮件追踪"
             checked={enabled}
             disabled={!data || save.isPending || (!enabled && (!plus || outdated))}
             onClick={() => save.mutate(!enabled)}
           />
-        </div>
-        <div className="mt-2 flex flex-col gap-2 text-sm text-muted-foreground">
-          <p>
-            开启后，发给导师的首封和追问里会放一张看不见的小图片，导师打开邮件、加载图片时记一次，往来里能看到打开了几次。回复不放。
-          </p>
-          <p>
-            官方服务器能看到每封邮件的随机编号、打开时间、打开者的 IP
-            和设备信息，只保存编号、次数和时间，看不到收件人和邮件内容。
-          </p>
-          <p>{TRACKING_CAVEAT}</p>
-        </div>
+        }
+      >
         {status.error && (
-          <FailureNote
-            className="mt-2 text-sm text-destructive"
-            lead="设置未能加载："
-            failure={failureOf(status.error)}
-          />
+          <FailureNote className="text-sm text-destructive" lead="设置未能加载：" failure={failureOf(status.error)} />
         )}
-        {save.error && <FailureNote className="mt-2 text-sm text-destructive" failure={failureOf(save.error)} />}
-      </div>
+        {save.error && <FailureNote className="text-sm text-destructive" failure={failureOf(save.error)} />}
+      </SwitchRow>
       {data && !data.account && <Prompt text="登录并开通 Plus 后可使用" action="去登录" />}
       {data?.account?.kind === "unreadable" && (
         <p className="text-sm text-destructive">额度未能读取：{data.account.reason}</p>
@@ -121,8 +120,13 @@ function Quota({ email, plusUntil, quota }: { email: string; plusUntil: number; 
   const [buying, setBuying] = useState<Pack | null>(null);
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="font-medium">
+      <p className="flex items-center gap-1 font-medium">
         最近 30 天已用 {quota.used} / {quota.limit} 封
+        <Help label="额度">
+          <p>一封邮件算 1 封，打开多少次都不再计。</p>
+          <p>每 30 天 {quota.limit} 封，按最近 30 天计算，用完后使用额度包，先用快到期的。</p>
+          <p>额度包自开通起 365 天内有效，Plus 有效时方可使用，Plus 到期期间照常计时。</p>
+        </Help>
       </p>
       {quota.packLeft > 0 && quota.packExpiresAt != null && (
         <p className="text-sm">
@@ -151,11 +155,6 @@ function Quota({ email, plusUntil, quota }: { email: string; plusUntil: number; 
           </div>
         ))
       )}
-      <p className="text-xs text-muted-foreground">
-        一封邮件算 1 封，打开多少次都不再计。每 30 天 {quota.limit} 封，按最近 30
-        天计算，用完后使用额度包，先用快到期的。额度包自开通起 365 天内有效，Plus 有效时方可使用，Plus
-        到期期间照常计时。
-      </p>
       {buying && <PayDialog email={email} purchase={{ pack: buying, plusUntil }} onClose={() => setBuying(null)} />}
     </div>
   );

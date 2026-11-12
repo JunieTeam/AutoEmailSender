@@ -18,8 +18,8 @@ test("the font is left to the recipient unless one is chosen", () => {
   expect(render("甲", { ...style, font: "song" }).querySelector("div")?.style.fontFamily).toContain("SimSun");
 });
 
-test("paragraphs are indented, list items are not", () => {
-  const page = render("甲\n\n1. 乙\n\n   丙\n\n丁", { ...style, firstLineIndent: true });
+test("paragraphs are indented, and lists move in as a whole", () => {
+  const page = render("甲\n\n1. 乙\n\n   丙\n\n   - 戊\n\n丁", { ...style, firstLineIndent: true });
   const indents = [...page.querySelectorAll("p")].map((p) => [p.textContent, p.style.textIndent]);
   expect(indents).toEqual([
     ["甲", "2em"],
@@ -27,6 +27,9 @@ test("paragraphs are indented, list items are not", () => {
     ["丙", ""],
     ["丁", "2em"],
   ]);
+  expect([...page.querySelectorAll<HTMLElement>("ol, ul")].map((l) => l.style.paddingLeft)).toEqual(["4em", "2em"]);
+  const plain = render("甲\n\n- 乙", style);
+  expect(plain.querySelector("ul")?.style.paddingLeft).toBe("2em");
 });
 
 test("links to anything but web pages and email addresses are only text", () => {

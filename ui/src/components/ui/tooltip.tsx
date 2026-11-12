@@ -10,13 +10,21 @@ import { COLLISION_PADDING, POPUP } from "@/components/ui/popover";
 /** Once a hint has shown, the next one under the pointer shows at once, as the system's do. */
 export const TooltipProvider = TooltipPrimitive.Provider;
 
-export function Tooltip({ content, children }: { content: string | undefined; children: ReactElement }) {
+export function Tooltip({
+  content,
+  side,
+  children,
+}: {
+  content: string | undefined;
+  side?: TooltipPrimitive.Positioner.Props["side"];
+  children: ReactElement;
+}) {
   if (content === undefined) return children;
   return (
     <TooltipPrimitive.Root>
       <TooltipPrimitive.Trigger render={children} />
       <TooltipPrimitive.Portal>
-        <TooltipPrimitive.Positioner sideOffset={6} collisionPadding={COLLISION_PADDING} className="z-50">
+        <TooltipPrimitive.Positioner side={side} sideOffset={6} collisionPadding={COLLISION_PADDING} className="z-50">
           <TooltipPrimitive.Popup
             className={cn(POPUP, "max-w-[min(360px,var(--available-width))] px-2.5 py-1.5 text-xs wrap-anywhere")}
           >

@@ -163,7 +163,7 @@ function Letter({ letter: l, html, time }: { letter: ConfirmationLetter; html?: 
       {/* In the letter style, as sent; the app's own styles would show it otherwise. */}
       {html && (
         <div
-          className="max-h-64 overflow-y-auto rounded-lg border border-border px-4 py-3 [&_a]:text-brand-text [&_a]:underline"
+          className="max-h-64 overflow-y-auto rounded-lg border border-border px-4 py-3 select-text [&_a]:text-brand-text [&_a]:underline"
           dangerouslySetInnerHTML={{ __html: html }}
           onClick={openLinks}
         />

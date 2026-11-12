@@ -6,6 +6,7 @@ import { queryClient } from "./query-client";
 import { TasksPage, TaskReviewPage, tasksSearch, taskSearch } from "./pages/tasks";
 import { ConversationsPage, conversationSearch } from "./pages/conversations";
 import { Shell, MorePage } from "./components/shell";
+import { BackgroundPage } from "./pages/background";
 import { RouteError } from "./components/route-error";
 import { MentorPage } from "./pages/mentor";
 import { MentorsPage, mentorSearch } from "./pages/mentors";
@@ -98,6 +99,11 @@ const statsRoute = createRoute({
   component: StatsPage,
 });
 const moreRoute = createRoute({ getParentRoute: () => rootRoute, path: "more", component: MorePage });
+const backgroundPageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "background",
+  component: BackgroundPage,
+});
 const tasksRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "tasks",
@@ -230,6 +236,7 @@ export const router = createRouter({
     mentorRoute,
     conversationsRoute,
     moreRoute,
+    backgroundPageRoute,
     statsRoute,
     findRoute,
     tasksRoute,

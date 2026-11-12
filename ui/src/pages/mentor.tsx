@@ -178,7 +178,7 @@ function Header({
       </Button>
       <Avatar id={m.id} name={m.name} />
       <div className="min-w-0 grow">
-        <h1 className="truncate text-lg font-semibold">
+        <h1 className="truncate text-lg font-semibold select-text">
           {m.name}
           {main?.title && <span className="ml-1.5 text-sm font-normal text-muted-foreground">{main.title}</span>}
         </h1>
@@ -407,7 +407,7 @@ function Analysis({ mentor: m }: { mentor: MentorDetail }) {
               {day(a.matchedAt)}分析 · {a.model}
             </p>
             {a.basisChanged && <p className="mt-2 text-muted-foreground">{BASIS_CHANGED}</p>}
-            <p className="mt-2.5 text-muted-foreground">{a.reason}</p>
+            <p className="mt-2.5 text-muted-foreground select-text">{a.reason}</p>
           </>
         ) : (
           <Missing>未分析</Missing>
@@ -439,7 +439,7 @@ function Points({ title, items, marker = "" }: { title: string; items: string[];
   if (items.length === 0) return null;
   return (
     <Section title={title}>
-      <ul className={`flex list-disc flex-col gap-1.5 pl-[1.1em] ${marker}`}>
+      <ul className={`flex list-disc flex-col gap-1.5 pl-[1.1em] select-text ${marker}`}>
         {items.map((p) => (
           <li key={p}>{p}</li>
         ))}

@@ -32,7 +32,7 @@ export const TERMS_CHANGES =
 const parser = new Marked(cjkFriendly());
 
 const LEGAL_BODY =
-  "text-sm leading-relaxed [&_a]:text-brand-text [&_a]:underline [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-5 [&_h2]:font-semibold [&_li]:mt-1 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mt-2 [&_strong]:font-semibold [&_table]:mt-2 [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_ul]:list-disc [&_ul]:pl-6";
+  "select-text text-sm leading-relaxed [&_a]:text-brand-text [&_a]:underline [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-5 [&_h2]:font-semibold [&_li]:mt-1 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mt-2 [&_strong]:font-semibold [&_table]:mt-2 [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_ul]:list-disc [&_ul]:pl-6";
 
 function LegalDialog({ legal, onClose }: { legal: Legal; onClose: () => void }) {
   const { title, text } = LEGAL[legal];

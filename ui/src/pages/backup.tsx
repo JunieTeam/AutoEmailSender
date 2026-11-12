@@ -30,11 +30,11 @@ function LocalBackup() {
   const exported = useMutation({ mutationFn: exportBackup });
   const prepare = useMutation({ mutationFn: prepareRestore });
   return (
-    <Row label="本地备份">
-      <p className="text-sm text-muted-foreground">
-        把全部数据导出成一个文件，换电脑或数据丢失时用它恢复。备份里不含邮箱授权码、API
-        Key、整理时保存的网页和日志，恢复后要重新填授权码和 API Key。
-      </p>
+    <Row
+      label="本地备份"
+      help={<p>备份里不含邮箱授权码、API Key、整理时保存的网页和日志，恢复后要重新填授权码和 API Key。</p>}
+    >
+      <p className="text-sm text-muted-foreground">把全部数据导出成一个文件，换电脑或数据丢失时用它恢复</p>
       <div className="mt-1.5 flex flex-col items-start gap-1.5">
         <Button disabled={exported.isPending} onClick={() => exported.mutate()}>
           {exported.isPending ? "正在导出…" : "导出备份"}
@@ -407,7 +407,7 @@ function RestoreDialog({ info, onClose }: { info: RestoreInfo; onClose: () => vo
             <ul className="list-disc pl-5 leading-relaxed">
               <li>
                 会替换这台电脑上现有的全部数据。替换前的数据先备份到
-                <span className="break-all">“{info.backupDirectory}”</span>。
+                <span className="break-all select-text">“{info.backupDirectory}”</span>。
               </li>
               <li>恢复后要重新登录账号，重新填写各个邮箱的授权码和模型的 API Key，填好之前不收发信。</li>
               <li>旧电脑上的应用请先从托盘或菜单栏的图标退出（只关窗口它还会在后台发信），免得同一封信发两次。</li>

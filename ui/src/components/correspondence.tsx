@@ -319,7 +319,7 @@ function Sent({
   const [text, tone] = status(e, emails.length > 1);
   return (
     <article className="flex animate-fade-in flex-col items-end gap-1.5">
-      <div className="max-w-[min(42rem,88%)] rounded-[18px] rounded-br-[6px] bg-mine px-4 py-3">
+      <div className="max-w-[min(42rem,88%)] rounded-[18px] rounded-br-[6px] bg-mine px-4 py-3 select-text">
         <h3 className="mb-2 font-semibold">{e.subject}</h3>
         <LetterBody markdown={e.bodyMd} />
         {e.attachments.length > 0 && (
@@ -514,7 +514,7 @@ function Seen({
   return (
     <article className={`flex animate-fade-in flex-col gap-1.5 ${mine ? "items-end" : "items-start"}`}>
       <div
-        className={`max-w-[min(42rem,88%)] rounded-[18px] px-4 py-3 ${mine ? "rounded-br-[6px] bg-mine" : "rounded-bl-[6px] bg-muted"}`}
+        className={`max-w-[min(42rem,88%)] rounded-[18px] px-4 py-3 select-text ${mine ? "rounded-br-[6px] bg-mine" : "rounded-bl-[6px] bg-muted"}`}
       >
         {m.subject && <h3 className="mb-2 font-semibold">{m.subject}</h3>}
         <Text text={m.text} />

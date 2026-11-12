@@ -145,7 +145,7 @@ function MaterialText({ id, fileName, onClose }: { id: number; fileName: string;
           {text.error && (
             <FailureNote className="text-sm text-destructive" lead="文字未能加载：" failure={failureOf(text.error)} />
           )}
-          {text.data && <p className="text-sm whitespace-pre-wrap">{text.data}</p>}
+          {text.data && <p className="text-sm whitespace-pre-wrap select-text">{text.data}</p>}
         </DialogBody>
       </DialogContent>
     </Dialog>

@@ -2,7 +2,7 @@ import type { Change } from "@/diff";
 
 export function Changes({ parts, className }: { parts: Change[]; className?: string }) {
   return (
-    <p className={`leading-relaxed break-words whitespace-pre-wrap ${className ?? ""}`}>
+    <p className={`leading-relaxed break-words whitespace-pre-wrap select-text ${className ?? ""}`}>
       {parts.map((c, i) =>
         c.kind === "kept" ? (
           <span key={i}>{c.text}</span>

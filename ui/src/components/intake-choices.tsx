@@ -146,7 +146,7 @@ export function IntakeChoices({
 
 export function ProfileDetails({ profile }: { profile: ImportProfile }) {
   return (
-    <span className="block break-words">
+    <span className="block break-words select-text">
       {profile.name}
       {profile.aliases.length > 0 && <span className="ml-2 text-muted-foreground">{profile.aliases.join("、")}</span>}
       <span className="block text-muted-foreground">
