@@ -282,13 +282,15 @@ export function FactCheckStatus({
   check: ReturnType<typeof useFactCheck>;
   stored: FactCheck | null | undefined;
 }) {
-  // A failure kept from before the setting was turned off is of no more use.
   const on = useQuery(aiFactCheck);
   if (check.latest?.status === "pending") return <p className="text-sm text-muted-foreground">AI 正在核对…</p>;
+  // A failure from before the setting was turned off is of no more use, and trying it again would ask
+  // to agree to a model nothing calls.
+  if (!on.data) return null;
   const reason: Failure | null =
     check.latest?.status === "error"
       ? failureOf(check.latest.error)
-      : on.data && stored?.state === "failed"
+      : stored?.state === "failed"
         ? stored.reason
         : null;
   return (

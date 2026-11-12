@@ -3,9 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import type { Letter, ModelConfig, ReplyTarget } from "@/api/types";
+import type { CallError, Letter, ModelConfig, ReplyTarget } from "@/api/types";
 import { dropDrafts } from "./mentor";
-import { ModelAction, useReplyWritingTarget, useWriting } from "./ai-writing";
+import { FactCheckStatus, ModelAction, useFactCheck, useReplyWritingTarget, useWriting } from "./ai-writing";
 
 const remote = vi.hoisted(
   (): {
@@ -24,6 +24,8 @@ vi.mock("@/api/call", async (importOriginal) => ({
     if (op === "listModelConfigs") return structuredClone(remote.models);
     if (op === "listModelProviders") return [];
     if (op === "getAiFactCheck") return remote.factCheck;
+    if (op === "factCheckEmail")
+      throw { code: "external", message: "模型服务商暂时不可用", details: null } satisfies CallError;
     if (op === "agreeModel") {
       const model = remote.models.find((m) => m.id === input.id);
       if (!model) throw new Error("missing model");
@@ -88,6 +90,46 @@ it("asks once for every provider the work reaches, AI 核对's included", async 
     await act(async () => button("同意并继续").click());
     await vi.waitFor(() => expect(resumed).toBe(true));
     expect(remote.models.map((m) => m.agreed)).toEqual([false, true, true]);
+  } finally {
+    await act(async () => root.unmount());
+    client.clear();
+    container.remove();
+  }
+});
+
+function CheckedDraft() {
+  const check = useFactCheck(["getFirstDraft", 7], "checkFirstDraft", async () => {});
+  return (
+    <>
+      <FactCheckStatus check={check} stored={null} />
+      <button onClick={check.start}>核对</button>
+    </>
+  );
+}
+
+it("shows neither a failed check nor the way to try again once AI 核对 is turned off", async () => {
+  remote.factCheck = true;
+  remote.models = [];
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(["getFirstDraft", 7], { id: 1 });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <QueryClientProvider client={client}>
+          <CheckedDraft />
+        </QueryClientProvider>,
+      ),
+    );
+    await act(async () => button("核对").click());
+    await vi.waitFor(() => expect(container.textContent).toContain("AI 核对未能完成：模型服务商暂时不可用"));
+    expect(button("重试")).toBeTruthy();
+    // As the switch in the settings sets it once saved.
+    remote.factCheck = false;
+    await act(async () => client.setQueryData(["getAiFactCheck"], false));
+    await vi.waitFor(() => expect(container.textContent).toBe("核对"));
   } finally {
     await act(async () => root.unmount());
     client.clear();
