@@ -295,7 +295,7 @@ function CrawlRecord({ crawl: c, expanded }: { crawl: CrawlSummary; expanded: bo
       </div>
       {c.error && <FailureNote failure={c.error} className="mt-2 text-sm text-warning" />}
       {c.failed > 0 && <p className="mt-2 text-sm text-warning">{c.failed} 个页面未能打开，名单可能不完整</p>}
-      {expanded && <CrawlDetails id={c.id} modelId={c.modelConfigId} modelIds={c.modelIds} />}
+      {expanded && <CrawlDetails id={c.id} modelId={c.modelConfigId} retryModelIds={c.retryModelIds} />}
     </section>
   );
 }
@@ -339,7 +339,7 @@ function CrawlControls({ crawl: c }: { crawl: CrawlSummary }) {
     </>
   );
 }
-function CrawlDetails({ id, modelId, modelIds }: { id: number; modelId: number | null; modelIds: number[] }) {
+function CrawlDetails({ id, modelId, retryModelIds }: { id: number; modelId: number | null; retryModelIds: number[] }) {
   const client = useQueryClient();
   const [page, setPage] = useState(1);
   const detail = useQuery({
@@ -386,7 +386,7 @@ function CrawlDetails({ id, modelId, modelIds }: { id: number; modelId: number |
                 <h3 className="mr-auto font-medium">页面及未打开的原因</h3>
                 <ModelAction
                   feature="crawl"
-                  modelIds={modelIds}
+                  modelIds={retryModelIds}
                   disabled={retry.isPending}
                   onWrite={() => retry.mutate(null)}
                 >

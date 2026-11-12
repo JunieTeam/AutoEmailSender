@@ -490,8 +490,12 @@ pub struct CrawlSummary {
     pub pages: i64,
     pub remaining: i64,
     pub enrich_remaining: i64,
+    /// The models of the pages still to read, the only ones going on reads.
     #[ts(as = "Vec<i64>")]
     pub model_ids: Json<Vec<i64>>,
+    /// These and the models of the failed pages: retrying them sets the crawl going again.
+    #[ts(as = "Vec<i64>")]
+    pub retry_model_ids: Json<Vec<i64>>,
     pub profiles: i64,
     pub candidates: i64,
     pub failed: i64,
@@ -592,11 +596,22 @@ pub(crate) async fn summaries(
                     (SELECT default_model_config_id FROM profile),
                     (SELECT min(id) FROM model_config))
                 FROM crawl_page
+                WHERE crawl_id = c.id AND work_state != 'done'
+            )
+        ) AS "model_ids!: Json<Vec<i64>>", (
+            SELECT json_group_array(id)
+            FROM model_config
+            WHERE id IN (
+                SELECT coalesce(CASE WHEN candidate_id IS NULL THEN c.model_config_id END,
+                    (SELECT model_config_id FROM feature_model WHERE feature = 'crawl'),
+                    (SELECT default_model_config_id FROM profile),
+                    (SELECT min(id) FROM model_config))
+                FROM crawl_page
                 WHERE crawl_id = c.id AND (work_state != 'done'
                 OR status != 'success') AND (candidate_id IS NULL
                 OR candidate_id IN (SELECT id FROM candidate WHERE review = 'pending'))
             )
-        ) AS "model_ids!: Json<Vec<i64>>", (
+        ) AS "retry_model_ids!: Json<Vec<i64>>", (
             SELECT count(*)
             FROM crawl_page
             WHERE crawl_id = c.id AND kind = 'profile' AND work_state = 'done'

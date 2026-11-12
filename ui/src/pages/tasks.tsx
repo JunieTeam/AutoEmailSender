@@ -389,7 +389,8 @@ export function TaskReviewPage() {
           <h1 className="min-w-0 grow truncate text-lg font-semibold">{t.name}</h1>
           <TaskStatus state={t.state} className="phone:hidden" />
           {(t.state === "active" || t.state === "paused") &&
-            (t.state === "paused" && t.writer === "ai" ? (
+            // Going on writes the letters still to write; with none left, it calls no model.
+            (t.state === "paused" && t.writer === "ai" && t.progress.generating > 0 ? (
               <ModelAction
                 feature="writing"
                 modelIds={[t.modelConfigId]}

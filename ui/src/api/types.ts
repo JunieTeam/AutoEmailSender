@@ -266,7 +266,15 @@ export type CrawlStart = { urls: string, modelId: number, };
 
 export type CrawlState = "running" | "paused" | "done" | "failed" | "canceled";
 
-export type CrawlSummary = { id: number, kind: CrawlKind, url: string | null, university: string | null, school: string | null, modelConfigId: number | null, state: CrawlState, error: Failure | null, createdAt: number, finishedAt: number | null, pages: number, remaining: number, enrichRemaining: number, modelIds: Array<number>, profiles: number, candidates: number, failed: number, tokens: number | null, stage: CrawlStage, };
+export type CrawlSummary = { id: number, kind: CrawlKind, url: string | null, university: string | null, school: string | null, modelConfigId: number | null, state: CrawlState, error: Failure | null, createdAt: number, finishedAt: number | null, pages: number, remaining: number, enrichRemaining: number,
+/**
+ * The models of the pages still to read, the only ones going on reads.
+ */
+modelIds: Array<number>,
+/**
+ * These and the models of the failed pages: retrying them sets the crawl going again.
+ */
+retryModelIds: Array<number>, profiles: number, candidates: number, failed: number, tokens: number | null, stage: CrawlStage, };
 
 export type CrawlUrls = { urls: string, };
 

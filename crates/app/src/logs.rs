@@ -201,6 +201,7 @@ mod tests {
                 remaining: 1,
                 enrich_remaining: 0,
                 model_ids: Json(vec![]),
+                retry_model_ids: Json(vec![]),
                 profiles: 0,
                 candidates: 1,
                 failed: 1,

@@ -400,4 +400,83 @@ mod tests {
         assert_eq!(summary[0].stage, queue::CrawlStage::Enrich);
         assert_eq!(summary[0].model_ids.0, vec![default]);
     }
+    #[sqlx::test(migrator = "db::MIGRATOR")]
+    async fn going_on_needs_the_models_of_pages_left_and_retrying_those_of_failed_pages_too(
+        db: SqlitePool,
+    ) {
+        let mut ids = Vec::new();
+        for (address, agreed) in [("http://127.0.0.1:1", true), ("http://127.0.0.1:2", false)] {
+            let id = sqlx::query_scalar::<_, i64>(
+                r#"INSERT INTO model_config (provider, base_url, model, api_key, agreed,
+                    created_at)
+                VALUES ('custom', ?, 'fixture', 'fixture', ?, 1)
+                RETURNING id"#,
+            )
+            .bind(address)
+            .bind(agreed)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+            ids.push(id);
+        }
+        let crawl = sqlx::query_scalar::<_, i64>(
+            r#"INSERT INTO crawl (kind, start_urls, model_config_id, state, created_at)
+            VALUES ('site', '[]', ?, 'paused', 1)
+            RETURNING id"#,
+        )
+        .bind(ids[0])
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        let candidate = sqlx::query_scalar::<_, i64>(
+            r#"INSERT INTO candidate (crawl_id, profile_url, review, enrich, name)
+            VALUES (?, 'https://school.example.edu/p', 'pending', 'done', '张三')
+            RETURNING id"#,
+        )
+        .bind(crawl)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        // A list page still to read, on the crawl's model, and a page whose enrichment failed,
+        // which a retry reads on 智能整理's model.
+        sqlx::query(
+            r#"INSERT INTO crawl_page (crawl_id, url, kind, candidate_id, mode, status, error,
+                work_state)
+            VALUES (?1, 'https://school.example.edu/list', 'list', NULL, 'http', 'failed',
+                json_object('message', '尚未读取', 'details', NULL), 'queued'),
+            (?1, 'https://school.example.edu/p', 'enrich_profile', ?2, 'http', 'failed',
+                json_object('message', '读取失败', 'details', NULL), 'done')"#,
+        )
+        .bind(crawl)
+        .bind(candidate)
+        .execute(&db)
+        .await
+        .unwrap();
+        assert!(
+            model::set_feature(&db, model::Feature::Crawl, Some(ids[1]))
+                .await
+                .unwrap()
+        );
+        let summary = queue::list(&db, 1).await.unwrap().crawls.remove(0);
+        assert_eq!(summary.model_ids.0, vec![ids[0]]);
+        let mut retried = summary.retry_model_ids.0;
+        retried.sort();
+        assert_eq!(retried, ids);
+        let ctx = Context::new(
+            db.clone(),
+            net::Net::new(vec![]).unwrap(),
+            std::path::Path::new(""),
+        );
+        let error = retry_crawl(
+            &ctx,
+            CrawlRetry {
+                id: crawl,
+                page: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error.code, ErrorCode::NeedsAgreement));
+        resume_crawl(&ctx, CrawlId { id: crawl }).await.unwrap();
+    }
 }
