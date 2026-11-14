@@ -5,6 +5,7 @@
 | 文件 | 来源 | 验证场景 |
 |---|---|---|
 | `muc.html` | https://xingong.muc.edu.cn/szdw/xyjs.htm | 中央民族大学卡片、图片链接、`onclick` 导航 |
+| `muc-profile.html` | https://xingong.muc.edu.cn/info/1051/3815.htm | 2026-11-14 获取。中央民族大学个人页照着同事的页面改出来，留着指向同事邮箱、什么也不显示的 `mailto:` 链接 |
 | `mcgill.html` | https://www.cs.mcgill.ca/people/faculty/ | 麦吉尔大学名单，每位导师的姓名与邮箱归属 |
 | `fudan.html` | https://software.fudan.edu.cn/zzjs/list.htm | 复旦大学未加载的动态教师列表 |
 | `bupt.html` | https://scs.bupt.edu.cn/szjs1/jsyl.htm | 北京邮电大学 HTTP 412 挑战页 |

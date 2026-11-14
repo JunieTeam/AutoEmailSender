@@ -237,6 +237,37 @@ fn mailto_and_cloudflare_have_attribute_evidence() {
 }
 
 #[test]
+fn a_mailto_link_counts_only_when_it_shows_something() {
+    // A page copied from a colleague's keeps the colleague's address in a link that shows nothing.
+    let base = PageUrl::parse("https://xingong.muc.edu.cn/info/1051/3815.htm").unwrap();
+    let addresses = |html: &str| {
+        parse(&base, html)
+            .units
+            .iter()
+            .flat_map(|u| &u.emails)
+            .map(|e| e.address.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        addresses(include_str!("pages/muc-profile.html")),
+        ["202301050@muc.edu.cn"]
+    );
+    // An icon is something to click, as academic homepage templates show their address.
+    assert_eq!(
+        addresses(
+            "<a href='mailto:icon@school.edu.cn'><i class='fa fa-envelope' aria-hidden='true'></i></a>\
+            <a href='mailto:svg@school.edu.cn'><svg><path d='M0 0'/></svg></a>\
+            <a href='mailto:label@school.edu.cn' title='Email'></a>"
+        ),
+        [
+            "icon@school.edu.cn",
+            "svg@school.edu.cn",
+            "label@school.edu.cn"
+        ]
+    );
+}
+
+#[test]
 fn real_toronto_profile_decodes_bracketed_at_and_dot() {
     let base = PageUrl::parse("https://www.cs.toronto.edu/~hinton/").unwrap();
     let material = parse(&base, include_str!("pages/toronto.html"));

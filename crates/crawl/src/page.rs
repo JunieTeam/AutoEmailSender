@@ -388,6 +388,17 @@ pub(crate) fn visible_text(element: ElementRef<'_>) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Whether the element is there for a reader: it shows text, an image or an icon, or names itself
+/// with a label.
+fn shows_something(element: ElementRef<'_>) -> bool {
+    !visible_text(element).is_empty()
+        || alternative_text(element).is_some()
+        || element
+            .descendants()
+            .filter_map(ElementRef::wrap)
+            .any(|e| matches!(e.value().name(), "img" | "svg" | "i"))
+}
+
 fn label(element: ElementRef<'_>) -> String {
     let text = visible_text(element);
     if !text.is_empty() {
@@ -529,9 +540,12 @@ fn parse_page(
                 }
                 let href = element.value().attr("href");
                 if let Some(href) = href {
-                    current
-                        .emails
-                        .extend(emails.mailto(href, element_index, current.text.len()));
+                    let found = emails.mailto(href, element_index, current.text.len());
+                    // A page copied from a colleague's can keep the colleague's address in a link
+                    // that shows nothing.
+                    if !found.is_empty() && shows_something(element) {
+                        current.emails.extend(found);
+                    }
                 }
                 if let Some(encoded) = element.value().attr("data-cfemail")
                     && let Some(address) = cloudflare(encoded)
