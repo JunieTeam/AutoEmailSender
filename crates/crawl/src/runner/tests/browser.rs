@@ -700,3 +700,61 @@ async fn a_list_that_shows_no_teacher_over_http_is_read_in_the_browser(db: Sqlit
     assert_eq!(names, vec!["张三", "李四"]);
     responder.abort();
 }
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_profile_that_shows_no_teacher_over_http_is_read_in_the_browser(db: SqlitePool) {
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>教师名单</title><p><a href='/teacher?uid=1'>张三</a></p>",
+    );
+    // As cta.jxufe.edu.cn's teacher pages are over HTTP, before their scripts fill them in.
+    site.page(
+        "/teacher?uid=1",
+        "<title>教师主页</title><h1>{{name}}</h1><p>邮箱 {{email}}</p><script src='/app.js'></script>",
+    );
+    let browser = Arc::new(FakeBrowser::default());
+    browser.page(
+        &site.url("/teacher?uid=1"),
+        "<title>教师主页</title><h1>张三</h1><p>邮箱 a@school.example.edu</p>",
+    );
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let responder = tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let output = if system.starts_with("你整理学院") {
+                json!({"kind":"list","next":[]})
+            } else if system.starts_with("你从教师") {
+                json!({"people":[listed("张三", Some(1), vec![])]})
+            } else {
+                targeted("a@school.example.edu")
+            };
+            request
+                .respond
+                .send(Response::answer(&output.to_string()))
+                .ok();
+        }
+    });
+    let id = queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let profile: (String, String) =
+        sqlx::query_as("SELECT mode, status FROM crawl_page WHERE crawl_id=? AND kind='profile'")
+            .bind(id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(profile, ("webview".into(), "success".into()));
+    let emails: Vec<String> = sqlx::query_scalar("SELECT value FROM candidate, json_each(emails)")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(emails, ["a@school.example.edu"]);
+    responder.abort();
+}

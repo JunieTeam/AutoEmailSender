@@ -660,7 +660,16 @@ async fn read(
         .await
         .map_err(database("read crawl unit", READ_FAILED))?;
     if targeted {
-        return read_for_candidate(&reader, fetcher, &scope, m, unit.as_ref()).await;
+        return read_for_candidate(
+            &reader,
+            fetcher,
+            &scope,
+            &target,
+            m,
+            rendered,
+            unit.as_ref(),
+        )
+        .await;
     }
     let page = interpret(&reader, &scope, m, unit.as_ref()).await?;
     // A list that loads its teachers with scripts gives none over HTTP: read it in the browser,
@@ -835,12 +844,15 @@ async fn invalidated(db: &SqlitePool, c: &Claim) -> ReadError {
     }
 }
 
-/// Reads a profile page or enrichment page for the one candidate it was queued for.
+/// Reads a profile page or enrichment page for the one candidate it was queued for, reached at `at`
+/// and `rendered` if the browser read it.
 async fn read_for_candidate(
     reader: &Reader<'_>,
     pages: &Pages,
     scope: &Scope,
+    at: &PageTarget,
     m: Material,
+    rendered: bool,
     unit: Option<&Affiliation>,
 ) -> Result<Page, ReadError> {
     let c = reader.claim;
@@ -868,6 +880,20 @@ async fn read_for_candidate(
     }
     drop(conn);
     let target = candidate.fields;
+    let names: Vec<_> = std::iter::once(target.name.as_str())
+        .chain(target.aliases.iter().map(String::as_str))
+        .collect();
+    // A page that fills in its teacher with scripts shows only its template over HTTP, as
+    // cta.jxufe.edu.cn writes `{{name}}` and vcc.tech's people pages ask for theirs.
+    let m = if !rendered
+        && c.kind != PageKind::EnrichChild
+        && !extract::mentions(&m, &names)
+        && let Some(material) = pages.render_again(reader.db, c, at, &m).await?
+    {
+        material
+    } else {
+        m
+    };
     let files = embedded::Reader {
         fetcher: &pages.http,
         recognize: pages.recognize,
@@ -897,9 +923,6 @@ async fn read_for_candidate(
     let result = reader
         .ask::<extract::Targeted>("profile", extract::TARGET, data)
         .await?;
-    let names: Vec<_> = std::iter::once(target.name.as_str())
-        .chain(target.aliases.iter().map(String::as_str))
-        .collect();
     if result.relation == extract::Relation::Mismatched && !extract::mentions(&m, &names) {
         tracing::info!(
             url = c.url.as_str(),
