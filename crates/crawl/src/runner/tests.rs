@@ -228,8 +228,21 @@ async fn extraction_requests_a_json_object(db: SqlitePool) {
     assert!(matches!(result.unwrap().kind, extract::Kind::Other));
 }
 
+/// The links a route request offers, written `[text](number)`, as text and number.
+fn offered(data: &Value) -> Vec<(String, usize)> {
+    let link = |l: &Value| {
+        let (text, n) = l.as_str()?.strip_prefix('[')?.rsplit_once("](")?;
+        Some((text.to_owned(), n.strip_suffix(')')?.parse().ok()?))
+    };
+    data["links"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| link(l).unwrap())
+        .collect()
+}
 fn listed(name: &str, profile: Option<usize>, emails: Vec<&str>) -> Value {
-    json!([name, "教授", profile, emails])
+    json!({"n": name, "t": "教授", "p": profile, "e": emails})
 }
 fn person(name: &str, email: &str) -> Value {
     json!({
@@ -331,16 +344,13 @@ async fn home_categories_pagination_profiles_evidence_and_retry_end_to_end() {
                 serde_json::from_str(r.body["messages"][1]["content"].as_str().unwrap()).unwrap();
             let title = data["title"].as_str().unwrap_or("");
             let answer = if system.starts_with("你整理学院") {
-                let next: Vec<_> = data["links"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .filter(|l| {
-                        ["师资队伍", "副教授", "讲师名单", "动态名单"]
-                            .contains(&l["text"].as_str().unwrap())
+                let next: Vec<_> = offered(&data)
+                    .into_iter()
+                    .filter(|(text, _)| {
+                        ["师资队伍", "副教授", "讲师名单", "动态名单"].contains(&text.as_str())
                     })
-                    .map(|l| l["id"].clone())
-                    .chain(std::iter::once(json!(99999)))
+                    .map(|(_, id)| id)
+                    .chain(std::iter::once(99999))
                     .collect();
                 json!({"kind":if title=="学院"{"entry"}else{"list"},"next":next})
             } else if system.starts_with("你从教师") {
@@ -787,8 +797,7 @@ fn segments_preserve_blocks_and_external_output_is_checked() {
             "乙".repeat(4000)
         ),
     );
-    let segments = extract::segments(&m);
-    assert_eq!(segments.len(), 2);
+    assert_eq!(extract::segments(&m), [0..1, 1..2, 2..3]);
     assert!(
         extract::parse::<extract::Route>(r#"{"kind":"list","next":["https://evil.example"]}"#)
             .is_err()

@@ -81,8 +81,8 @@ const STAGES: Record<CrawlStage, [string, Tone]> = {
   failed: ["未能完成", "destructive"],
   canceled: ["已取消", "faint"],
 };
-/** What reading a page for a mentor takes, as measured on school sites. */
-const PAGE = { input: 1800, output: 200 };
+/** What reading a page for a mentor takes, as measured on 13 school sites in November 2026. */
+const PAGE = { input: 2800, output: 200 };
 const PAGE_TOKENS = PAGE.input + PAGE.output;
 /**
  * docs/ui.md#找导师: a crawl by the school and college it found, else by where it started; an Agent's

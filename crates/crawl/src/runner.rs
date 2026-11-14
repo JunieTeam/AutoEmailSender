@@ -693,16 +693,11 @@ async fn interpret(
     let route = reader
         .ask::<extract::Route>("route", extract::ROUTE, extract::routing(&m, scope))
         .await?;
-    let found = route.affiliation();
+    let found = route.affiliation(&m);
     // The crawl's way of writing its school and college, once one page has named them.
     let unit = unit.or(found.as_ref());
     let mut next: Vec<PageUrl> = Vec::new();
-    let kind = match route.kind {
-        Kind::Profile => PageKind::Profile,
-        Kind::List => PageKind::List,
-        Kind::Entry | Kind::Other => PageKind::Entry,
-    };
-    if kind != PageKind::Profile {
+    if !matches!(route.kind, Kind::Profile) {
         let links = extract::links(&m);
         for id in &route.next {
             if let Some((_, url)) = id.checked_sub(1).and_then(|n| links.get(n))
@@ -717,7 +712,9 @@ async fn interpret(
         }
     }
     let people = match route.kind {
-        Kind::List => {
+        // Routing sees only a page's edges and links, which do not show names written as plain
+        // text: an entry can list teachers too.
+        Kind::List | Kind::Entry => {
             let parts = extract::segments(&m).into_iter().map(|range| async {
                 let part = reader
                     .ask::<extract::People>("list", extract::LIST, extract::data(&m, range))
@@ -766,7 +763,13 @@ async fn interpret(
             p.profile = Some(c.url.clone());
             vec![p]
         }
-        _ => vec![],
+        Kind::Other => vec![],
+    };
+    let kind = match route.kind {
+        Kind::Profile => PageKind::Profile,
+        Kind::List => PageKind::List,
+        Kind::Entry if !people.is_empty() => PageKind::List,
+        Kind::Entry | Kind::Other => PageKind::Entry,
     };
     Ok(Page {
         material: m,
