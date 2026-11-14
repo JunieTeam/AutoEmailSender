@@ -28,6 +28,18 @@ pub fn same(a: &str, b: &str) -> bool {
     a == b || comparable_chars(a).eq(comparable_chars(b))
 }
 
+/// Whether two homepages are one page, written as [`same`] values are: sites link to a page at
+/// http that they serve at https, and to a folder with or without its closing slash.
+pub fn same_page(a: &str, b: &str) -> bool {
+    fn page(url: &str) -> &str {
+        url.trim()
+            .split_once("://")
+            .map_or(url, |(_, page)| page)
+            .trim_end_matches('/')
+    }
+    same(page(a), page(b))
+}
+
 pub(crate) fn same_affiliation(a: &Affiliation, b: &Affiliation) -> bool {
     [
         (&a.university, &b.university),
@@ -87,7 +99,11 @@ pub fn add_missing(
                 .insert(place(&fields.emails, address), address.clone());
         }
     }
-    append(&mut fields.homepages, &incoming.homepages);
+    for url in &incoming.homepages {
+        if !fields.homepages.iter().any(|h| same_page(h, url)) {
+            fields.homepages.push(url.clone());
+        }
+    }
     append(papers, incoming_papers);
     let mut differences = Vec::new();
     for incoming in &incoming.affiliations {

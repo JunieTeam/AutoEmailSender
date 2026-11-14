@@ -893,12 +893,12 @@ impl MentorForm {
                 affiliations.push(a);
             }
         }
-        let mut homepages = Vec::new();
+        let mut homepages: Vec<String> = Vec::new();
         for url in self.homepages.iter().filter_map(|u| text(u)) {
             if !is_web_page(&url) {
                 return Err(format!("主页“{url}”不正确，需以 http:// 或 https:// 开头"));
             }
-            if !homepages.contains(&url) {
+            if !homepages.iter().any(|h| supplement::same_page(h, &url)) {
                 homepages.push(url);
             }
         }

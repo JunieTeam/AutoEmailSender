@@ -78,6 +78,22 @@ fn form_is_trimmed_and_checked() {
 }
 
 #[test]
+fn a_page_at_http_and_at_https_is_one_homepage() {
+    // As a list links to a page at http that is read at https.
+    let mut input = form("张伟", "", "https://x.cn/zhang/");
+    input.homepages.push("http://x.cn/zhang".into());
+    let mut fields = input.check().unwrap();
+    assert_eq!(fields.homepages, ["https://x.cn/zhang/"]);
+    let mut incoming = fields.clone();
+    incoming.homepages = vec!["HTTP://x.cn/zhang".into(), "https://x.cn/zhang/cv".into()];
+    mentor::supplement::add_missing(&mut fields, &mut Vec::new(), &incoming, &[]);
+    assert_eq!(
+        fields.homepages,
+        ["https://x.cn/zhang/", "https://x.cn/zhang/cv"]
+    );
+}
+
+#[test]
 fn form_folds_full_width_emails_before_validation_and_deduplication() {
     let mut input = form("王伟", "", "");
     input.emails = vec![
