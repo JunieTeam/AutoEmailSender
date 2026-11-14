@@ -14,6 +14,8 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   useNavigate: () => () => undefined,
+  useRouter: () => ({}),
+  useCanGoBack: () => false,
 }));
 vi.mock("@/api/call", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/call")>()),

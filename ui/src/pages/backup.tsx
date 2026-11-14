@@ -35,23 +35,21 @@ function LocalBackup() {
       help={<p>备份里不含邮箱授权码、API Key、整理时保存的网页和日志，恢复后要重新填授权码和 API Key。</p>}
     >
       <p className="text-sm text-muted-foreground">把全部数据导出成一个文件，换电脑或数据丢失时用它恢复</p>
-      <div className="mt-1.5 flex flex-col items-start gap-1.5">
+      <div className="mt-1.5 flex flex-wrap gap-2">
         <Button disabled={exported.isPending} onClick={() => exported.mutate()}>
           {exported.isPending ? "正在导出…" : "导出备份"}
         </Button>
-        {exported.data && <p className="text-sm text-muted-foreground">已导出</p>}
-        {exported.error && (
-          <FailureNote className="text-sm text-destructive" lead="未能导出：" failure={failureOf(exported.error)} />
-        )}
-      </div>
-      <div className="flex flex-col items-start gap-1.5">
         <Button variant="quiet" disabled={prepare.isPending} onClick={() => prepare.mutate()}>
           {prepare.isPending ? "正在检查备份…" : "从备份恢复"}
         </Button>
-        {prepare.error && (
-          <FailureNote className="text-sm text-destructive" lead="无法恢复：" failure={failureOf(prepare.error)} />
-        )}
       </div>
+      {exported.data && <p className="text-sm text-muted-foreground">已导出</p>}
+      {exported.error && (
+        <FailureNote className="text-sm text-destructive" lead="未能导出：" failure={failureOf(exported.error)} />
+      )}
+      {prepare.error && (
+        <FailureNote className="text-sm text-destructive" lead="无法恢复：" failure={failureOf(prepare.error)} />
+      )}
       {prepare.data && <RestoreDialog info={prepare.data} onClose={() => prepare.reset()} />}
     </Row>
   );

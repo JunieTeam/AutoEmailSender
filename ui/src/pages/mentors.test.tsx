@@ -11,6 +11,8 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   useNavigate: () => () => undefined,
   useSearch: () => ({}),
+  useRouter: () => ({}),
+  useCanGoBack: () => false,
 }));
 vi.mock("@/kept-scroll", () => ({ useKeptScroll: () => undefined }));
 vi.mock("@/api/call", async (importOriginal) => ({

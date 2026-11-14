@@ -39,10 +39,9 @@ export function SendingPlan() {
       <div className="mx-4 mb-3 hidden phone:block">
         <Segments
           label="发送计划"
-          className="flex w-full [&>*]:flex-1"
           value={selected}
           options={COLUMNS}
-          onChange={(column) => void navigate({ search: (s) => ({ ...s, column }) })}
+          onChange={(column) => void navigate({ search: (s) => ({ ...s, column }), replace: true })}
         />
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-3 gap-4 px-5 pb-4 narrow:gap-2 narrow:px-3 phone:grid-cols-1 phone:px-3">
@@ -99,7 +98,7 @@ function PlanList({ column, label, hidden }: { column: PlanColumn; label: string
         <Pager
           page={page}
           total={query.data?.total ?? 0}
-          onPage={(n) => navigate({ search: (s) => ({ ...s, [column]: n }) })}
+          onPage={(n) => navigate({ search: (s) => ({ ...s, [column]: n }), replace: true })}
         />
       </div>
     </section>

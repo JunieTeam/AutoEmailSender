@@ -48,7 +48,7 @@ export function Segments<T>({
             key={i}
             value={i}
             disabled={disabled}
-            className="flex h-[30px] shrink-0 items-center justify-center gap-1.5 rounded-full px-3.5 text-sm whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground data-active:font-medium data-active:text-foreground phone:h-10"
+            className="flex h-[30px] shrink-0 items-center justify-center gap-1.5 rounded-full px-3.5 text-sm whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground data-active:font-medium data-active:text-foreground phone:h-8"
           >
             {text}
           </Tabs.Tab>

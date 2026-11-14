@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCanGoBack, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
-import { ChevronLeft, RotateCcw, Trash2 } from "lucide-react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { RotateCcw, Trash2 } from "lucide-react";
+import { BackButton } from "@/back";
 import { useState } from "react";
 import { call, failureOf } from "@/api/call";
 import { BatchBar, Confirm } from "@/components/batch-bar";
@@ -19,8 +20,6 @@ export function trashSearch(search: Record<string, unknown>): { page?: number } 
 export function TrashPage() {
   const search = useSearch({ from: "/mentors/trash" });
   const navigate = useNavigate({ from: "/mentors/trash" });
-  const router = useRouter();
-  const canGoBack = useCanGoBack();
   const page = search.page ?? 1;
   const query = useQuery({
     queryKey: ["listTrash", page],
@@ -44,14 +43,7 @@ export function TrashPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-3 px-5 pt-5 pb-4 phone:px-3 phone:pt-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="返回导师列表"
-          onClick={() => (canGoBack ? router.history.back() : router.navigate({ to: "/mentors" }))}
-        >
-          <ChevronLeft strokeWidth={1.6} />
-        </Button>
+        <BackButton up={() => void navigate({ to: "/mentors", replace: true })} />
         <div>
           <h1 className="text-2xl font-semibold phone:text-[22px]">回收站</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
@@ -114,7 +106,7 @@ export function TrashPage() {
         <Pager
           page={page}
           total={query.data?.total ?? 0}
-          onPage={(n) => navigate({ search: { page: n > 1 ? n : undefined } })}
+          onPage={(n) => navigate({ search: { page: n > 1 ? n : undefined }, replace: true })}
         />
       </footer>
     </div>

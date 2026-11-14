@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useLocation, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useRouter, useRouterState } from "@tanstack/react-router";
 import { listen } from "@tauri-apps/api/event";
 import {
   Activity,
   ChartNoAxesColumn,
+  CircleEllipsis,
   ListTodo,
   LoaderCircle,
   MessagesSquare,
@@ -30,6 +31,7 @@ import { showsFeedbackLog } from "@/components/feedback";
 import { AgentRequests } from "@/components/agent-requests";
 import { TermsUpdate, useAccount } from "@/components/account";
 import { UpdateEntry } from "@/components/update";
+import { openSection } from "@/back";
 import { desktop, dragsWindow, titleBar } from "@/host";
 import { useBackground } from "@/pages/background";
 import { findSearch, refreshCrawls } from "@/pages/find";
@@ -42,8 +44,8 @@ const NAV = [
   { to: "/stats", label: "统计", icon: ChartNoAxesColumn },
 ] as const;
 
+const MORE = { to: "/more", label: "更多", icon: CircleEllipsis } as const;
 // docs/ui.md#布局: settings open from the account row at the bottom of the sidebar.
-const MORE = { to: "/more", label: "更多", icon: Settings } as const;
 const SETTINGS = { to: "/settings", label: "设置", icon: Settings } as const;
 
 /**
@@ -57,11 +59,12 @@ const left = new Map<string, string>();
 
 /**
  * Remembers where the sections are left, and makes the click on a section's entry go back there,
- * scrolled as it was. On the section itself the entry starts it afresh, as it does when not yet
- * visited; with a key held down it opens as any link does.
+ * scrolled as it was, in place of all opened before it (docs/ui.md#交互). On the section itself the
+ * entry starts it afresh, as it does when not yet visited; with a key held down it opens as any
+ * link does.
  */
-function useReturn() {
-  const navigate = useNavigate();
+function useOpenSection() {
+  const router = useRouter();
   const pathname = useLocation({ select: (l) => l.pathname });
   const shown = useRouterState({ select: (s) => s.resolvedLocation?.href });
   useEffect(() => {
@@ -69,10 +72,10 @@ function useReturn() {
     if (shown && section) left.set(section, shown);
   }, [shown]);
   return (to: string) => (e: React.MouseEvent) => {
-    const href = left.get(to);
-    if (pathname === to || href === undefined || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
-    void navigate({ href, state: { returning: true } });
+    const href = pathname === to ? undefined : left.get(to);
+    void openSection(router, href ?? to, href !== undefined);
   };
 }
 // macOS keeps Ctrl+K for deleting to the end of the line; Windows takes Win+K for itself.
@@ -82,7 +85,7 @@ export function Shell() {
   const failure = useQuery({ queryKey: ["startupFailure"], queryFn: startupFailure, staleTime: Infinity });
   const queryClient = useQueryClient();
   const [completed, setCompleted] = useState<string | null>(null);
-  const navigate = useNavigate();
+  const router = useRouter();
   const pathname = useLocation({ select: (l) => l.pathname });
   // docs/ui.md#布局: kept on this computer for the next start.
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar") === "collapsed");
@@ -99,11 +102,11 @@ export function Shell() {
       if (document.querySelector('[role="dialog"]')) return;
       e.preventDefault();
       if (pathname === "/mentors") focusSearch();
-      else void navigate({ to: "/mentors" }).then(focusSearch);
+      else void openSection(router, "/mentors").then(focusSearch);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [navigate, pathname]);
+  }, [router, pathname]);
   useEffect(() => {
     const crawlChanged = listen("crawl-changed", () => refreshCrawls(queryClient));
     const crawlFinished = listen<CrawlFinished>("crawl-finished", ({ payload: p }) => {
@@ -183,7 +186,7 @@ export function Shell() {
   }, [queryClient]);
   // docs/ui.md#动效: another page fades in.
   const page = useRouterState({ select: (s) => s.matches[1]?.routeId });
-  const returnTo = useReturn();
+  const toSection = useOpenSection();
   if (failure.isPending) return null;
   if (failure.data) return <StartupFailure failure={failure.data} />;
   return (
@@ -211,7 +214,7 @@ export function Shell() {
                 key={item.to}
                 {...item}
                 collapsed={collapsed}
-                onClick={returnTo(item.to)}
+                onClick={toSection(item.to)}
                 count={item.to === "/conversations" ? "unread" : undefined}
               />
             ))}
@@ -219,8 +222,8 @@ export function Shell() {
           <div className="grow" />
           <div className="flex flex-col gap-0.5">
             {desktop && <UpdateEntry collapsed={collapsed} />}
-            <BackgroundEntry collapsed={collapsed} />
-            <AccountRow collapsed={collapsed} />
+            <BackgroundEntry collapsed={collapsed} onClick={toSection("/background")} />
+            <AccountRow collapsed={collapsed} onClick={toSection(SETTINGS.to)} />
           </div>
         </div>
       </aside>
@@ -248,7 +251,7 @@ export function Shell() {
           <Link
             key={to}
             to={to}
-            onClick={returnTo(to)}
+            onClick={toSection(to)}
             className="flex flex-col items-center gap-0.5 py-1 text-[11px]"
             activeProps={{ className: "text-brand-text" }}
             inactiveProps={{ className: "text-muted-foreground" }}
@@ -377,13 +380,13 @@ function useSettingsLabel() {
   return account && account.kind !== "loggedOut" ? account.email : SETTINGS.label;
 }
 
-function AccountRow({ collapsed }: { collapsed: boolean }) {
+function AccountRow({ collapsed, onClick }: { collapsed: boolean; onClick: React.MouseEventHandler }) {
   const label = useSettingsLabel();
-  return <NavLink {...SETTINGS} label={label} collapsed={collapsed} />;
+  return <NavLink {...SETTINGS} label={label} collapsed={collapsed} onClick={onClick} />;
 }
 
 /** docs/ui.md#后台: turning while work runs, with how many things wait for the user. */
-function BackgroundEntry({ collapsed }: { collapsed: boolean }) {
+function BackgroundEntry({ collapsed, onClick }: { collapsed: boolean; onClick: React.MouseEventHandler }) {
   const work = useBackground();
   return (
     <NavLink
@@ -393,6 +396,7 @@ function BackgroundEntry({ collapsed }: { collapsed: boolean }) {
       spin={work.running > 0}
       collapsed={collapsed}
       count="waiting"
+      onClick={onClick}
     />
   );
 }

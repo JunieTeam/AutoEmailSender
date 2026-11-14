@@ -7,8 +7,9 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter, useRouterState, useSearch } from "@tanstack/react-router";
 import { Inbox, SearchX } from "lucide-react";
+import { BackButton } from "@/back";
 import { Loading } from "@/components/loading";
 import { Notice } from "@/components/notice";
 import { FailureDetails, FailureNote } from "@/components/failure";
@@ -121,13 +122,19 @@ export function FindPage() {
   return (
     <>
       <header className="shrink-0 px-6 pt-6 phone:px-4">
-        <h1 className="text-2xl font-semibold">找导师</h1>
+        <div className="flex items-center gap-1">
+          <BackButton
+            up={() => void navigate({ to: "/more", replace: true })}
+            className="-ml-2 hidden phone:inline-flex"
+          />
+          <h1 className="text-2xl font-semibold">找导师</h1>
+        </div>
         <Segments
           label="找导师"
           className="my-4"
           value={search.tab}
           options={TABS.map((tab) => [tab, TAB_NAMES[tab]] as const)}
-          onChange={(tab) => void navigate({ search: (s) => ({ ...s, tab }) })}
+          onChange={(tab) => void navigate({ search: (s) => ({ ...s, tab }), replace: true })}
         />
       </header>
       <Tabs shown={search.tab}>
@@ -170,7 +177,7 @@ function Crawls() {
     onSuccess: (r) => {
       setUrls("");
       refreshCrawls(client);
-      void navigate({ search: (old) => ({ ...old, recordPage: 1, detail: r.id }) });
+      void navigate({ search: (old) => ({ ...old, recordPage: 1, detail: r.id }), state: { opened: true } });
     },
   });
   return (
@@ -230,7 +237,7 @@ function Crawls() {
       <Pages
         page={s.recordPage}
         total={records.data?.total ?? 0}
-        onPage={(recordPage) => void navigate({ search: (old) => ({ ...old, recordPage }) })}
+        onPage={(recordPage) => void navigate({ search: (old) => ({ ...old, recordPage }), replace: true })}
       />
     </div>
   );
@@ -250,12 +257,21 @@ function OpenedCrawl({ id }: { id: number }) {
 }
 function CrawlRecord({ crawl: c, expanded }: { crawl: CrawlSummary; expanded: boolean }) {
   const navigate = useNavigate({ from: "/find" });
+  const router = useRouter();
+  const opened = useRouterState({ select: (s) => s.location.state.opened === true });
+  // docs/ui.md#交互: collapsing goes back to the records the details were opened from; opened from
+  // elsewhere, they give way to the records in place.
+  const toggle = () => {
+    if (!expanded) void navigate({ search: (s) => ({ ...s, detail: c.id }), state: { opened: true } });
+    else if (opened) router.history.back();
+    else void navigate({ search: (s) => ({ ...s, detail: undefined }), replace: true });
+  };
   return (
     <section className="animate-fade-in rounded-lg bg-muted p-4">
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <button
           className="min-h-10 min-w-0 flex-1 text-left phone:basis-full"
-          onClick={() => void navigate({ search: (s) => ({ ...s, detail: expanded ? undefined : c.id }) })}
+          onClick={toggle}
           aria-expanded={expanded}
         >
           <strong className="break-all">{c.url ?? crawlName(c)}</strong>
@@ -374,6 +390,7 @@ function CrawlDetails({ id }: { id: number }) {
       void navigate({
         search: (s) =>
           s.crawl === id ? { ...s, detail: undefined, crawl: undefined, page: 1 } : { ...s, detail: undefined },
+        replace: true,
       });
       refreshCrawls(client);
     },
@@ -525,7 +542,7 @@ function Candidates() {
     },
   });
   const change = (part: Partial<typeof s>) => {
-    void navigate({ search: (old) => ({ ...old, ...part, page: 1 }) });
+    void navigate({ search: (old) => ({ ...old, ...part, page: 1 }), replace: true });
   };
   const items = list.data?.candidates ?? [];
   return (
@@ -693,7 +710,7 @@ function Candidates() {
         <Pages
           page={s.page}
           total={list.data?.total ?? 0}
-          onPage={(page) => void navigate({ search: (old) => ({ ...old, page }) })}
+          onPage={(page) => void navigate({ search: (old) => ({ ...old, page }), replace: true })}
         />
       </div>
       {!s.processed && (

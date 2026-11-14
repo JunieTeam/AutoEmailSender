@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useChildMatches, useNavigate } from "@tanstack/react-router";
 import { getVersion } from "@tauri-apps/api/app";
-import { ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
+import { ChevronRight, TriangleAlert } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import {
   autostartEnabled,
@@ -24,7 +24,8 @@ import { Button } from "@/components/ui/button";
 import { Help } from "@/components/ui/help";
 import { Segments } from "@/components/ui/segments";
 import { desktop } from "@/host";
-import { COMPACT } from "@/layout";
+import { BackButton } from "@/back";
+import { COMPACT, useCompact } from "@/layout";
 import { LegalLink } from "@/legal";
 import { savedTheme, setTheme } from "@/theme";
 
@@ -70,6 +71,7 @@ export function SettingsPage() {
   const section = useChildMatches({ select: (matches) => matches[0]?.routeId });
   // docs/ui.md#页面: a wider window opens the first section, including when a narrow one widens.
   const navigate = useNavigate();
+  const narrow = useCompact();
   useEffect(() => {
     const compact = matchMedia(COMPACT);
     const openFirst = () => {
@@ -81,8 +83,15 @@ export function SettingsPage() {
   }, [open, navigate]);
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)] compact:grid-cols-1">
-      <nav className={`flex flex-col gap-5 overflow-y-auto px-3 py-6 ${open ? "compact:hidden" : ""}`}>
-        <h1 className="hidden px-3 text-[22px] font-semibold compact:block">设置</h1>
+      {/* Taller than the window, the list scrolls rather than squeeze its rows. */}
+      <nav className={`flex flex-col gap-5 overflow-y-auto px-3 py-6 [&>*]:shrink-0 ${open ? "compact:hidden" : ""}`}>
+        <div className="hidden items-center gap-1 px-3 compact:flex">
+          <BackButton
+            up={() => void navigate({ to: "/more", replace: true })}
+            className="-ml-2 hidden phone:inline-flex"
+          />
+          <h1 className="text-[22px] font-semibold">设置</h1>
+        </div>
         {/* docs/ui.md#页面: the first-run guide, at hand after it is done or skipped. */}
         <Link to="/welcome" className="flex h-10 items-center justify-between rounded-md px-3 hover:bg-muted">
           开始使用
@@ -97,6 +106,8 @@ export function SettingsPage() {
                 <Link
                   key={s.to}
                   to={s.to}
+                  // docs/ui.md#交互: one opened beside the list is no step to go back over.
+                  replace={!narrow}
                   className="flex h-10 items-center justify-between rounded-md px-3"
                   activeProps={{ className: "bg-selected font-medium text-brand-text" }}
                   inactiveProps={{ className: "hover:bg-muted" }}
@@ -122,16 +133,14 @@ export function SettingsPage() {
 
 /** A settings section: its title, with the way back to the list in a narrow window. */
 export function Section({ title, children }: { title: string; children: ReactNode }) {
+  const navigate = useNavigate();
   return (
     <section className="mx-auto flex w-full max-w-[640px] flex-col gap-6 px-8 py-6 phone:px-4 phone:py-3">
       <header className="flex items-center gap-1">
-        <Link
-          to="/settings"
-          aria-label="返回设置"
-          className="-ml-2 hidden size-10 place-items-center rounded-md text-muted-foreground compact:grid"
-        >
-          <ChevronLeft className="size-[18px]" strokeWidth={1.6} />
-        </Link>
+        <BackButton
+          up={() => void navigate({ to: "/settings", replace: true })}
+          className="-ml-2 hidden compact:inline-flex"
+        />
         <h1 className="text-2xl font-semibold phone:text-[22px]">{title}</h1>
       </header>
       {children}

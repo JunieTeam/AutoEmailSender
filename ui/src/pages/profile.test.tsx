@@ -18,7 +18,9 @@ const remote = vi.hoisted(() => {
 });
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
-  useNavigate: () => remote.navigate,
+  // The guide is the first step: finished, it gives way to the mentor list (docs/ui.md#交互).
+  useRouter: () => ({ navigate: remote.navigate, history: { location: { state: { __TSR_index: 0 } } } }),
+  useCanGoBack: () => false,
 }));
 vi.mock("@/api/call", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/call")>()),
@@ -134,7 +136,9 @@ it("finishes onboarding after an in-flight profile save and keeps the completed 
     expect(remote.navigate).not.toHaveBeenCalled();
     remote.profile = { ...initial, name: "林晓" };
     await act(async () => saving.resolve(remote.profile));
-    await vi.waitFor(() => expect(remote.navigate).toHaveBeenCalledWith({ to: "/mentors" }));
+    await vi.waitFor(() =>
+      expect(remote.navigate).toHaveBeenCalledWith(expect.objectContaining({ href: "/mentors", replace: true })),
+    );
     expect(remote.finish).toHaveBeenCalledTimes(1);
     expect(client.getQueryData<Profile>(["getProfile"])?.onboarded).toBe(true);
   } finally {

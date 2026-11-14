@@ -3,14 +3,14 @@ import { useRouterState } from "@tanstack/react-router";
 import { useLayoutEffect, useRef } from "react";
 
 const positions = new Map<string, number>();
-// The last position of each list on each page, for a return from the sidebar, which is a step of
-// its own in the history.
+// The last position of each list on each page, for a return from the sidebar, which opens the page
+// afresh in the history.
 const last = new Map<string, number>();
 
 /**
  * Keeps where a list was scrolled with its place in the history: going back to it, say from a
  * mentor's page, returns to the same row. A list showing something else, another page or other
- * filters, starts at the top; a step in the history that leaves what it shows as it was, such as
+ * filters, starts at the top; a change of address that leaves what it shows as it was, such as
  * opening a conversation beside it, leaves it where it is, as does showing again a tab kept while
  * another was on show; returning to the page from the sidebar goes back to where it was last. `view` says what the list shows when the address holds
  * more than that; otherwise the address does. Applied once `rows` has the rows of that, not those

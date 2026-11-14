@@ -1,6 +1,7 @@
 import { type MutationState, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useCanGoBack, useNavigate, useParams, useRouter } from "@tanstack/react-router";
+import { Link, useNavigate, useParams, useRouter, useRouterState } from "@tanstack/react-router";
 import { ChevronLeft, RotateCcw, Trash2, UserRound } from "lucide-react";
+import { BackButton, useBack } from "@/back";
 import { type ReactNode, useState } from "react";
 import { call, failureOf } from "@/api/call";
 import type { MentorDetail } from "@/api/types";
@@ -38,8 +39,11 @@ export function MentorPage() {
     queryKey: ["getMentor", mentorId],
     queryFn: () => call("getMentor", { id: mentorId }),
   });
-  // On a phone the profile replaces the correspondence instead of sitting beside it.
-  const [profile, setProfile] = useState(false);
+  // In a narrow window the profile replaces the correspondence instead of sitting beside it, as a
+  // step of its own that going back undoes (docs/ui.md#交互).
+  const router = useRouter();
+  const back = useBack();
+  const profile = useRouterState({ select: (s) => s.location.state.profile === true });
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const trash = useMutation({
@@ -54,7 +58,7 @@ export function MentorPage() {
   if (query.isError) {
     return (
       <Notice title="导师资料未能加载" failure={failureOf(query.error)}>
-        <Link to="/mentors" className="mt-4 inline-block text-sm text-brand-text">
+        <Link to="/mentors" replace className="mt-4 inline-block text-sm text-brand-text">
           返回导师列表
         </Link>
       </Notice>
@@ -64,7 +68,11 @@ export function MentorPage() {
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_340px] compact:grid-cols-1">
       <section className={`flex min-h-0 min-w-0 flex-col ${profile ? "compact:hidden" : ""}`}>
-        <Header mentor={m} onProfile={() => setProfile(true)} onTrash={() => trash.mutate("trashMentors")} />
+        <Header
+          mentor={m}
+          onProfile={() => router.history.push(router.history.location.href, { profile: true })}
+          onTrash={() => trash.mutate("trashMentors")}
+        />
         {(m.trashed || trash.isError) && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-muted px-5 py-2 text-sm phone:px-3">
             {trash.isError ? (
@@ -104,12 +112,12 @@ export function MentorPage() {
         </div>
       </section>
       <aside
-        className={`flex min-h-0 flex-col gap-[18px] overflow-y-auto px-5 py-[22px] text-sm ${profile ? "" : "compact:hidden"}`}
+        className={`flex min-h-0 flex-col gap-[18px] overflow-y-auto px-5 py-[22px] text-sm [&>*]:shrink-0 ${profile ? "" : "compact:hidden"}`}
       >
         <Button
           variant="ghost"
           className="hidden self-start px-2 compact:inline-flex"
-          onClick={() => setProfile(false)}
+          onClick={() => back(() => router.history.replace(router.history.location.href, {}))}
         >
           <ChevronLeft strokeWidth={1.6} />
           返回往来
@@ -162,20 +170,11 @@ function Header({
   onProfile: () => void;
   onTrash: () => void;
 }) {
-  const router = useRouter();
-  const canGoBack = useCanGoBack();
+  const navigate = useNavigate();
   const main = m.affiliations.at(0);
   return (
     <header className="flex items-center gap-3 border-b border-border px-5 py-3.5 phone:px-3">
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="返回导师列表"
-        // Going back keeps the list's filters and page.
-        onClick={() => (canGoBack ? router.history.back() : router.navigate({ to: "/mentors" }))}
-      >
-        <ChevronLeft strokeWidth={1.6} />
-      </Button>
+      <BackButton up={() => void navigate({ to: "/mentors", replace: true })} />
       <Avatar id={m.id} name={m.name} />
       <div className="min-w-0 grow">
         <h1 className="truncate text-lg font-semibold select-text">

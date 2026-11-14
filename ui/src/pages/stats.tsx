@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { BackButton } from "@/back";
 import { cn } from "cn";
 import { call, failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
@@ -52,6 +53,7 @@ function savedRange(): Range {
 }
 
 export function StatsPage() {
+  const navigate = useNavigate();
   const [range, setRange] = useState(savedRange);
   const [now, setNow] = useState(Date.now);
   const [page, setPage] = useState(1);
@@ -79,7 +81,13 @@ export function StatsPage() {
   return (
     <div className="@container flex-1 overflow-y-auto">
       <header className="mx-auto flex w-full max-w-[1120px] flex-wrap items-center gap-x-4 gap-y-3 px-7 pt-6 pb-2 phone:px-4 phone:pt-3.5">
-        <h1 className="grow text-2xl font-semibold phone:text-[22px]">统计</h1>
+        <div className="flex grow items-center gap-1">
+          <BackButton
+            up={() => void navigate({ to: "/more", replace: true })}
+            className="-ml-2 hidden phone:inline-flex"
+          />
+          <h1 className="text-2xl font-semibold phone:text-[22px]">统计</h1>
+        </div>
         <Segments
           label="时间范围"
           value={range}

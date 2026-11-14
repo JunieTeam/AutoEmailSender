@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useSearch, useParams, useBlocker } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch, useParams, useBlocker, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { ChevronLeft, ListChecks, Mail, MoreHorizontal, SearchX } from "lucide-react";
+import { ListChecks, Mail, MoreHorizontal, SearchX } from "lucide-react";
+import { BackButton, openSection } from "@/back";
 import { call, failureOf } from "@/api/call";
 import { refreshTasks } from "@/components/task-cache";
 import { FailureNote } from "@/components/failure";
@@ -133,7 +134,10 @@ export function TasksPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="px-7 pt-6 pb-5 phone:px-4">
-        <h1 className="text-2xl font-semibold">任务</h1>
+        <div className="flex items-center gap-1">
+          <BackButton className="-ml-2 hidden phone:inline-flex" />
+          <h1 className="text-2xl font-semibold">任务</h1>
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">审核邮件草稿，批准后依次发出</p>
       </header>
       <div className="mb-4 px-7 phone:px-4">
@@ -144,7 +148,7 @@ export function TasksPage() {
             [undefined, "任务"],
             ["plan", "发送计划"],
           ]}
-          onChange={(tab) => void navigate({ search: (s) => ({ ...s, tab }) })}
+          onChange={(tab) => void navigate({ search: (s) => ({ ...s, tab }), replace: true })}
         />
       </div>
       <Tabs shown={search.tab}>{(tab) => (tab === "plan" ? <SendingPlan /> : <TaskList />)}</Tabs>
@@ -208,7 +212,7 @@ function TaskList() {
           page={page}
           total={query.data?.total ?? 0}
           pageSize={20}
-          onPage={(p) => navigate({ search: (s) => ({ ...s, page: p > 1 ? p : undefined }) })}
+          onPage={(p) => navigate({ search: (s) => ({ ...s, page: p > 1 ? p : undefined }), replace: true })}
         />
       </footer>
     </>
@@ -243,6 +247,7 @@ export function TaskReviewPage() {
   const { id } = useParams({ from: "/tasks/$id" });
   const search = useSearch({ from: "/tasks/$id" });
   const navigate = useNavigate({ from: "/tasks/$id" });
+  const router = useRouter();
   const client = useQueryClient();
   const composer = useRef<ComposerHandle>(null);
   const [error, setError] = useState<Failure | null>(null);
@@ -308,23 +313,29 @@ export function TaskReviewPage() {
       await waitForSaves(client, ["taskDraftAction", id]);
     setError(null);
   }
-  function choose(email?: number) {
-    void navigate({ search: (s) => ({ ...s, email }) });
+  /**
+   * docs/ui.md#交互: a letter opened over the list is a step that going back undoes; one opened
+   * beside the list, or moved on to from the one before, is not.
+   */
+  function choose(email: number | undefined, step = matchMedia(COMPACT).matches) {
+    void navigate({ search: (s) => ({ ...s, email }), replace: !step });
   }
   function move(delta: number) {
     const drafts = list.data?.drafts ?? [];
     const index = drafts.findIndex((d) => d.id === current);
     const next = drafts[index + delta];
-    if (next) choose(next.id);
+    if (next) choose(next.id, false);
     else if (delta > 0 && page * 50 < (list.data?.total ?? 0))
-      void navigate({ search: (s) => ({ ...s, page: page + 1, email: undefined }) });
+      void navigate({ search: (s) => ({ ...s, page: page + 1, email: undefined }), replace: true });
     else if (delta < 0 && page > 1) {
       void client
         .fetchQuery({
           queryKey: ["listTaskDrafts", id, filter, page - 1],
           queryFn: () => call("listTaskDrafts", { taskId: id, filter, page: page - 1 }),
         })
-        .then((previous) => navigate({ search: (s) => ({ ...s, page: page - 1, email: previous.drafts.at(-1)?.id }) }))
+        .then((previous) =>
+          navigate({ search: (s) => ({ ...s, page: page - 1, email: previous.drafts.at(-1)?.id }), replace: true }),
+        )
         .catch((e: unknown) => setError(failureOf(e)));
     }
   }
@@ -360,7 +371,7 @@ export function TaskReviewPage() {
       await flush();
       if (op === "retryTaskGeneration") await call(op, { taskId: id, id: null });
       else await call(op, { id });
-      if (op === "deleteTask") await navigate({ to: "/tasks" });
+      if (op === "deleteTask") await openSection(router, "/tasks");
     },
     onSuccess: () => refreshTasks(client),
   });
@@ -383,9 +394,11 @@ export function TaskReviewPage() {
       )}
       <header className="space-y-3 border-b border-border px-5 py-4 phone:px-3">
         <div className="flex items-center gap-2">
-          <Link to="/tasks" aria-label="返回任务列表" className="rounded-md p-2 hover:bg-muted">
-            <ChevronLeft className="size-5" />
-          </Link>
+          {/* A letter open over the list has an arrow of its own. */}
+          <BackButton
+            up={() => void navigate({ to: "/tasks", replace: true })}
+            className={search.email === undefined ? undefined : "compact:hidden"}
+          />
           <h1 className="min-w-0 grow truncate text-lg font-semibold">{t.name}</h1>
           <TaskStatus state={t.state} className="phone:hidden" />
           {(t.state === "active" || t.state === "paused") &&
@@ -519,7 +532,7 @@ export function TaskReviewPage() {
               value={filter}
               options={FILTERS}
               onChange={(next) =>
-                void navigate({ search: { filter: next === "all" ? undefined : next, page: undefined } })
+                void navigate({ search: { filter: next === "all" ? undefined : next, page: undefined }, replace: true })
               }
             />
             {t.progress.review > 0 && t.state !== "stopped" && (
@@ -575,7 +588,7 @@ export function TaskReviewPage() {
             <Pager
               page={page}
               total={list.data?.total ?? 0}
-              onPage={(n) => navigate({ search: (s) => ({ ...s, page: n, email: undefined }) })}
+              onPage={(n) => navigate({ search: (s) => ({ ...s, page: n, email: undefined }), replace: true })}
             />
           </footer>
         </section>
@@ -586,7 +599,7 @@ export function TaskReviewPage() {
             task={t}
             composer={composer}
             chosen={search.email !== undefined}
-            onBack={() => choose(undefined)}
+            onBack={() => choose(undefined, false)}
             onApproved={() => {
               refreshTasks(client);
               move(1);
@@ -657,17 +670,7 @@ function DraftDetail({
   const d = draft.data;
   const mentor = m.data;
   const pane = `min-h-0 min-w-0 overflow-y-auto ${chosen ? "" : "compact:hidden"}`;
-  const back = (
-    <Button
-      variant="ghost"
-      size="icon"
-      aria-label="返回草稿列表"
-      className="hidden compact:inline-flex"
-      onClick={onBack}
-    >
-      <ChevronLeft />
-    </Button>
-  );
+  const back = <BackButton up={onBack} className="hidden compact:inline-flex" />;
   if (error || !d || !mentor || !materials.data || !placeholders.data)
     return (
       <section className={`grid grid-rows-[auto_minmax(0,1fr)] ${pane}`}>

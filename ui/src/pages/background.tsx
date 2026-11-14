@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { BackButton } from "@/back";
 import { Activity } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { cn } from "cn";
@@ -178,6 +179,7 @@ function lasting(failure: { since: number; message: string } | null | undefined,
 
 /** docs/ui.md#后台: what runs in the background and what of it waits for the user, each leading to where it is. */
 export function BackgroundPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const work = useBackground();
   const crawl = useMutation({
@@ -211,7 +213,13 @@ export function BackgroundPage() {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto flex min-h-full w-full max-w-[720px] flex-col gap-7 px-7 pt-6 pb-8 phone:px-4 phone:pt-3.5">
-        <h1 className="text-2xl font-semibold phone:text-[22px]">后台</h1>
+        <div className="flex items-center gap-1">
+          <BackButton
+            up={() => void navigate({ to: "/more", replace: true })}
+            className="-ml-2 hidden phone:inline-flex"
+          />
+          <h1 className="text-2xl font-semibold phone:text-[22px]">后台</h1>
+        </div>
         {work.waiting > 0 && (
           <Group title="待处理" className="text-warning">
             {work.storage && (

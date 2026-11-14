@@ -8,8 +8,9 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { cn } from "cn";
-import { ChevronLeft, Inbox, ListTodo, MessagesSquare, RefreshCw, UserRound } from "lucide-react";
+import { Inbox, ListTodo, MessagesSquare, RefreshCw, UserRound } from "lucide-react";
+import { BackButton } from "@/back";
+import { useCompact } from "@/layout";
 import { call, failureOf } from "@/api/call";
 import type { TodoPage } from "@/api/types";
 import { Correspondence } from "@/components/correspondence";
@@ -79,6 +80,7 @@ export function useReceive() {
 export function ConversationsPage() {
   const search = useSearch({ from: "/conversations" });
   const navigate = useNavigate({ from: "/conversations" });
+  const compact = useCompact();
   const page = search.page ?? 1;
   const unread = search.show === "unread";
   const todos = search.show === "todos";
@@ -109,7 +111,10 @@ export function ConversationsPage() {
       >
         <header className="px-4 pt-6 pb-3 phone:pt-3.5">
           <div className="flex items-start justify-between gap-2">
-            <h1 className="text-2xl font-semibold phone:text-[22px]">往来</h1>
+            <div className="flex items-center gap-1">
+              <BackButton className="-ml-2 hidden phone:inline-flex" />
+              <h1 className="text-2xl font-semibold phone:text-[22px]">往来</h1>
+            </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
               <Button variant="ghost" className="px-2" disabled={receiving} onClick={receive}>
                 <RefreshCw strokeWidth={1.6} className={receiving ? "animate-spin" : ""} />
@@ -137,7 +142,7 @@ export function ConversationsPage() {
                 </>,
               ],
             ]}
-            onChange={(show) => navigate({ search: (s) => ({ ...s, show, page: undefined }) })}
+            onChange={(show) => navigate({ search: (s) => ({ ...s, show, page: undefined }), replace: true })}
           />
           {(receiveError || status.error || mailboxes.error) && (
             <FailureNote
@@ -179,6 +184,8 @@ export function ConversationsPage() {
                   key={c.mentorId}
                   to="/conversations"
                   search={(s) => ({ ...s, mentor: c.mentorId })}
+                  // docs/ui.md#交互: one opened beside the list is no step to go back over.
+                  replace={!compact}
                   aria-current={search.mentor === c.mentorId ? "true" : undefined}
                   className={`flex animate-fade-in items-center gap-3 rounded-md px-3 py-3 ${search.mentor === c.mentorId ? "bg-selected" : "hover:bg-muted"}`}
                 >
@@ -208,7 +215,7 @@ export function ConversationsPage() {
           <Pager
             page={page}
             total={listed.data?.total ?? 0}
-            onPage={(n) => navigate({ search: (s) => ({ ...s, page: n > 1 ? n : undefined }) })}
+            onPage={(n) => navigate({ search: (s) => ({ ...s, page: n > 1 ? n : undefined }), replace: true })}
           />
         </footer>
       </section>
@@ -225,6 +232,7 @@ export function ConversationsPage() {
 
 /** Every open todo, overdue first, then by due time, those without one last (docs/ui.md#交互). */
 function TodoList({ query, selected }: { query: UseQueryResult<TodoPage>; selected?: number }) {
+  const compact = useCompact();
   const now = useNow();
   if (query.isError) return <Notice title="待办未能加载" failure={failureOf(query.error)} />;
   if (!query.data) return <Loading />;
@@ -242,7 +250,12 @@ function TodoList({ query, selected }: { query: UseQueryResult<TodoPage>; select
           >
             <TodoCheck todo={t} />
             <div className="min-w-0 grow">
-              <Link to="/conversations" search={(s) => ({ ...s, mentor: t.mentorId })} className="block">
+              <Link
+                to="/conversations"
+                search={(s) => ({ ...s, mentor: t.mentorId })}
+                replace={!compact}
+                className="block"
+              >
                 <p className="wrap-anywhere">{t.text}</p>
                 <p className="mt-1 flex justify-between gap-2 text-sm text-muted-foreground">
                   <span className="truncate">{t.mentorName}</span>
@@ -260,15 +273,12 @@ function TodoList({ query, selected }: { query: UseQueryResult<TodoPage>; select
 
 function ConversationDetail({ id }: { id: number }) {
   const query = useQuery({ queryKey: ["getMentor", id], queryFn: () => call("getMentor", { id }) });
+  const navigate = useNavigate({ from: "/conversations" });
   const back = (
-    <Link
-      to="/conversations"
-      search={(s) => ({ ...s, mentor: undefined })}
-      aria-label="返回往来列表"
-      className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "hidden compact:inline-flex")}
-    >
-      <ChevronLeft strokeWidth={1.6} />
-    </Link>
+    <BackButton
+      up={() => void navigate({ search: (s) => ({ ...s, mentor: undefined }), replace: true })}
+      className="hidden compact:inline-flex"
+    />
   );
   if (query.isError)
     return (

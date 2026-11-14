@@ -1,6 +1,7 @@
 import { type MutationState, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useRouter } from "@tanstack/react-router";
 import { Check } from "lucide-react";
+import { BackButton, openSection } from "@/back";
 import { type ReactNode, useRef, useState } from "react";
 import { notificationPermission, requestNotificationPermission } from "@/api/app";
 import { call, failureOf, UiError } from "@/api/call";
@@ -38,7 +39,7 @@ const SEND_TEST_LETTER = ["sendTestLetter"];
  */
 export function WelcomePage() {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
+  const router = useRouter();
   const profile = useQuery({ queryKey: ["getProfile"], queryFn: () => call("getProfile", {}) });
   const mailboxes = useQuery({ queryKey: ["listMailboxes"], queryFn: () => call("listMailboxes", {}) });
   const models = useQuery({ queryKey: ["listModelConfigs"], queryFn: () => call("listModelConfigs", {}) });
@@ -55,7 +56,7 @@ export function WelcomePage() {
     mutationFn: () => call("finishOnboarding", {}),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["getProfile"] });
-      await navigate({ to: "/mentors" });
+      await openSection(router, "/mentors");
     },
   });
   const permission = useQuery({
@@ -169,7 +170,10 @@ export function WelcomePage() {
       <div className="mx-auto flex w-full max-w-[760px] flex-col px-7 pt-6 pb-10 phone:px-4">
         <header className="flex items-start gap-4 pb-6">
           <div className="grow">
-            <h1 className="text-2xl font-semibold">开始使用</h1>
+            <div className="flex items-center gap-1">
+              <BackButton className="-ml-2 hidden phone:inline-flex" />
+              <h1 className="text-2xl font-semibold">开始使用</h1>
+            </div>
             <p className="mt-1 text-sm text-muted-foreground">
               完成下面几项后即可开始联系导师。每一步都可先跳过，之后在设置里修改。
               {askFirst && "结束引导时会请求系统通知权限，用于提醒回信、待办和完成的工作。"}

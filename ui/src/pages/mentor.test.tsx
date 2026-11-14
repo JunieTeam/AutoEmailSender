@@ -14,6 +14,7 @@ vi.mock("@tanstack/react-router", () => ({
   useCanGoBack: () => false,
   useRouter: () => ({ history: { back: () => undefined } }),
   useSearch: () => ({}),
+  useRouterState: () => false,
 }));
 vi.mock("@/api/call", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/call")>()),

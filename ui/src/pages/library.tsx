@@ -120,13 +120,13 @@ function Library() {
   const choose = (org: string | undefined) => {
     setPicking(false);
     setExpanded(null);
-    void navigate({ search: (old) => ({ ...old, org, libraryPage: 1 }) });
+    void navigate({ search: (old) => ({ ...old, org, libraryPage: 1 }), replace: true });
   };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
         <aside
-          className={`flex w-64 shrink-0 flex-col gap-2 overflow-y-auto px-4 pb-6 compact:w-full ${picking ? "" : "compact:hidden"}`}
+          className={`flex w-64 shrink-0 flex-col gap-2 overflow-y-auto px-4 pb-6 compact:w-full [&>*]:shrink-0 ${picking ? "" : "compact:hidden"}`}
         >
           {orgs.error ? (
             <Retry error={orgs.error} onRetry={() => void orgs.refetch()} />
@@ -147,7 +147,7 @@ function Library() {
               value={s.q ?? ""}
               onChange={(q) => {
                 setExpanded(null);
-                void navigate({ search: (old) => ({ ...old, q: q || undefined, libraryPage: 1 }) });
+                void navigate({ search: (old) => ({ ...old, q: q || undefined, libraryPage: 1 }), replace: true });
               }}
             />
             {list.data && (
@@ -212,7 +212,7 @@ function Library() {
                   total={list.data.total}
                   onPage={(page) => {
                     setExpanded(null);
-                    void navigate({ search: (old) => ({ ...old, libraryPage: page }) });
+                    void navigate({ search: (old) => ({ ...old, libraryPage: page }), replace: true });
                   }}
                 />
               </div>

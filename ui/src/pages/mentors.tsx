@@ -2,6 +2,7 @@ import { findSearch } from "@/pages/find";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Download, Merge, Plus, SearchX, Trash2, UsersRound } from "lucide-react";
+import { BackButton } from "@/back";
 import { type ReactElement, useState } from "react";
 import { call, failureOf } from "@/api/call";
 import type { ContactStatus, Imported, MentorFilter, MentorSort, ReplyOutcomeFilter, Scope, Kind } from "@/api/types";
@@ -160,7 +161,10 @@ export function MentorsPage() {
       {/* docs/ui.md#布局: where the search box no longer fits beside the title, it takes a line of its own. */}
       <header className="flex items-center gap-4 px-7 pt-6 pb-4 phone:px-4 phone:pt-3.5 phone:pb-2.5 @max-[640px]:flex-wrap @max-[640px]:gap-y-2.5">
         <div className="shrink-0">
-          <h1 className="text-2xl font-semibold phone:text-[22px]">导师</h1>
+          <div className="flex items-center gap-1">
+            <BackButton className="-ml-2 hidden phone:inline-flex" />
+            <h1 className="text-2xl font-semibold phone:text-[22px]">导师</h1>
+          </div>
           <p className="mt-0.5 text-sm text-muted-foreground">{query.data ? `共 ${total.toLocaleString()} 位` : " "}</p>
         </div>
         <div className="grow" />
@@ -170,7 +174,7 @@ export function MentorsPage() {
           placeholder="搜索姓名、邮箱、单位、研究方向或备注"
           className="w-[360px] @max-[640px]:order-3 @max-[640px]:w-full"
           value={search.q ?? ""}
-          onChange={(q) => navigate({ search: (s) => ({ ...s, q: q || undefined, page: undefined }) })}
+          onChange={(q) => navigate({ search: (s) => ({ ...s, q: q || undefined, page: undefined }), replace: true })}
         />
         <AddMentorMenu
           trigger={
@@ -220,6 +224,7 @@ export function MentorsPage() {
                 opened: undefined,
                 page: undefined,
               }),
+              replace: true,
             })
           }
         />
@@ -227,7 +232,7 @@ export function MentorsPage() {
       <MentorFilters
         search={search}
         filter={listFilter(search)}
-        onChange={(next) => navigate({ search: (s) => ({ ...s, ...next, page: undefined }) })}
+        onChange={(next) => navigate({ search: (s) => ({ ...s, ...next, page: undefined }), replace: true })}
       >
         <PillSelect
           label="排序"
@@ -235,7 +240,10 @@ export function MentorsPage() {
           value={search.sort ?? "added"}
           active={false}
           onChange={(sort) =>
-            navigate({ search: (s) => ({ ...s, sort: sort === "match" ? sort : undefined, page: undefined }) })
+            navigate({
+              search: (s) => ({ ...s, sort: sort === "match" ? sort : undefined, page: undefined }),
+              replace: true,
+            })
           }
         />
       </MentorFilters>
@@ -247,7 +255,7 @@ export function MentorsPage() {
             options={[[undefined, "不限"], ...OUTCOME_FILTERS]}
             value={search.outcome}
             active={search.outcome !== undefined}
-            onChange={(outcome) => navigate({ search: (s) => ({ ...s, outcome, page: undefined }) })}
+            onChange={(outcome) => navigate({ search: (s) => ({ ...s, outcome, page: undefined }), replace: true })}
           />
         </div>
       )}
@@ -257,7 +265,10 @@ export function MentorsPage() {
             <Checkbox
               checked={search.unansweredDays !== undefined}
               onCheckedChange={(checked) =>
-                navigate({ search: (s) => ({ ...s, unansweredDays: checked ? days : undefined, page: undefined }) })
+                navigate({
+                  search: (s) => ({ ...s, unansweredDays: checked ? days : undefined, page: undefined }),
+                  replace: true,
+                })
               }
             />
             发出超过
@@ -274,7 +285,7 @@ export function MentorsPage() {
               setDays(value);
               localStorage.setItem("unansweredDays", String(value));
               if (search.unansweredDays !== undefined)
-                void navigate({ search: (s) => ({ ...s, unansweredDays: value, page: undefined }) });
+                void navigate({ search: (s) => ({ ...s, unansweredDays: value, page: undefined }), replace: true });
             }}
           />
           天未回复
@@ -289,7 +300,7 @@ export function MentorsPage() {
               ]}
               value={search.opened}
               active={search.opened !== undefined}
-              onChange={(opened) => navigate({ search: (s) => ({ ...s, opened, page: undefined }) })}
+              onChange={(opened) => navigate({ search: (s) => ({ ...s, opened, page: undefined }), replace: true })}
             />
           )}
         </div>
@@ -440,7 +451,7 @@ export function MentorsPage() {
         <Pager
           page={page}
           total={total}
-          onPage={(n) => navigate({ search: (s) => ({ ...s, page: n > 1 ? n : undefined }) })}
+          onPage={(n) => navigate({ search: (s) => ({ ...s, page: n > 1 ? n : undefined }), replace: true })}
         />
       </footer>
     </div>
