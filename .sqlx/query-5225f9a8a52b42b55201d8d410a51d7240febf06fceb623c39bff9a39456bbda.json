@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE crawl SET university = ?, school = ?\n                    WHERE id = ? AND kind = 'site' AND university IS NULL AND school IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "5225f9a8a52b42b55201d8d410a51d7240febf06fceb623c39bff9a39456bbda"
+}

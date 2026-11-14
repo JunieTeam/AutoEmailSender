@@ -8,19 +8,24 @@ import {
 } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Link, useNavigate, useRouter, useRouterState, useSearch } from "@tanstack/react-router";
+import { cn } from "cn";
 import { Inbox, SearchX } from "lucide-react";
 import { BackButton } from "@/back";
 import { Loading } from "@/components/loading";
 import { Notice } from "@/components/notice";
 import { FailureDetails, FailureNote } from "@/components/failure";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { exportCrawlLog } from "@/api/app";
 import { call, failureOf, UiError } from "@/api/call";
 import type {
-  CandidateDetail,
+  CandidateCounts,
   CandidateFilter,
+  CandidatePage,
   CandidateRow,
+  CandidateSelection,
   CrawlOption,
+  CrawlPage,
+  CrawlRun,
   CrawlStage,
   CrawlSummary,
   Decisions,
@@ -28,24 +33,32 @@ import type {
   EnrichPlan,
   EnrichSkipReason,
   ModelRate,
+  PageKind,
+  TokenTotals,
 } from "@/api/types";
 import { ModelAction, AiIcon } from "@/components/ai-writing";
 import { featureModel } from "@/components/model-dialog";
 import { BatchBar, Confirm } from "@/components/batch-bar";
-import { IntakeChoices, ProfileDetails } from "@/components/intake-choices";
-import { refreshMentors, placeOf } from "@/components/mentor";
+import { Field, formClose } from "@/components/form";
+import { IntakeChoices } from "@/components/intake-choices";
+import { Missing, refreshMentors, placeOf } from "@/components/mentor";
 import { Pager } from "@/components/mentor-table";
 import { LibraryTab } from "@/pages/library";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger, ExpandChevron } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Segments } from "@/components/ui/segments";
+import { StatusLabel, type Tone } from "@/components/ui/status-dot";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { PillSelect } from "@/components/ui/pill";
 import { costAt, costEstimate, day, hoursNote, money, time, UNITS } from "@/format";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { desktop } from "@/host";
 import { useKeptScroll } from "@/kept-scroll";
+import { COMPACT } from "@/layout";
+import { useNow } from "@/now";
+import { pageKey } from "@/page-keys";
 import { SearchBox } from "@/components/search-box";
 import { Tabs } from "@/components/tabs";
 
@@ -59,26 +72,33 @@ const FILTERS = {
 const EMPTY: Decisions = { take: [], matches: [], restore: [] };
 const TABS = ["candidates", "crawl", "library"] as const;
 const TAB_NAMES: Record<(typeof TABS)[number], string> = { candidates: "候选", crawl: "智能整理", library: "导师库" };
-const STAGES: Record<CrawlStage, string> = {
-  lists: "正在找名单",
-  profiles: "正在读个人页",
-  enrich: "正在补全信息",
-  paused: "已暂停",
-  done: "已完成",
-  failed: "未能完成",
-  canceled: "已取消",
+const STAGES: Record<CrawlStage, [string, Tone]> = {
+  lists: ["正在找名单", "info"],
+  profiles: ["正在读个人页", "info"],
+  enrich: ["正在补全信息", "info"],
+  paused: ["已暂停", "warning"],
+  done: ["已完成", "success"],
+  failed: ["未能完成", "destructive"],
+  canceled: ["已取消", "faint"],
 };
-/** A crawl by where it started, or an Agent submission by its school, short enough for a menu or a line. */
+/** What reading a page for a mentor takes, as measured on school sites. */
+const PAGE = { input: 1800, output: 200 };
+const PAGE_TOKENS = PAGE.input + PAGE.output;
+/**
+ * docs/ui.md#找导师: a crawl by the school and college it found, else by where it started; an Agent's
+ * submission by its school. Short enough for a menu or a line.
+ */
 export function crawlName(c: Pick<CrawlOption, "kind" | "url" | "university" | "school">): string {
   if (c.kind === "mentors") return "补全已有导师";
-  if (c.url === null) {
-    const unit = [c.university, c.school].filter(Boolean).join(" ");
-    return unit ? `Agent 提交：${unit}` : "Agent 提交";
-  }
-  return c.url
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "")
-    .slice(0, 48);
+  const unit = [c.university, c.school].filter(Boolean).join(" ");
+  if (c.kind === "agent") return unit ? `Agent 提交：${unit}` : "Agent 提交";
+  return (
+    unit ||
+    (c.url ?? "")
+      .replace(/^https?:\/\//, "")
+      .replace(/\/$/, "")
+      .slice(0, 48)
+  );
 }
 export function findSearch(s: Record<string, unknown>) {
   const filter: CandidateFilter =
@@ -95,6 +115,8 @@ export function findSearch(s: Record<string, unknown>) {
     recordPage: Math.max(1, Number(s.recordPage) || 1),
     libraryPage: Math.max(1, Number(s.libraryPage) || 1),
     detail: Number(s.detail) || undefined,
+    /** The candidate on show beside the list, or over it in a narrow window. */
+    candidate: Number(s.candidate) || undefined,
     org: typeof s.org === "string" && s.org !== "" ? s.org : undefined,
     q: typeof s.q === "string" && s.q !== "" ? s.q : undefined,
     /** The candidates' keyword; the library has its own. */
@@ -107,6 +129,7 @@ export function refreshCrawls(client: ReturnType<typeof useQueryClient>) {
     "crawlOptions",
     "crawlWork",
     "getCrawl",
+    "crawlUsage",
     "listCandidates",
     "getCandidate",
     "previewCandidates",
@@ -198,7 +221,7 @@ function Crawls() {
           aria-invalid={!!urls.trim() && validation.isError}
         />
         <p id="crawl-usage" className="text-sm text-muted-foreground">
-          一位导师约 5000 Token{chosen?.rate && `，${costEstimate(chosen.rate, 4000, 1000, 3)}`}
+          一位导师约 {PAGE_TOKENS} Token{chosen?.rate && `，${costEstimate(chosen.rate, PAGE.input, PAGE.output, 3)}`}
           。实际用量随人数和网页长度变化，另计寻找名单的用量。
         </p>
         <p className="text-sm text-muted-foreground">
@@ -222,97 +245,67 @@ function Crawls() {
         </div>
         <ErrorText error={models.error ?? start.error} />
       </section>
-      {s.detail && <OpenedCrawl key={s.detail} id={s.detail} />}
-      <h2 className="mb-3 text-lg font-medium">整理记录</h2>
+      <h2 className="mb-2 text-lg font-medium">整理记录</h2>
       <ErrorText error={records.error} />
       {records.isPending && <Loading />}
       {records.data?.total === 0 && <p className="text-muted-foreground">尚无整理记录，从上方填写网址开始</p>}
-      <div className="space-y-3">
-        {records.data?.crawls
-          .filter((c) => c.id !== s.detail)
-          .map((c) => (
-            <CrawlRecord key={c.id} crawl={c} expanded={false} />
-          ))}
+      <div className="max-w-3xl">
+        {records.data?.crawls.map((c) => (
+          <CrawlRow key={c.id} crawl={c} />
+        ))}
       </div>
       <Pages
         page={s.recordPage}
         total={records.data?.total ?? 0}
         onPage={(recordPage) => void navigate({ search: (old) => ({ ...old, recordPage }), replace: true })}
       />
+      {s.detail && <CrawlDialog key={s.detail} id={s.detail} />}
     </div>
   );
 }
-function OpenedCrawl({ id }: { id: number }) {
-  const detail = useQuery({
-    queryKey: ["getCrawl", id, 1],
-    queryFn: () => call("getCrawl", { id, page: 1 }),
-    refetchInterval: 2000,
-  });
-  return (
-    <div className="mb-6">
-      <ErrorText error={detail.error} />
-      {detail.data && <CrawlRecord crawl={detail.data.summary} expanded />}
-    </div>
-  );
+/** docs/ui.md#找导师: a crawl's state, and while it reads profiles or fills candidates in, how far it has got. */
+function CrawlStatus({ crawl: c, className }: { crawl: CrawlSummary; className?: string }) {
+  const [name, tone] = STAGES[c.stage];
+  const label =
+    c.stage === "profiles"
+      ? `读个人页 ${c.profilesDone}/${c.profiles}`
+      : c.stage === "enrich"
+        ? `补全还剩 ${c.enrichRemaining} 位`
+        : name;
+  return <StatusLabel tone={tone} label={label} className={className} />;
 }
-function CrawlRecord({ crawl: c, expanded }: { crawl: CrawlSummary; expanded: boolean }) {
+/** What a crawl has found: once it stops reading for one of a website, as all along for the others. */
+function found(c: CrawlSummary): string | false {
+  if (c.kind === "agent") return `收到 ${c.candidates} 位导师`;
+  if (c.kind === "mentors") return `补全 ${c.candidates} 位`;
+  // With none found, the line of its reason says what there is to say.
+  return c.state !== "running" && c.candidates > 0 && `找到 ${c.candidates} 位导师，${c.withEmail} 位有邮箱`;
+}
+function CrawlRow({ crawl: c }: { crawl: CrawlSummary }) {
   const navigate = useNavigate({ from: "/find" });
-  const router = useRouter();
-  const opened = useRouterState({ select: (s) => s.location.state.opened === true });
-  // docs/ui.md#交互: collapsing goes back to the records the details were opened from; opened from
-  // elsewhere, they give way to the records in place.
-  const toggle = () => {
-    if (!expanded) void navigate({ search: (s) => ({ ...s, detail: c.id }), state: { opened: true } });
-    else if (opened) router.history.back();
-    else void navigate({ search: (s) => ({ ...s, detail: undefined }), replace: true });
-  };
+  const summary = found(c);
   return (
-    <section className="animate-fade-in rounded-lg bg-muted p-4">
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-        <button
-          className="min-h-10 min-w-0 flex-1 text-left phone:basis-full"
-          onClick={toggle}
-          aria-expanded={expanded}
-        >
-          <strong className="break-all">{c.url ?? crawlName(c)}</strong>
-          <ExpandChevron className="ml-1 inline" />
-          <span className="mt-1 block text-sm text-muted-foreground">
-            {(c.kind === "mentors"
-              ? [c.stage !== "done" && STAGES[c.stage], `共 ${c.candidates} 位导师`]
-              : c.kind === "agent"
-                ? [c.stage !== "done" && STAGES[c.stage], `收到 ${c.candidates} 位导师`]
-                : [
-                    STAGES[c.stage],
-                    `找到 ${c.candidates} 位导师`,
-                    `读完 ${c.profiles} 位的个人页`,
-                    c.remaining > 0 && `还有 ${c.remaining} 页未读`,
-                  ]
-            )
-              .concat(c.enrichRemaining > 0 && `补全还剩 ${c.enrichRemaining} 位`)
-              .filter(Boolean)
-              .join(" · ")}
-          </span>
-          <span className="mt-1 block text-xs text-faint">
-            {day(c.createdAt)} {time(c.createdAt)}
-            {c.tokens !== null && ` · 已用 ${c.tokens.toLocaleString()} Token`}
-          </span>
-        </button>
-        <div className="flex flex-wrap items-center gap-1">
-          <CrawlControls crawl={c} />
-          <Button
-            variant="ghost"
-            onClick={() =>
-              void navigate({ search: (s) => ({ ...s, tab: "candidates", crawl: c.id, page: 1, processed: false }) })
-            }
-          >
-            查看候选
-          </Button>
-        </div>
+    <div className="mb-[3px] flex animate-fade-in items-center gap-2 rounded-md hover:bg-muted phone:flex-wrap">
+      <button
+        className="min-w-0 grow px-4 py-3 text-left"
+        // docs/ui.md#交互: the details are a step, which going back closes.
+        onClick={() => void navigate({ search: (s) => ({ ...s, detail: c.id }), state: { opened: true } })}
+      >
+        <span className="flex items-center gap-3">
+          <span className="min-w-0 grow truncate font-medium">{crawlName(c)}</span>
+          <CrawlStatus crawl={c} className="text-sm text-muted-foreground" />
+        </span>
+        <span className="mt-1 block truncate text-xs text-muted-foreground">
+          {day(c.createdAt)} {time(c.createdAt)}
+          {summary && ` · ${summary}`}
+        </span>
+        {c.error && <span className="mt-1 block truncate text-xs text-warning">{c.error.message}</span>}
+      </button>
+      {/* As wide on every row, so that their states line up. */}
+      <div className="flex w-28 shrink-0 items-center justify-end gap-1 pr-3 phone:w-full phone:pb-2 phone:empty:hidden">
+        <CrawlActions crawl={c} row />
       </div>
-      {c.error && <FailureNote failure={c.error} className="mt-2 text-sm text-warning" />}
-      {c.failed > 0 && <p className="mt-2 text-sm text-warning">{c.failed} 个页面未能打开，名单可能不完整</p>}
-      {expanded && <CrawlDetails id={c.id} />}
-    </section>
+    </div>
   );
 }
 /** "继续" of a paused crawl, which reads only the pages still to read; with none left, it calls no model. */
@@ -335,13 +328,16 @@ export function ResumeCrawl({
     </Button>
   );
 }
-function CrawlControls({ crawl: c }: { crawl: CrawlSummary }) {
+/** docs/ui.md#找导师: what can be done with a crawl now; its row offers only the next step, its details all. */
+function CrawlActions({ crawl: c, row = false }: { crawl: CrawlSummary; row?: boolean }) {
   const client = useQueryClient();
+  const navigate = useNavigate({ from: "/find" });
   const mutation = useMutation({
     mutationFn: (action: "pauseCrawl" | "resumeCrawl" | "cancelCrawl") => call(action, { id: c.id }),
     onSuccess: () => refreshCrawls(client),
     onError: () => client.invalidateQueries({ queryKey: ["listModelConfigs"] }),
   });
+  const going = c.state === "running" || c.state === "paused";
   return (
     <>
       {c.state === "running" && (
@@ -352,7 +348,7 @@ function CrawlControls({ crawl: c }: { crawl: CrawlSummary }) {
       {c.state === "paused" && (
         <ResumeCrawl crawl={c} disabled={mutation.isPending} onResume={() => mutation.mutate("resumeCrawl")} />
       )}
-      {(c.state === "running" || c.state === "paused") && (
+      {going && !row && (
         <Confirm
           trigger={
             <Button variant="ghost" disabled={mutation.isPending}>
@@ -364,25 +360,64 @@ function CrawlControls({ crawl: c }: { crawl: CrawlSummary }) {
           onConfirm={() => mutation.mutate("cancelCrawl")}
         />
       )}
+      {c.pending > 0 && !(row && going) && (
+        <Button
+          variant="ghost"
+          onClick={() =>
+            void navigate({
+              search: (s) => ({
+                ...s,
+                tab: "candidates",
+                crawl: c.id,
+                filter: "all",
+                keyword: undefined,
+                processed: false,
+                page: 1,
+                candidate: undefined,
+                detail: undefined,
+              }),
+            })
+          }
+        >
+          查看候选
+        </Button>
+      )}
       <ErrorText error={mutation.error} />
     </>
   );
 }
-function CrawlDetails({ id }: { id: number }) {
+/** docs/ui.md#找导师: all about one crawl, opened from its row as a step that going back closes. */
+function CrawlDialog({ id }: { id: number }) {
   const client = useQueryClient();
+  const router = useRouter();
+  const navigate = useNavigate({ from: "/find" });
+  const opened = useRouterState({ select: (s) => s.location.state.opened === true });
+  const [editing, setEditing] = useState(false);
+  // Opened from elsewhere, as from 后台, the details give way to the records in place.
+  const close = () => {
+    if (opened) router.history.back();
+    else void navigate({ search: (s) => ({ ...s, detail: undefined }), replace: true });
+  };
   const [page, setPage] = useState(1);
   const detail = useQuery({
-    queryKey: ["getCrawl", id, page],
-    queryFn: () => call("getCrawl", { id, page }),
+    queryKey: ["getCrawl", id, page, true],
+    queryFn: () => call("getCrawl", { id, page, failed: true }),
     refetchInterval: 2000,
   });
+  const c = detail.data?.summary;
+  const usage = useQuery({
+    queryKey: ["crawlUsage", id],
+    queryFn: () => call("crawlUsage", { id }),
+    enabled: c?.kind === "site",
+    refetchInterval: c?.state === "running" ? 2000 : false,
+  });
+  const now = useNow();
   const retry = useMutation({
     mutationFn: (target: number | null) => call("retryCrawl", { id, page: target }),
     onSuccess: () => refreshCrawls(client),
     onError: () => client.invalidateQueries({ queryKey: ["listModelConfigs"] }),
   });
   const exported = useMutation({ mutationFn: () => exportCrawlLog(id) });
-  const navigate = useNavigate({ from: "/find" });
   const remove = useMutation({
     mutationFn: () => call("deleteCrawl", { id }),
     onSuccess: () => {
@@ -395,97 +430,111 @@ function CrawlDetails({ id }: { id: number }) {
       refreshCrawls(client);
     },
   });
+  const d = detail.data;
   return (
-    <div className="mt-4 space-y-3 border-t border-border pt-4 text-sm">
-      <ErrorText error={detail.error ?? retry.error} />
-      {detail.data && (
-        <>
-          <div className="space-y-1 break-all select-text">
-            {detail.data.urls.map((url) => (
-              <p key={url}>{url}</p>
-            ))}
-          </div>
-          {detail.data.limits.length > 0 && (
-            <div className="rounded-md bg-warning-soft p-3 text-warning">
-              名单可能不完整：{detail.data.limits.join("；")}
-            </div>
-          )}
-          {detail.data.pageTotal > 0 && (
+    <Dialog open onOpenChange={formClose(editing, false, close)}>
+      <DialogContent className="w-[760px]">
+        <DialogHeader>{c ? crawlName(c) : "整理详情"}</DialogHeader>
+        <DialogBody className="space-y-5 pb-4 text-sm">
+          <ErrorText error={detail.error ?? retry.error} />
+          {!d || !c ? (
+            !detail.error && <Loading />
+          ) : (
             <>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="mr-auto font-medium">页面及未打开的原因</h3>
-                {detail.data.summary.retryable > 0 && (
-                  <ModelAction
-                    feature="crawl"
-                    modelIds={detail.data.summary.retryModelIds}
-                    disabled={retry.isPending}
-                    onWrite={() => retry.mutate(null)}
-                  >
-                    重试全部未打开页面
-                  </ModelAction>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                需要浏览器验证、渲染、解密或点击翻页的页面保留已读资料；本次无法接管浏览器
-              </p>
-              {detail.data.pages.map((p) => (
-                <div key={p.id} className="flex items-start gap-2 rounded-md bg-muted p-3">
-                  <div className="min-w-0 grow">
-                    <p className="break-all select-text">{p.url}</p>
-                    <p
-                      className={
-                        p.status !== "success" && p.state === "done"
-                          ? "mt-1 text-warning"
-                          : "mt-1 text-muted-foreground"
-                      }
-                    >
-                      {p.state === "queued"
-                        ? "待读取"
-                        : p.state === "running"
-                          ? "正在读取"
-                          : (p.error?.message ?? "已读取")}
+              {c.kind === "site" && (
+                <div className="space-y-1">
+                  {d.urls.map((url) => (
+                    <p key={url} className="break-all text-muted-foreground select-text">
+                      {url}
                     </p>
-                    {p.state === "done" && p.error && <FailureDetails failure={p.error} />}
-                  </div>
-                  {p.retryable && (
-                    // A retry sets the crawl going again, so the pages still to read are read too.
-                    <ModelAction
-                      feature="crawl"
-                      modelIds={[
-                        ...detail.data.summary.modelIds,
-                        p.kind.startsWith("enrich_") ? null : detail.data.summary.modelConfigId,
-                      ]}
-                      disabled={retry.isPending}
-                      onWrite={() => retry.mutate(p.id)}
-                    >
-                      重试
-                    </ModelAction>
-                  )}
+                  ))}
+                  <CrawlUnit crawl={c} onEditing={setEditing} />
                 </div>
-              ))}
-              <Pages page={page} total={detail.data.pageTotal} onPage={setPage} />
+              )}
+              <dl className="grid grid-cols-3 gap-x-6 gap-y-4 rounded-lg bg-muted p-4 phone:grid-cols-2">
+                <Figure label="状态">
+                  <CrawlStatus crawl={c} />
+                </Figure>
+                <Figure label={c.kind === "agent" ? "收到导师" : c.kind === "mentors" ? "补全导师" : "找到导师"}>
+                  {c.candidates} 位
+                </Figure>
+                <Figure label="有邮箱">{c.withEmail} 位</Figure>
+                {c.kind === "site" && (
+                  <>
+                    <Figure label="个人页（已读/共）">
+                      {c.profilesDone} / {c.profiles}
+                    </Figure>
+                    <Figure label="用量">{usage.data ? spent(usage.data) : "—"}</Figure>
+                    <Figure label="用时">{elapsed(d.runs, now)}</Figure>
+                  </>
+                )}
+              </dl>
+              {c.error && <FailureNote failure={c.error} className="text-warning" />}
+              <div className="flex flex-wrap items-center gap-2 empty:hidden">
+                <CrawlActions crawl={c} />
+              </div>
+              {d.limits.length > 0 && (
+                <p className="rounded-md bg-warning-soft p-3 text-warning">名单可能不完整：{d.limits.join("；")}</p>
+              )}
+              {d.pageTotal > 0 && (
+                <section className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="mr-auto font-medium">未打开的页面 · {d.pageTotal} 页</h3>
+                    {c.retryable > 1 && (
+                      <ModelAction
+                        feature="crawl"
+                        modelIds={c.retryModelIds}
+                        disabled={retry.isPending}
+                        onWrite={() => retry.mutate(null)}
+                      >
+                        全部重试
+                      </ModelAction>
+                    )}
+                  </div>
+                  {d.pages.map((p) => (
+                    <PageLine key={p.id} page={p}>
+                      {p.retryable && (
+                        // A retry sets the crawl going again, so the pages still to read are read too.
+                        <ModelAction
+                          feature="crawl"
+                          modelIds={[...c.modelIds, p.kind.startsWith("enrich_") ? null : c.modelConfigId]}
+                          disabled={retry.isPending}
+                          onWrite={() => retry.mutate(p.id)}
+                        >
+                          重试
+                        </ModelAction>
+                      )}
+                    </PageLine>
+                  ))}
+                  <Pages page={page} total={d.pageTotal} onPage={setPage} />
+                </section>
+              )}
+              {c.pages + c.remaining > 0 && <AllPages id={id} total={c.pages + c.remaining} />}
+              {d.runs.length > 0 && (
+                <Collapsible>
+                  <CollapsibleTrigger>运行记录</CollapsibleTrigger>
+                  <CollapsibleContent>
+                    {d.runs.map((r, n) => (
+                      <p key={n} className="mt-2 text-xs text-muted-foreground">
+                        {day(r.startedAt)} {time(r.startedAt)} —{" "}
+                        {r.endedAt ? `${day(r.endedAt)} ${time(r.endedAt)}` : "进行中"} · {r.appVersion}
+                      </p>
+                    ))}
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
             </>
           )}
-          {detail.data.runs.length > 0 && (
-            <Collapsible>
-              <CollapsibleTrigger>运行记录</CollapsibleTrigger>
-              <CollapsibleContent>
-                {detail.data.runs.map((r, n) => (
-                  <p key={n} className="mt-2 text-xs text-muted-foreground">
-                    {day(r.startedAt)} {time(r.startedAt)} —{" "}
-                    {r.endedAt ? `${day(r.endedAt)} ${time(r.endedAt)}` : "进行中"} · {r.appVersion}
-                  </p>
-                ))}
-              </CollapsibleContent>
-            </Collapsible>
-          )}
-          <div className="flex flex-wrap items-center gap-3">
+        </DialogBody>
+        {d && (
+          <DialogFooter className="flex-wrap">
             {desktop && (
               <Button variant="quiet" disabled={exported.isPending} onClick={() => exported.mutate()}>
                 导出这次整理的日志
               </Button>
             )}
-            {exported.data && <span className="text-muted-foreground">已导出</span>}
+            {exported.data && <span className="text-sm text-muted-foreground">已导出</span>}
+            <ErrorText error={exported.error ?? remove.error} />
             <Confirm
               trigger={
                 <Button variant="ghost" className="ml-auto text-destructive" disabled={remove.isPending}>
@@ -496,31 +545,183 @@ function CrawlDetails({ id }: { id: number }) {
               action="删除"
               onConfirm={() => remove.mutate()}
             />
-            <ErrorText error={exported.error} />
-            <ErrorText error={remove.error} />
-          </div>
-        </>
-      )}
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+function Figure({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 font-medium break-words tabular-nums">{children}</dd>
     </div>
   );
 }
+/** "12,345 Token，约 0.12 元": the cost at the models' prices now, where they are filled in. */
+function spent(t: TokenTotals): string {
+  const costs = (["cny", "usd"] as const).flatMap((currency) => {
+    const amount = t.estimatedCost[currency];
+    return amount === null ? [] : [money(amount, currency, { about: true })];
+  });
+  return [`${(t.input + t.output).toLocaleString()} Token`, ...costs].join("，");
+}
+/** "1 小时 5 分钟": all the runs together, the one going on until now. */
+function elapsed(runs: CrawlRun[], now: number): string {
+  const ms = runs.reduce((sum, r) => sum + Math.max(0, (r.endedAt ?? now) - r.startedAt), 0);
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return "不到 1 分钟";
+  const hours = Math.floor(minutes / 60);
+  return hours > 0 ? `${hours} 小时 ${minutes % 60} 分钟` : `${minutes} 分钟`;
+}
+/**
+ * docs/design.md#导师: the school and college the crawl found, written as the user corrects them,
+ * which its candidates still to review follow.
+ */
+function CrawlUnit({ crawl: c, onEditing }: { crawl: CrawlSummary; onEditing: (editing: boolean) => void }) {
+  const client = useQueryClient();
+  const [form, setForm] = useState<{ university: string; school: string } | null>(null);
+  const edit = (next: typeof form) => {
+    setForm(next);
+    onEditing(next !== null);
+  };
+  const save = useMutation({
+    mutationFn: (unit: { university: string; school: string }) =>
+      call("setCrawlUnit", { id: c.id, university: unit.university, school: unit.school.trim() || null }),
+    onSuccess: () => {
+      edit(null);
+      refreshCrawls(client);
+    },
+  });
+  if (!form) {
+    const unit = c.university && (c.school ? `${c.university} ${c.school}` : `${c.university}（全校）`);
+    return (
+      <p className="flex flex-wrap items-center gap-x-2">
+        {unit ? `学校和学院：${unit}` : <span className="text-muted-foreground">没认出学校和学院</span>}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => edit({ university: c.university ?? "", school: c.school ?? "" })}
+        >
+          {unit ? "修改" : "填写"}
+        </Button>
+      </p>
+    );
+  }
+  return (
+    <form
+      className="mt-2 space-y-3 rounded-lg border border-border p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate(form);
+      }}
+    >
+      <div className="grid grid-cols-2 gap-3 phone:grid-cols-1">
+        <Field label="学校" id="crawl-university">
+          <Input
+            id="crawl-university"
+            value={form.university}
+            onChange={(e) => setForm({ ...form, university: e.target.value })}
+          />
+        </Field>
+        <Field label="学院（全校的名录不填）" id="crawl-school">
+          <Input id="crawl-school" value={form.school} onChange={(e) => setForm({ ...form, school: e.target.value })} />
+        </Field>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        这次整理还没审核的候选跟着改，写着别的学校、学院的不动；已接受的导师不改。
+      </p>
+      <ErrorText error={save.error} />
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" disabled={save.isPending} onClick={() => edit(null)}>
+          取消
+        </Button>
+        <Button type="submit" disabled={!form.university.trim() || save.isPending}>
+          保存
+        </Button>
+      </div>
+    </form>
+  );
+}
+const PAGE_KINDS: Record<PageKind, string> = {
+  entry: "入口",
+  list: "名单",
+  profile: "个人页",
+  enrich_profile: "补全",
+  enrich_child: "补全",
+};
+function PageLine({ page: p, children }: { page: CrawlPage; children?: ReactNode }) {
+  const failed = p.state === "done" && p.status !== "success";
+  return (
+    <div className="flex items-start gap-2 rounded-md bg-muted p-3">
+      <div className="min-w-0 grow">
+        <p className="break-all select-text">{p.url}</p>
+        <p className={`mt-1 ${failed ? "text-warning" : "text-muted-foreground"}`}>
+          {PAGE_KINDS[p.kind]} ·{" "}
+          {p.state === "queued" ? "待读取" : p.state === "running" ? "正在读取" : (p.error?.message ?? "已读取")}
+        </p>
+        {failed && p.error && <FailureDetails failure={p.error} />}
+      </div>
+      {children}
+    </div>
+  );
+}
+/** Every page the crawl has read or is to read, fetched once opened. */
+function AllPages({ id, total }: { id: number; total: number }) {
+  const [open, setOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const pages = useQuery({
+    queryKey: ["getCrawl", id, page, false],
+    queryFn: () => call("getCrawl", { id, page, failed: false }),
+    enabled: open,
+    refetchInterval: 2000,
+  });
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger>全部页面 · {total} 页</CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="space-y-2 pt-2">
+          <ErrorText error={pages.error} />
+          {pages.data?.pages.map((p) => (
+            <PageLine key={p.id} page={p} />
+          ))}
+          <Pages page={page} total={pages.data?.pageTotal ?? 0} onPage={setPage} />
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+const COUNTS: Record<CandidateFilter, keyof CandidateCounts> = {
+  all: "all",
+  new: "new",
+  supplement: "supplement",
+  maybe: "maybe",
+  missing_email: "missingEmail",
+};
 function Candidates() {
   const s = useSearch({ from: "/find" });
   const navigate = useNavigate({ from: "/find" });
   const client = useQueryClient();
-  const [selected, setSelected] = useState<number[]>([]);
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [enrich, setEnrich] = useState<number[] | null>(null);
   const [enrichResult, setEnrichResult] = useState<EnrichPlan | null>(null);
   const [review, setReview] = useState<number[] | null>(null);
   const [choices, setChoices] = useState<Record<number, Decisions>>({});
-  const q = { crawlId: s.crawl ?? null, filter: s.filter, processed: s.processed, keyword: s.keyword, page: s.page };
+  const [error, setError] = useState<unknown>(null);
+  const selection: CandidateSelection = {
+    crawlId: s.crawl ?? null,
+    filter: s.filter,
+    processed: s.processed,
+    keyword: s.keyword,
+  };
+  const q = { ...selection, page: s.page };
   // Ticks belong to one filter: changing it, including by going back, starts over; pages keep them.
-  const criteria = JSON.stringify([q.crawlId, q.filter, q.processed, q.keyword]);
+  const criteria = JSON.stringify(selection);
   const [shownCriteria, setShownCriteria] = useState(criteria);
   if (shownCriteria !== criteria) {
     setShownCriteria(criteria);
-    setSelected([]);
+    setSelected(new Set());
   }
   const list = useQuery({
     queryKey: ["listCandidates", q],
@@ -534,27 +735,103 @@ function Candidates() {
   });
   // docs/design.md: candidates from an Agent are marked, the app did not read their pages itself.
   const agentCrawls = new Set(crawls.data?.filter((c) => c.kind === "agent").map((c) => c.id));
+  const items = list.data?.candidates ?? [];
+  const total = list.data?.total ?? 0;
+  const current = s.candidate ?? items[0]?.id;
+  useEffect(() => {
+    const compact = matchMedia(COMPACT);
+    function openFirst() {
+      if (!s.candidate && current !== undefined && !compact.matches)
+        void navigate({ search: (old) => ({ ...old, candidate: current }), replace: true });
+    }
+    openFirst();
+    compact.addEventListener("change", openFirst);
+    return () => compact.removeEventListener("change", openFirst);
+  }, [current, s.candidate, navigate]);
+  /**
+   * docs/ui.md#交互: a candidate opened over the list is a step that going back undoes; one opened
+   * beside the list, or moved on to from the one before, is not.
+   */
+  function choose(candidate: number | undefined, step = matchMedia(COMPACT).matches) {
+    void navigate({ search: (old) => ({ ...old, candidate }), replace: !step });
+  }
+  /** Shows another page of the list, and on it the candidate `pick` chooses. */
+  function turn(page: number, pick: (shown: CandidatePage) => number | undefined) {
+    const next = { ...q, page };
+    void client
+      .fetchQuery({ queryKey: ["listCandidates", next], queryFn: () => call("listCandidates", next) })
+      .then((shown) => navigate({ search: (old) => ({ ...old, page, candidate: pick(shown) }), replace: true }))
+      .catch(setError);
+  }
+  function move(delta: number) {
+    const next = items[items.findIndex((c) => c.id === current) + delta];
+    if (next) choose(next.id, false);
+    else if (delta > 0 && s.page * 50 < total) turn(s.page + 1, (shown) => shown.candidates[0]?.id);
+    else if (delta < 0 && s.page > 1) turn(s.page - 1, (shown) => shown.candidates.at(-1)?.id);
+  }
+  /** docs/ui.md#找导师: once one is reviewed, the next one is on show, which takes its place on the list. */
+  function reviewed(id: number) {
+    const index = items.findIndex((c) => c.id === id);
+    choose((items[index + 1] ?? items[index - 1])?.id, false);
+    refreshCrawls(client);
+  }
+  useEffect(() => {
+    function key(e: KeyboardEvent) {
+      const pressed = pageKey(e);
+      if (pressed === "j" || pressed === "k") {
+        e.preventDefault();
+        move(pressed === "j" ? 1 : -1);
+      }
+    }
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  });
+  const tickAll = useMutation({
+    mutationFn: (asked: { selection: CandidateSelection; from: ReadonlySet<number> }) =>
+      call("listCandidateIds", asked.selection),
+    // Only over the ticks it was asked from: ticking or unticking while it ran replaced them.
+    onSuccess: (ids, { from }) => setSelected((old) => (old === from ? new Set(ids) : old)),
+  });
   const reject = useMutation({
     mutationFn: (ids: number[]) => call("rejectCandidates", { ids }),
-    onSuccess: () => {
-      setSelected([]);
+    // Only these: others may have been ticked while it ran.
+    onSuccess: (_, ids) => {
+      const gone = new Set(ids);
+      setSelected((old) => new Set([...old].filter((id) => !gone.has(id))));
       refreshCrawls(client);
     },
   });
   const change = (part: Partial<typeof s>) => {
-    void navigate({ search: (old) => ({ ...old, ...part, page: 1 }), replace: true });
+    void navigate({ search: (old) => ({ ...old, ...part, page: 1, candidate: undefined }), replace: true });
   };
-  const items = list.data?.candidates ?? [];
+  const tick = (id: number, ticked: boolean) =>
+    setSelected((old) => {
+      const next = new Set(old);
+      if (ticked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const chosen = s.candidate !== undefined;
+  const all = total > 0 && selected.size === total;
   return (
     <>
-      <div className="shrink-0 space-y-3 px-6 pb-4 phone:px-4">
+      <div className={`shrink-0 space-y-3 px-6 pb-3 phone:px-4 ${chosen ? "compact:hidden" : ""}`}>
         <div className="flex flex-wrap items-center gap-2">
           <Segments
             label="候选分类"
             value={s.filter}
-            options={Object.entries(FILTERS).map(
-              ([value, label]) => [findSearch({ filter: value }).filter, label] as const,
-            )}
+            options={Object.entries(FILTERS).map(([value, label]) => {
+              const filter = findSearch({ filter: value }).filter;
+              return [
+                filter,
+                <>
+                  {label}
+                  {list.data && (
+                    <span className="text-xs text-faint tabular-nums">{list.data.counts[COUNTS[filter]]}</span>
+                  )}
+                </>,
+              ] as const;
+            })}
             onChange={(filter) => change({ filter })}
           />
           <div className="grow" />
@@ -590,27 +867,13 @@ function Candidates() {
             已安排补全 {enrichResult.ids.length} 位<SkippedEnrich plan={enrichResult} />
           </p>
         )}
-        <ErrorText error={list.error ?? crawls.error ?? reject.error} />
+        <ErrorText error={list.error ?? crawls.error ?? error} />
       </div>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-6 pb-24 phone:px-4">
-        {!s.processed && items.length > 0 && (
-          <label className="mb-3 flex min-h-10 items-center gap-2 text-sm">
-            <Checkbox
-              checked={items.every((c) => selected.includes(c.id))}
-              onCheckedChange={(checked) =>
-                setSelected(
-                  checked
-                    ? [...new Set([...selected, ...items.map((c) => c.id)])]
-                    : selected.filter((id) => !items.some((c) => c.id === id)),
-                )
-              }
-            />
-            选择本页
-          </label>
-        )}
-        {list.isPending && <Loading />}
-        {list.data?.total === 0 &&
-          (s.filter !== "all" || s.crawl !== undefined || s.keyword !== undefined ? (
+      {list.isPending ? (
+        <Loading />
+      ) : total === 0 ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 phone:px-4">
+          {s.filter !== "all" || s.crawl !== undefined || s.keyword !== undefined ? (
             <Notice icon={SearchX} title="无符合条件的候选" detail="可更换筛选条件查看" />
           ) : s.processed ? (
             <Notice icon={Inbox} title="尚无已处理的候选" detail="接受或拒绝后的候选会列在这里" />
@@ -621,110 +884,98 @@ function Candidates() {
               detail="智能整理找到的导师先列在这里，审核后加入导师列表"
               actions={<Button onClick={() => change({ tab: "crawl" })}>开始智能整理</Button>}
             />
-          ))}
-        <div className="space-y-2">
-          {items.map((c) => (
-            <section
-              key={c.id}
-              className="flex animate-fade-in items-start gap-3 rounded-lg bg-muted p-4 phone:flex-wrap"
-            >
-              {!s.processed && (
-                <label className="flex min-h-10 min-w-10 cursor-pointer items-center justify-center">
-                  <Checkbox
-                    aria-label={`选择${c.name}`}
-                    checked={selected.includes(c.id)}
-                    onCheckedChange={(checked) =>
-                      setSelected((ids) => (checked ? [...ids, c.id] : ids.filter((id) => id !== c.id)))
-                    }
-                  />
-                </label>
-              )}
-              <div className="min-w-0 flex-1">
-                <button
-                  className="min-h-10 w-full text-left"
-                  onClick={() => setExpanded(expanded === c.id ? null : c.id)}
-                  aria-expanded={expanded === c.id}
-                >
-                  <strong>{c.name}</strong>
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {s.processed ? (c.review === "rejected" ? "已拒绝" : "已接受") : FILTERS[c.category]}
-                    {c.crawlId !== null && agentCrawls.has(c.crawlId) && " · Agent 提交"}
-                  </span>
-                  <ExpandChevron className="ml-1 inline" />
-                  <span className="mt-1 block text-sm text-muted-foreground">
-                    {c.affiliation && [placeOf(c.affiliation), c.affiliation.title].filter(Boolean).join(" · ")}
-                  </span>
-                  <span className="mt-1 block text-sm break-all text-muted-foreground">
-                    {c.emails.length > 0 ? c.emails.join("、") : <span className="text-warning">缺邮箱</span>}
-                  </span>
-                  {c.research && (
-                    <span className="mt-1 block line-clamp-2 text-sm text-muted-foreground">{c.research}</span>
-                  )}
-                </button>
-                {(c.enrich === "queued" || c.enrich === "running") && (
-                  <p role="status" className="mt-2 text-sm text-muted-foreground">
-                    补全中
-                  </p>
-                )}
-                {c.enrichChanges.length > 0 && (
-                  <p className="mt-2 text-sm text-brand-text">
-                    已补充{[...new Set(c.enrichChanges.map((v) => ENRICH_FIELDS[v.field]))].join("、")}
-                  </p>
-                )}
-                {c.enrichError && <FailureNote failure={c.enrichError} className="mt-2 text-sm text-warning" />}
-                {c.sourceUrl && <SourceLink url={c.sourceUrl} />}
-                {c.issue && <p className="mt-2 text-sm text-warning">{c.issue}</p>}
-                <Collapsible open={expanded === c.id}>
-                  <CollapsibleContent>
-                    <CandidateDetails
-                      candidate={c}
-                      decisions={choices[c.id] ?? EMPTY}
-                      onChange={(next) =>
-                        setChoices((previous) => ({
-                          ...previous,
-                          [c.id]: typeof next === "function" ? next(previous[c.id] ?? EMPTY) : next,
-                        }))
-                      }
-                    />
-                  </CollapsibleContent>
-                </Collapsible>
-              </div>
-              {!s.processed && (
-                <div className="flex gap-1 phone:w-full phone:justify-end">
-                  <Button size="sm" disabled={!!c.issue} onClick={() => setReview([c.id])}>
-                    {c.category === "supplement" ? "补充" : "接受"}
-                  </Button>
-                  <Button size="sm" variant="ghost" disabled={reject.isPending} onClick={() => reject.mutate([c.id])}>
-                    拒绝
-                  </Button>
-                </div>
-              )}
-              {s.processed && c.mentorId && (
-                <Link to="/mentors/$mentorId" params={{ mentorId: c.mentorId }} className="text-sm text-brand-text">
-                  查看导师
-                </Link>
-              )}
-            </section>
-          ))}
+          )}
         </div>
-        <Pages
-          page={s.page}
-          total={list.data?.total ?? 0}
-          onPage={(page) => void navigate({ search: (old) => ({ ...old, page }), replace: true })}
-        />
-      </div>
-      {!s.processed && (
-        <BatchBar count={selected.length} errors={[]} onClear={() => setSelected([])}>
-          <Button size="sm" onClick={() => setReview([...selected])}>
-            批量接受
-          </Button>
-          <Button size="sm" variant="quiet" onClick={() => setEnrich([...selected])}>
-            补全
-          </Button>
-          <Button size="sm" variant="ghost" disabled={reject.isPending} onClick={() => reject.mutate(selected)}>
-            批量拒绝
-          </Button>
-        </BatchBar>
+      ) : (
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(280px,360px)_minmax(0,1fr)] border-t border-border compact:grid-cols-1">
+          <section
+            className={`relative flex min-h-0 flex-col border-r border-border compact:border-0 ${chosen ? "compact:hidden" : ""}`}
+          >
+            {!s.processed && (
+              <label className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 px-5 text-sm">
+                <Checkbox
+                  checked={all}
+                  indeterminate={selected.size > 0 && !all}
+                  disabled={tickAll.isPending}
+                  onCheckedChange={(checked) =>
+                    checked ? tickAll.mutate({ selection, from: selected }) : setSelected(new Set())
+                  }
+                />
+                全选筛出的 {total.toLocaleString()} 位
+              </label>
+            )}
+            <div ref={scroller} className="min-h-0 flex-1 space-y-[3px] overflow-y-auto px-2 pb-24">
+              {items.map((c) => (
+                <CandidateLine
+                  key={c.id}
+                  candidate={c}
+                  current={c.id === current}
+                  agent={c.crawlId !== null && agentCrawls.has(c.crawlId)}
+                  ticked={s.processed ? null : selected.has(c.id)}
+                  onTick={(ticked) => tick(c.id, ticked)}
+                  onChoose={() => choose(c.id)}
+                />
+              ))}
+              <Pages
+                page={s.page}
+                total={total}
+                onPage={(page) =>
+                  void navigate({ search: (old) => ({ ...old, page, candidate: undefined }), replace: true })
+                }
+              />
+            </div>
+            {!s.processed && (
+              <BatchBar
+                count={selected.size}
+                errors={[
+                  ...(tickAll.error ? [{ lead: "未能全选：", failure: failureOf(tickAll.error) }] : []),
+                  ...(reject.error ? [{ lead: "未能拒绝：", failure: failureOf(reject.error) }] : []),
+                ]}
+                onClear={() => {
+                  setSelected(new Set());
+                  for (const action of [tickAll, reject]) if (!action.isPending) action.reset();
+                }}
+              >
+                <Button size="sm" onClick={() => setReview([...selected])}>
+                  接受
+                </Button>
+                <Button size="sm" variant="quiet" onClick={() => setEnrich([...selected])}>
+                  补全
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={reject.isPending}
+                  onClick={() => reject.mutate([...selected])}
+                >
+                  拒绝
+                </Button>
+              </BatchBar>
+            )}
+          </section>
+          {current === undefined ? (
+            <section className="compact:hidden" />
+          ) : (
+            <CandidatePane
+              key={current}
+              id={current}
+              row={items.find((c) => c.id === current)}
+              agent={items.some((c) => c.id === current && c.crawlId !== null && agentCrawls.has(c.crawlId))}
+              chosen={chosen}
+              decisions={choices[current] ?? EMPTY}
+              onChange={(next) =>
+                setChoices((previous) => ({
+                  ...previous,
+                  [current]: typeof next === "function" ? next(previous[current] ?? EMPTY) : next,
+                }))
+              }
+              onBack={() => choose(undefined, false)}
+              onMove={move}
+              onReviewed={() => reviewed(current)}
+              onEnrich={() => setEnrich([current])}
+            />
+          )}
+        </div>
       )}
       {enrich && (
         <EnrichCandidatesDialog
@@ -733,7 +984,7 @@ function Candidates() {
           onDone={(result) => {
             setEnrichResult(result);
             setEnrich(null);
-            setSelected([]);
+            setSelected(new Set());
             refreshCrawls(client);
           }}
         />
@@ -744,7 +995,7 @@ function Candidates() {
           initialDecisions={review.length === 1 && review[0] !== undefined ? (choices[review[0]] ?? EMPTY) : EMPTY}
           onClose={() => setReview(null)}
           onDone={() => {
-            setSelected([]);
+            setSelected(new Set());
             setReview(null);
             refreshCrawls(client);
             refreshMentors(client);
@@ -752,6 +1003,66 @@ function Candidates() {
         />
       )}
     </>
+  );
+}
+/** docs/ui.md#找导师: what to look out for in a candidate, written at the end of their line. */
+function flags(c: CandidateRow, agent: boolean): [string, string][] {
+  const all: [boolean, string, string][] = [
+    [c.category === "supplement", "可补充", "text-brand-text"],
+    [c.category === "maybe", "可能是同一位", "text-warning"],
+    [c.recognized.length > 0, "从图片识别", "text-warning"],
+    [agent, "Agent 提交", "text-muted-foreground"],
+    [c.enrich === "queued" || c.enrich === "running", "补全中", "text-muted-foreground"],
+  ];
+  return all.filter(([on]) => on).map(([, label, tone]) => [label, tone]);
+}
+function CandidateLine({
+  candidate: c,
+  current,
+  agent,
+  ticked,
+  onTick,
+  onChoose,
+}: {
+  candidate: CandidateRow;
+  current: boolean;
+  agent: boolean;
+  /** None among those already reviewed, which are not ticked. */
+  ticked: boolean | null;
+  onTick: (ticked: boolean) => void;
+  onChoose: () => void;
+}) {
+  const marks: [string, string][] =
+    ticked === null ? [[c.review === "rejected" ? "已拒绝" : "已接受", "text-muted-foreground"]] : flags(c, agent);
+  return (
+    <div className={`flex animate-fade-in items-start rounded-md ${current ? "bg-selected" : "hover:bg-muted"}`}>
+      {ticked !== null && (
+        <label className="flex min-h-[58px] min-w-10 shrink-0 cursor-pointer items-center justify-center">
+          <Checkbox aria-label={`选择${c.name}`} checked={ticked} onCheckedChange={onTick} />
+        </label>
+      )}
+      <button
+        className={`min-w-0 grow py-2.5 pr-3 text-left ${ticked === null ? "pl-3" : ""}`}
+        aria-current={current}
+        onClick={onChoose}
+      >
+        <span className="flex items-baseline gap-2">
+          <span className="truncate font-medium">{c.name}</span>
+          {c.affiliation?.title && (
+            <span className="min-w-0 truncate text-xs text-muted-foreground">{c.affiliation.title}</span>
+          )}
+          <span className="grow" />
+          {marks.map(([label, tone]) => (
+            <span key={label} className={`shrink-0 text-xs ${tone}`}>
+              {label}
+            </span>
+          ))}
+        </span>
+        <span className="mt-0.5 block truncate text-sm text-muted-foreground">
+          {c.emails.length > 0 ? c.emails.join("、") : <span className="text-warning">缺邮箱</span>}
+        </span>
+      </button>
+    </div>
   );
 }
 const ENRICH_FIELDS: Record<EnrichField, string> = {
@@ -847,9 +1158,9 @@ export function EnrichMentorsDialog({ ids, onClose }: { ids: number[]; onClose: 
   );
 }
 
-/** "约 0.12～0.48 元": each mentor reads one to four pages, each about 4000 tokens in and 1000 out. */
+/** "约 0.12～0.48 元": each mentor reads one to four pages. */
 function costRange(rate: ModelRate, mentors: number) {
-  const least = costAt(rate, 4000 * mentors, 1000 * mentors);
+  const least = costAt(rate, PAGE.input * mentors, PAGE.output * mentors);
   const most = least * 4;
   const unit = UNITS[rate.currency];
   // As in money(), what costs less than 0.01 never reads 0.00: then only the most it may come to.
@@ -898,8 +1209,8 @@ function EnrichDialog({
               )}
               <p>模型：{chosen ? `${chosen.name || chosen.model}（${chosen.model}）` : "尚未添加模型"}</p>
               <p className="text-muted-foreground">
-                每位预计读取 1～4 页，约 5000～20000 Token；本次约 {(count * 5000).toLocaleString()}～
-                {(count * 20000).toLocaleString()} Token
+                每位预计读取 1～4 页，约 {PAGE_TOKENS}～{PAGE_TOKENS * 4} Token；本次约{" "}
+                {(count * PAGE_TOKENS).toLocaleString()}～{(count * PAGE_TOKENS * 4).toLocaleString()} Token
                 {rate && `，${costRange(rate, count)}`}
                 。仅为估算，以实际页面和服务商报告为准。
               </p>
@@ -926,51 +1237,163 @@ function EnrichDialog({
     </Dialog>
   );
 }
-function CandidateDetails({
-  candidate: c,
+/** docs/ui.md#找导师: one candidate beside the list, or over it in a narrow window, to accept or reject. */
+function CandidatePane({
+  id,
+  row,
+  agent,
+  chosen,
   decisions,
   onChange,
+  onBack,
+  onMove,
+  onReviewed,
+  onEnrich,
 }: {
-  candidate: CandidateRow;
+  id: number;
+  /** Their line on the list, which tells what kind of candidate they are. */
+  row: CandidateRow | undefined;
+  agent: boolean;
+  /** Whether the user chose them, which a narrow window then shows in place of the list. */
+  chosen: boolean;
   decisions: Decisions;
   onChange: (next: Decisions | ((previous: Decisions) => Decisions)) => void;
+  onBack: () => void;
+  onMove: (delta: number) => void;
+  onReviewed: () => void;
+  onEnrich: () => void;
 }) {
-  const detail = useQuery({ queryKey: ["getCandidate", c.id], queryFn: () => call("getCandidate", { id: c.id }) });
-  const preview = useQuery({
-    queryKey: ["previewCandidates", [c.id], decisions],
-    queryFn: () => call("previewCandidates", { ids: [c.id], decisions }),
-    enabled: c.review === "pending",
+  const client = useQueryClient();
+  const detail = useQuery({
+    queryKey: ["getCandidate", id],
+    queryFn: () => call("getCandidate", { id }),
+    // What enrichment finds fills them in meanwhile.
+    refetchInterval: (query) =>
+      query.state.data?.enrich === "queued" || query.state.data?.enrich === "running" ? 3000 : false,
   });
-  const recognized = detail.data ? onlyRecognized(detail.data) : [];
+  const d = detail.data;
+  const pending = d?.review === "pending";
+  const preview = useQuery({
+    queryKey: ["previewCandidates", [id], decisions],
+    queryFn: () => call("previewCandidates", { ids: [id], decisions }),
+    enabled: pending,
+  });
+  const accept = useMutation({
+    mutationFn: () => call("acceptCandidates", { ids: [id], decisions }),
+    onSuccess: (r) => {
+      refreshMentors(client);
+      if (r.accepted > 0) onReviewed();
+      else void preview.refetch();
+    },
+  });
+  const reject = useMutation({ mutationFn: () => call("rejectCandidates", { ids: [id] }), onSuccess: onReviewed });
+  const pane = `flex min-h-0 min-w-0 flex-col ${chosen ? "" : "compact:hidden"}`;
+  const back = <BackButton up={onBack} className="-ml-2 hidden compact:inline-flex" />;
+  if (!d)
+    return (
+      <section className={pane}>
+        <div className="px-6 pt-4 phone:px-3">{back}</div>
+        {detail.error ? <Notice title="候选未能加载" failure={failureOf(detail.error)} /> : <Loading />}
+      </section>
+    );
+  const f = d.fields;
+  const issue = row?.issue ?? preview.data?.errors[0]?.reason;
+  const kind = pending
+    ? row && row.category !== "all" && row.category !== "missing_email" && FILTERS[row.category]
+    : d.review === "rejected"
+      ? "已拒绝"
+      : "已接受";
   return (
-    <div className="mt-4 space-y-3 border-t border-border pt-3 text-sm">
-      <ErrorText error={detail.error ?? preview.error} />
-      {detail.data?.note && (
-        <p className="rounded-md bg-warning-soft p-3 break-words text-warning">Agent 说明：{detail.data.note}</p>
-      )}
-      {preview.data && <IntakeChoices preview={preview.data} decisions={decisions} onChange={onChange} source="候选" />}
-      {detail.data && (
-        <>
-          <ProfileDetails profile={detail.data.fields} />
-          {recognized.length > 0 && (
-            <p className="text-warning">{recognized.join("、")} 是从图片识别的，可能认错字母，请打开来源页核对</p>
+    <section className={pane}>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <header className="flex items-start gap-1 px-6 pt-5 phone:px-3">
+          {back}
+          <div className="min-w-0 grow">
+            <h2 className="text-xl font-semibold break-words select-text">{f.name}</h2>
+            <p className="mt-1 text-sm text-muted-foreground empty:hidden">
+              {[kind, agent && "Agent 提交", f.aliases.length > 0 && `又名 ${f.aliases.join("、")}`]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
+        </header>
+        <div className="space-y-5 px-6 py-4 text-sm phone:px-3">
+          {d.note && <p className="rounded-md bg-warning-soft p-3 break-words text-warning">Agent 说明：{d.note}</p>}
+          <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-4 gap-y-3 select-text">
+            <Fact label="单位">
+              {f.affiliations.length > 0 ? (
+                f.affiliations.map((a, n) => <p key={n}>{[placeOf(a), a.title].filter(Boolean).join(" · ")}</p>)
+              ) : (
+                <Missing>未填写</Missing>
+              )}
+            </Fact>
+            <Fact label="邮箱">
+              {f.emails.length > 0 ? (
+                f.emails.map((m) => <p key={m}>{m}</p>)
+              ) : (
+                <span className="text-warning">缺邮箱</span>
+              )}
+            </Fact>
+            <Fact label="研究方向">
+              {f.research ? <p className="whitespace-pre-wrap">{f.research}</p> : <Missing>未填写</Missing>}
+            </Fact>
+            {f.homepages.length > 0 && (
+              <Fact label="主页">
+                {f.homepages.map((url) => (
+                  <WebLink key={url} url={url} />
+                ))}
+              </Fact>
+            )}
+            {d.papers.length > 0 && (
+              <Fact label="代表论文">
+                {d.papers.map((p, n) => (
+                  <p key={n}>{p}</p>
+                ))}
+              </Fact>
+            )}
+            {d.sourceUrl && (
+              <Fact label="来源页">
+                <WebLink url={d.sourceUrl} />
+              </Fact>
+            )}
+          </dl>
+          {d.recognized.length > 0 && (
+            <p className="text-warning">{d.recognized.join("、")} 是从图片识别的，可能认错字母，请打开来源页核对</p>
           )}
-          {detail.data.papers.length > 0 && (
-            <div>
-              <h3 className="font-medium">代表论文</h3>
-              {detail.data.papers.map((p, n) => (
-                <p key={n} className="mt-1 break-words">
-                  {p}
-                </p>
-              ))}
-            </div>
+          {(d.enrich === "queued" || d.enrich === "running") && (
+            <p role="status" className="text-muted-foreground">
+              正在补全…
+            </p>
+          )}
+          {d.enrichChanges.length > 0 && (
+            <p className="text-brand-text">
+              补到了{[...new Set(d.enrichChanges.map((v) => ENRICH_FIELDS[v.field]))].join("、")}
+            </p>
+          )}
+          {d.enrichError && <FailureNote failure={d.enrichError} lead="没补到：" className="text-warning" />}
+          {pending && preview.data && (
+            <IntakeChoices
+              preview={preview.data}
+              decisions={decisions}
+              onChange={onChange}
+              source="候选"
+              numbered={false}
+            />
+          )}
+          {pending && issue && <p className="text-warning">{issue}</p>}
+          {accept.data?.accepted === 0 && (
+            <p role="status" className="text-warning">
+              {preview.data?.trashed.length
+                ? "回收站中的导师默认跳过，选择“恢复并更新”后才能接受"
+                : "未能接受，请查看上面的原因"}
+            </p>
           )}
           <Collapsible>
-            <CollapsibleTrigger>来源与邮箱证据 · {detail.data.evidence.length} 页</CollapsibleTrigger>
+            <CollapsibleTrigger>来源与邮箱证据 · {d.evidence.length} 页</CollapsibleTrigger>
             <CollapsibleContent>
-              {detail.data.evidence.map((e, n) => (
+              {d.evidence.map((e, n) => (
                 <div key={n} className="mt-2 break-words text-muted-foreground">
-                  <SourceLink url={e.url} />
+                  <WebLink url={e.url} className="text-xs" />
                   <p>
                     {e.name} ·{" "}
                     {e.emails.map((m) => (e.recognized.includes(m) ? `${m}（从图片识别）` : m)).join("、") ||
@@ -981,12 +1404,49 @@ function CandidateDetails({
               ))}
             </CollapsibleContent>
           </Collapsible>
-          {c.review === "pending" && (
-            <p className="text-muted-foreground">接受前可查看补充内容，并逐项选择资料不同的部分</p>
-          )}
-        </>
-      )}
-    </div>
+        </div>
+      </div>
+      <footer className="flex flex-wrap items-center gap-2 border-t border-border px-6 py-3 phone:px-3">
+        {pending ? (
+          <>
+            <Button disabled={!!issue || !preview.data || accept.isPending} onClick={() => accept.mutate()}>
+              {row?.category === "supplement" ? "补充" : "接受"}
+            </Button>
+            <Button variant="ghost" disabled={reject.isPending} onClick={() => reject.mutate()}>
+              拒绝
+            </Button>
+            {(f.emails.length === 0 || !f.research) && (
+              <Button variant="quiet" onClick={onEnrich}>
+                补全
+              </Button>
+            )}
+          </>
+        ) : (
+          d.review !== "rejected" &&
+          d.mentorId !== null && (
+            <Link to="/mentors/$mentorId" params={{ mentorId: d.mentorId }} className="text-sm text-brand-text">
+              查看导师
+            </Link>
+          )
+        )}
+        <span className="grow" />
+        <Button variant="ghost" className="hidden compact:inline-flex" onClick={() => onMove(-1)}>
+          上一位
+        </Button>
+        <Button variant="ghost" className="hidden compact:inline-flex" onClick={() => onMove(1)}>
+          下一位
+        </Button>
+        <ErrorText error={accept.error ?? reject.error} />
+      </footer>
+    </section>
+  );
+}
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 space-y-1 break-words">{children}</dd>
+    </>
   );
 }
 function ReviewDialog({
@@ -1073,19 +1533,11 @@ function ReviewDialog({
 function ErrorText({ error }: { error: unknown }) {
   return error ? <FailureNote className="text-sm text-destructive" role="alert" failure={failureOf(error)} /> : null;
 }
-/** The candidate's emails that its pages give only in images. */
-function onlyRecognized({ fields, evidence }: CandidateDetail) {
-  return fields.emails.filter(
-    (m) =>
-      evidence.some((e) => e.recognized.includes(m)) &&
-      !evidence.some((e) => e.emails.includes(m) && !e.recognized.includes(m)),
-  );
-}
-function SourceLink({ url }: { url: string }) {
+function WebLink({ url, className }: { url: string; className?: string }) {
   return (
     <a
       href={url}
-      className="mt-2 block break-all text-xs text-brand-text hover:underline"
+      className={cn("block break-all text-brand-text hover:underline", className)}
       onClick={(e) => {
         e.preventDefault();
         void openUrl(url);

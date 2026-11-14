@@ -496,8 +496,13 @@ pub struct CrawlSummary {
     /// These and the models of the failed pages: retrying them sets the crawl going again.
     #[ts(as = "Vec<i64>")]
     pub retry_model_ids: Json<Vec<i64>>,
+    /// The teachers' pages the lists linked to, and how many of them have been read or failed.
     pub profiles: i64,
+    pub profiles_done: i64,
     pub candidates: i64,
+    pub with_email: i64,
+    /// Its candidates still to review.
+    pub pending: i64,
     pub failed: i64,
     /// The failed pages a retry reads again: not those of candidates already reviewed.
     pub retryable: i64,
@@ -616,10 +621,21 @@ pub(crate) async fn summaries(
         ) AS "retry_model_ids!: Json<Vec<i64>>", (
             SELECT count(*)
             FROM crawl_page
+            WHERE crawl_id = c.id AND kind = 'profile'
+        ) AS "profiles!: i64", (
+            SELECT count(*)
+            FROM crawl_page
             WHERE crawl_id = c.id AND kind = 'profile' AND work_state = 'done'
-            AND status = 'success'
-        ) AS "profiles!: i64", (SELECT count(*) FROM candidate WHERE crawl_id = c.id)
+        ) AS "profiles_done!: i64", (SELECT count(*) FROM candidate WHERE crawl_id = c.id)
             AS "candidates!: i64", (
+            SELECT count(*)
+            FROM candidate
+            WHERE crawl_id = c.id AND json_array_length(emails) > 0
+        ) AS "with_email!: i64", (
+            SELECT count(*)
+            FROM candidate
+            WHERE crawl_id = c.id AND review = 'pending'
+        ) AS "pending!: i64", (
             SELECT count(*)
             FROM crawl_page
             WHERE crawl_id = c.id AND work_state = 'done'
@@ -684,10 +700,12 @@ pub struct CrawlRun {
     pub started_at: i64,
     pub ended_at: Option<i64>,
 }
+/// With a page of its pages, the ones that did not open first; `failed` lists only those.
 pub async fn detail(
     db: &SqlitePool,
     id: i64,
     page: u32,
+    failed: bool,
 ) -> Result<Option<CrawlDetail>, sqlx::Error> {
     let mut tx = db.begin().await?;
     let Some(row) = sqlx::query!(
@@ -711,18 +729,25 @@ pub async fn detail(
             OR candidate_id IN (SELECT id FROM candidate WHERE review = 'pending'))
             AS "retryable!: bool"
         FROM crawl_page
-        WHERE crawl_id = ?
+        WHERE crawl_id = ?1 AND (NOT ?2 OR (work_state = 'done' AND status != 'success'))
         ORDER BY status = 'success', id
         LIMIT 50
-        OFFSET ?"#,
+        OFFSET ?3"#,
         id,
+        failed,
         offset
     )
     .fetch_all(&mut *tx)
     .await?;
-    let page_total = sqlx::query_scalar!("SELECT count(*) FROM crawl_page WHERE crawl_id = ?", id)
-        .fetch_one(&mut *tx)
-        .await?;
+    let page_total = sqlx::query_scalar!(
+        r#"SELECT count(*)
+        FROM crawl_page
+        WHERE crawl_id = ?1 AND (NOT ?2 OR (work_state = 'done' AND status != 'success'))"#,
+        id,
+        failed
+    )
+    .fetch_one(&mut *tx)
+    .await?;
     let runs = sqlx::query_as!(
         CrawlRun,
         r#"SELECT app_version, started_at, ended_at

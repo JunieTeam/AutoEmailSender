@@ -1271,6 +1271,7 @@ dependencies = [
  "email",
  "encoding_rs",
  "failure",
+ "futures-util",
  "imagesize",
  "matching",
  "material",

@@ -42,11 +42,28 @@ pub struct CandidateDetail {
     #[serde(flatten)]
     pub candidate: Candidate,
     pub evidence: Vec<Evidence>,
+    /// Of the addresses, those the pages give only in images, whose recognition can get a letter
+    /// wrong.
+    pub recognized: Vec<String>,
+}
+
+/// The addresses that no page gives except in an image.
+fn recognized(emails: &[String], evidence: &[Evidence]) -> Vec<String> {
+    emails
+        .iter()
+        .filter(|m| {
+            evidence.iter().any(|e| e.recognized.contains(m))
+                && !evidence
+                    .iter()
+                    .any(|e| e.emails.contains(m) && !e.recognized.contains(m))
+        })
+        .cloned()
+        .collect()
 }
 
 #[derive(Debug, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
-pub struct CandidateQuery {
+pub struct CandidateSelection {
     pub crawl_id: Option<i64>,
     pub processed: bool,
     pub filter: CandidateFilter,
@@ -54,6 +71,11 @@ pub struct CandidateQuery {
     #[serde(default)]
     #[ts(optional)]
     pub keyword: Option<String>,
+}
+#[derive(Debug, Deserialize, TS)]
+pub struct CandidateQuery {
+    #[serde(flatten)]
+    pub selection: CandidateSelection,
     pub page: u32,
 }
 #[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, TS, PartialEq, Eq)]
@@ -82,11 +104,24 @@ pub struct CandidateRow {
     pub mentor_id: Option<i64>,
     pub category: CandidateFilter,
     pub issue: Option<String>,
+    /// As in `CandidateDetail`.
+    pub recognized: Vec<String>,
 }
 #[derive(Debug, Serialize, TS)]
 pub struct CandidatePage {
     pub candidates: Vec<CandidateRow>,
     pub total: i64,
+    pub counts: CandidateCounts,
+}
+/// How many each filter lists, among the candidates the crawl, keyword and review state choose.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct CandidateCounts {
+    pub all: i64,
+    pub new: i64,
+    pub supplement: i64,
+    pub maybe: i64,
+    pub missing_email: i64,
 }
 #[derive(Debug, Deserialize, TS)]
 pub struct ReviewInput {
@@ -214,6 +249,7 @@ pub async fn detail(db: &SqlitePool, id: i64) -> Result<Option<CandidateDetail>,
     .await?
     .0;
     Ok(Some(CandidateDetail {
+        recognized: recognized(&candidate.fields.emails, &evidence),
         candidate,
         evidence,
     }))
@@ -297,25 +333,35 @@ struct Classified {
     id: i64,
     category: CandidateFilter,
 }
-pub async fn list(db: &SqlitePool, q: &CandidateQuery) -> Result<CandidatePage, sqlx::Error> {
-    let mut tx = db.begin().await?;
-    let missing = q.filter == CandidateFilter::MissingEmail;
-    let category = match q.filter {
+struct Selected {
+    ids: Vec<Classified>,
+    total: i64,
+    counts: CandidateCounts,
+}
+/// The candidates the selection lists, `limit` of them from `offset` in order (all with -1), how
+/// many it lists and how many each filter would.
+async fn select(
+    conn: &mut SqliteConnection,
+    s: &CandidateSelection,
+    limit: i64,
+    offset: i64,
+) -> Result<Selected, sqlx::Error> {
+    let missing = s.filter == CandidateFilter::MissingEmail;
+    let category = match s.filter {
         CandidateFilter::New => Some("new"),
         CandidateFilter::Supplement => Some("supplement"),
         CandidateFilter::Maybe => Some("maybe"),
         _ => None,
     };
-    let offset = i64::from(q.page.saturating_sub(1)) * 50;
     // Lowercased as SQLite's lower() does, which leaves all but ASCII letters alone.
-    let words: Vec<String> = q
+    let words: Vec<String> = s
         .keyword
         .iter()
         .flat_map(|k| k.split_whitespace())
         .map(|w| w.to_ascii_lowercase())
         .collect();
     let words = (!words.is_empty()).then_some(Json(words));
-    let selection = sqlx::query!(
+    let r = sqlx::query!(
         r#"WITH classified AS MATERIALIZED(
             SELECT c.id, CASE WHEN c.mentor_id IS NOT NULL
             OR EXISTS (
@@ -335,10 +381,10 @@ pub async fn list(db: &SqlitePool, q: &CandidateQuery) -> Result<CandidatePage, 
                     WHERE a.mentor_id = mn.mentor_id AND a.university_match IN (SELECT
                         value FROM json_each(c.match_schools))
                 ))
-            ) THEN 'maybe' ELSE 'new' END AS category
+            ) THEN 'maybe' ELSE 'new' END AS category,
+            coalesce(json_array_length(c.emails), 0) = 0 AS missing
             FROM candidate c
             WHERE (?1 IS NULL OR c.crawl_id = ?1) AND (c.review != 'pending') = ?2
-            AND (NOT ?4 OR coalesce(json_array_length(c.emails), 0) = 0)
             AND (?6 IS NULL OR NOT EXISTS (
                 SELECT 1 FROM json_each(?6) w
                 WHERE instr(lower(c.name || ' ' || coalesce(c.aliases, '') || ' '
@@ -353,7 +399,7 @@ pub async fn list(db: &SqlitePool, q: &CandidateQuery) -> Result<CandidatePage, 
         ), filtered AS MATERIALIZED(
             SELECT id, category
             FROM classified
-            WHERE ?3 IS NULL OR category = ?3
+            WHERE (?3 IS NULL OR category = ?3) AND (NOT ?4 OR missing)
         )
         SELECT(
             SELECT json_group_array(json_object('id', id, 'category', category))
@@ -361,29 +407,71 @@ pub async fn list(db: &SqlitePool, q: &CandidateQuery) -> Result<CandidatePage, 
                 SELECT id, category
                 FROM filtered
                 ORDER BY id
-                LIMIT 50
+                LIMIT ?7
                 OFFSET ?5
             )
-        ) AS "ids!: Json<Vec<Classified>>", count(*) AS "total!: i64"
-        FROM filtered"#,
-        q.crawl_id,
-        q.processed,
+        ) AS "ids!: Json<Vec<Classified>>", (SELECT count(*) FROM filtered) AS "total!: i64",
+            count(*) AS "all!: i64",
+            count(*) FILTER (WHERE category = 'new') AS "new!: i64",
+            count(*) FILTER (WHERE category = 'supplement') AS "supplement!: i64",
+            count(*) FILTER (WHERE category = 'maybe') AS "maybe!: i64",
+            count(*) FILTER (WHERE missing) AS "missing!: i64"
+        FROM classified"#,
+        s.crawl_id,
+        s.processed,
         category,
         missing,
         offset,
-        words
+        words,
+        limit
     )
-    .fetch_one(&mut *tx)
+    .fetch_one(conn)
     .await?;
-    let selected = selection.ids.0;
+    Ok(Selected {
+        ids: r.ids.0,
+        total: r.total,
+        counts: CandidateCounts {
+            all: r.all,
+            new: r.new,
+            supplement: r.supplement,
+            maybe: r.maybe,
+            missing_email: r.missing,
+        },
+    })
+}
+/// Every candidate the selection lists, in order, for choosing them all.
+pub async fn ids(db: &SqlitePool, s: &CandidateSelection) -> Result<Vec<i64>, sqlx::Error> {
+    let mut conn = db.acquire().await?;
+    Ok(select(&mut conn, s, -1, 0)
+        .await?
+        .ids
+        .into_iter()
+        .map(|c| c.id)
+        .collect())
+}
+pub async fn list(db: &SqlitePool, q: &CandidateQuery) -> Result<CandidatePage, sqlx::Error> {
+    let mut tx = db.begin().await?;
+    let offset = i64::from(q.page.saturating_sub(1)) * 50;
+    let selection = select(&mut tx, &q.selection, 50, offset).await?;
+    let selected = selection.ids;
     let ids: Vec<_> = selected.iter().map(|c| c.id).collect();
     let candidates = read(&mut tx, &ids).await?;
+    let evidence = sqlx::query_scalar!(
+        r#"SELECT evidence AS "evidence: Json<Vec<Evidence>>"
+        FROM candidate
+        WHERE id IN (SELECT value FROM json_each(?))
+        ORDER BY id"#,
+        Json(&ids)
+    )
+    .fetch_all(&mut *tx)
+    .await?;
     let rows = rows(&mut tx, &candidates, &ids).await?;
     let preview = intake::calculate(&mut tx, rows, &Decisions::default())
         .await?
         .0;
     let mut matching = Vec::new();
-    for (c, classification) in candidates.into_iter().zip(selected) {
+    for ((c, classification), Json(evidence)) in candidates.into_iter().zip(selected).zip(evidence)
+    {
         let row = (ids
             .binary_search(&c.id)
             .unwrap_or_else(|_| unreachable!("selected candidate"))
@@ -394,6 +482,7 @@ pub async fn list(db: &SqlitePool, q: &CandidateQuery) -> Result<CandidatePage, 
             .find(|e| e.row == row)
             .map(|e| e.reason.clone());
         matching.push(CandidateRow {
+            recognized: recognized(&c.fields.emails, &evidence),
             id: c.id,
             crawl_id: c.crawl_id,
             name: c.fields.name,
@@ -411,6 +500,7 @@ pub async fn list(db: &SqlitePool, q: &CandidateQuery) -> Result<CandidatePage, 
     Ok(CandidatePage {
         candidates: matching,
         total: selection.total,
+        counts: selection.counts,
     })
 }
 
@@ -437,13 +527,91 @@ pub(crate) fn match_keys(fields: &MentorFields) -> (Json<Vec<String>>, Json<Vec<
         .chain(&fields.aliases)
         .map(|n| intake::comparable(n))
         .collect();
-    let schools = fields
-        .affiliations
-        .iter()
-        .filter_map(|a| a.university.as_deref())
-        .map(intake::comparable)
-        .collect();
-    (Json(names), Json(schools))
+    (Json(names), match_schools(&fields.affiliations))
+}
+fn match_schools(affiliations: &[mentor::Affiliation]) -> Json<Vec<String>> {
+    Json(
+        affiliations
+            .iter()
+            .filter_map(|a| a.university.as_deref())
+            .map(intake::comparable)
+            .collect(),
+    )
+}
+
+#[derive(Debug, PartialEq)]
+pub enum UnitChange {
+    Set,
+    Deleted,
+    /// Only a crawl of a website has a school and college of its own: an Agent's submission is
+    /// named after its first candidate's, and enriching mentors goes by theirs.
+    NotSite,
+}
+
+/// Names a crawl's school and college as the user writes them, and moves the units its candidates
+/// still to review have at the ones it named before.
+pub async fn set_unit(
+    db: &SqlitePool,
+    crawl: i64,
+    unit: &mentor::Affiliation,
+) -> Result<UnitChange, sqlx::Error> {
+    let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
+    let Some(old) = sqlx::query!(
+        r#"SELECT kind AS "kind: queue::CrawlKind", university, school FROM crawl WHERE id = ?"#,
+        crawl
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    else {
+        return Ok(UnitChange::Deleted);
+    };
+    if old.kind != queue::CrawlKind::Site {
+        return Ok(UnitChange::NotSite);
+    }
+    let old = mentor::Affiliation {
+        university: old.university,
+        school: old.school,
+        ..Default::default()
+    };
+    sqlx::query!(
+        "UPDATE crawl SET university = ?, school = ? WHERE id = ?",
+        unit.university,
+        unit.school,
+        crawl
+    )
+    .execute(&mut *tx)
+    .await?;
+    let candidates = sqlx::query!(
+        r#"SELECT id AS "id!", affiliations AS "affiliations: Json<Vec<mentor::Affiliation>>",
+            profile_fields AS "profile_fields: Json<MentorFields>"
+        FROM candidate
+        WHERE crawl_id = ? AND review = 'pending'"#,
+        crawl
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    for c in candidates {
+        let mut affiliations = c.affiliations.map(|Json(a)| a).unwrap_or_default();
+        crate::extract::relocate(&mut affiliations, &old, unit);
+        let mut profile = c.profile_fields;
+        if let Some(Json(p)) = &mut profile {
+            crate::extract::relocate(&mut p.affiliations, &old, unit);
+        }
+        let schools = match_schools(&affiliations);
+        let affiliations = Json(affiliations);
+        sqlx::query!(
+            r#"UPDATE candidate SET affiliations = ?, profile_fields = ?, match_schools = ?
+            WHERE id = ?"#,
+            affiliations,
+            profile,
+            schools,
+            c.id
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(UnitChange::Set)
 }
 
 /// Returns whether this person added a candidate rather than merging into existing candidates.

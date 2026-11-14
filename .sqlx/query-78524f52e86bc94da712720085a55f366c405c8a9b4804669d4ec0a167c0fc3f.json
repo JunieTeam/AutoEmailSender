@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE candidate SET affiliations = ?, profile_fields = ?, match_schools = ?\n            WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "78524f52e86bc94da712720085a55f366c405c8a9b4804669d4ec0a167c0fc3f"
+}

@@ -36,6 +36,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
 import { COMPACT } from "@/layout";
+import { pageKey } from "@/page-keys";
 import { MENU_ITEM, Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import { SendingPlan } from "@/components/sending-plan";
@@ -341,24 +342,16 @@ export function TaskReviewPage() {
   }
   useEffect(() => {
     function key(e: KeyboardEvent) {
-      if (
-        e.defaultPrevented ||
-        e.metaKey ||
-        e.ctrlKey ||
-        e.altKey ||
-        (e.target instanceof Element && e.target.closest("input,textarea,select,[contenteditable=true],[role=dialog]"))
-      )
-        return;
-      if (document.querySelector('[role="dialog"]')) return;
-      if (e.key.toLowerCase() === "j") {
+      const pressed = pageKey(e);
+      if (pressed === "j") {
         e.preventDefault();
         move(1);
       }
-      if (e.key.toLowerCase() === "k") {
+      if (pressed === "k") {
         e.preventDefault();
         move(-1);
       }
-      if (e.key.toLowerCase() === "a") {
+      if (pressed === "a") {
         e.preventDefault();
         composer.current?.approve();
       }

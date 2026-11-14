@@ -4,5 +4,5 @@ SELECT u.purpose AS "purpose!: model::usage::Purpose", u.off_peak AS "off_peak!:
  sum(u.input_tokens) AS "input!: i64", sum(u.cached_tokens) AS "cached!: i64",
  sum(u.output_tokens) AS "output!: i64", count(*) AS "calls!: i64"
 FROM usage u LEFT JOIN model_config c ON c.id=u.model_config_id
-WHERE (?1 IS NULL OR u.at>=?1) AND u.at<?2
+WHERE (?1 IS NULL OR u.at>=?1) AND u.at<?2 AND (?3 IS NULL OR u.crawl_id=?3)
 GROUP BY u.purpose, u.model_config_id, u.off_peak ORDER BY u.purpose

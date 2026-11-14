@@ -104,10 +104,12 @@ async fn agent_submission_reopens_for_profile_and_child_enrichment(db: SqlitePoo
     let id = review::list(
         &db,
         &CandidateQuery {
-            crawl_id: Some(submitted.crawl_id),
-            processed: false,
-            filter: CandidateFilter::All,
-            keyword: None,
+            selection: CandidateSelection {
+                crawl_id: Some(submitted.crawl_id),
+                processed: false,
+                filter: CandidateFilter::All,
+                keyword: None,
+            },
             page: 1,
         },
     )
@@ -224,7 +226,7 @@ async fn enrichment_personal_page_fills_only_empty_fields(db: SqlitePool) {
     assert_eq!(d.candidate.fields.emails, vec!["a@example.edu"]);
     assert_eq!(d.candidate.fields.research.as_deref(), Some("新方向"));
     assert_eq!(
-        queue::detail(&db, crawl, 1)
+        queue::detail(&db, crawl, 1, false)
             .await
             .unwrap()
             .unwrap()
@@ -1086,7 +1088,7 @@ async fn enrichment_child_checks_identity_before_filling_any_field(db: SqlitePoo
         assert_eq!(d.candidate.fields.research.is_some(), success);
         assert_eq!(!d.candidate.papers.is_empty(), success);
         assert_eq!(!d.candidate.fields.emails.is_empty(), success);
-        let pages = queue::detail(&db, crawl, 1).await.unwrap().unwrap();
+        let pages = queue::detail(&db, crawl, 1, false).await.unwrap().unwrap();
         let child = pages
             .pages
             .iter()
@@ -1139,7 +1141,7 @@ async fn enrichment_child_accepts_identity_in_page_title(db: SqlitePool) {
         );
         assert!(d.candidate.fields.emails.is_empty());
         assert_eq!(d.evidence.len(), if success { 2 } else { 1 });
-        let pages = queue::detail(&db, crawl, 1).await.unwrap().unwrap();
+        let pages = queue::detail(&db, crawl, 1, false).await.unwrap().unwrap();
         let child = pages
             .pages
             .iter()
@@ -1457,7 +1459,7 @@ async fn enrichment_review_removes_unfinished_pages_without_failures(db: SqliteP
                 assert!(!save(&db, &c, &result).await.unwrap());
             }
             finish(&db, now()).await.unwrap();
-            let d = queue::detail(&db, crawl, 1).await.unwrap().unwrap();
+            let d = queue::detail(&db, crawl, 1, false).await.unwrap().unwrap();
             assert_eq!(d.summary.failed, 0, "{action}/{stage}");
             assert_eq!(d.summary.remaining, 0);
             assert_eq!(d.pages.len(), usize::from(stage == "child"));
@@ -1526,7 +1528,7 @@ async fn enrichment_profile_retry_keeps_first_children(db: SqlitePool) {
         let result = process_answer(&db, &site, &mut provider, &c, empty_answer(json!([]))).await;
         save(&db, &c, &result).await.unwrap();
     }
-    let d = queue::detail(&db, crawl, 1).await.unwrap().unwrap();
+    let d = queue::detail(&db, crawl, 1, false).await.unwrap().unwrap();
     assert_eq!(
         d.pages
             .iter()
@@ -1559,7 +1561,7 @@ async fn enrichment_cancel_discards_fetched_but_unfinished_page(db: SqlitePool) 
     .await;
     queue::control(&db, crawl, "cancel", 3).await.unwrap();
     assert!(!save(&db, &c, &result).await.unwrap());
-    let d = queue::detail(&db, crawl, 1).await.unwrap().unwrap();
+    let d = queue::detail(&db, crawl, 1, false).await.unwrap().unwrap();
     assert_eq!(d.summary.failed, 0);
     assert!(d.pages.is_empty());
     assert_eq!(queue::retry(&db, crawl, None, 4).await.unwrap(), 0);
@@ -1923,10 +1925,12 @@ async fn mentors_are_enriched_through_candidates_reviewed_before_they_change(db:
     let listed = review::list(
         &db,
         &CandidateQuery {
-            crawl_id: Some(crawl),
-            processed: false,
-            filter: CandidateFilter::Supplement,
-            keyword: None,
+            selection: CandidateSelection {
+                crawl_id: Some(crawl),
+                processed: false,
+                filter: CandidateFilter::Supplement,
+                keyword: None,
+            },
             page: 1,
         },
     )

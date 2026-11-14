@@ -1,0 +1,63 @@
+{
+  "db_name": "SQLite",
+  "query": "WITH classified AS MATERIALIZED(\n            SELECT c.id, CASE WHEN c.mentor_id IS NOT NULL\n            OR EXISTS (\n                SELECT 1\n                FROM json_each(c.emails) e\n                JOIN mentor_email m ON m.address = e.value\n            ) THEN 'supplement' WHEN EXISTS (\n                SELECT 1\n                FROM json_each(c.match_names) n\n                JOIN mentor_name mn ON mn.name = n.value\n                WHERE (coalesce(json_array_length(c.emails), 0) = 0\n                OR NOT EXISTS (SELECT 1 FROM mentor_email WHERE mentor_id =\n                    mn.mentor_id)) AND (json_array_length(c.match_schools) = 0\n                OR EXISTS (\n                    SELECT 1\n                    FROM mentor_affiliation a\n                    WHERE a.mentor_id = mn.mentor_id AND a.university_match IN (SELECT\n                        value FROM json_each(c.match_schools))\n                ))\n            ) THEN 'maybe' ELSE 'new' END AS category,\n            coalesce(json_array_length(c.emails), 0) = 0 AS missing\n            FROM candidate c\n            WHERE (?1 IS NULL OR c.crawl_id = ?1) AND (c.review != 'pending') = ?2\n            AND (?6 IS NULL OR NOT EXISTS (\n                SELECT 1 FROM json_each(?6) w\n                WHERE instr(lower(c.name || ' ' || coalesce(c.aliases, '') || ' '\n                    || coalesce(c.emails, '') || ' ' || coalesce(c.research, '') || ' '\n                    || coalesce((\n                        SELECT group_concat(coalesce(a.value ->> 'university', '') || ' '\n                            || coalesce(a.value ->> 'school', '') || ' '\n                            || coalesce(a.value ->> 'department', ''), ' ')\n                        FROM json_each(c.affiliations) a\n                    ), '')), w.value) = 0\n            ))\n        ), filtered AS MATERIALIZED(\n            SELECT id, category\n            FROM classified\n            WHERE (?3 IS NULL OR category = ?3) AND (NOT ?4 OR missing)\n        )\n        SELECT(\n            SELECT json_group_array(json_object('id', id, 'category', category))\n            FROM (\n                SELECT id, category\n                FROM filtered\n                ORDER BY id\n                LIMIT ?7\n                OFFSET ?5\n            )\n        ) AS \"ids!: Json<Vec<Classified>>\", (SELECT count(*) FROM filtered) AS \"total!: i64\",\n            count(*) AS \"all!: i64\",\n            count(*) FILTER (WHERE category = 'new') AS \"new!: i64\",\n            count(*) FILTER (WHERE category = 'supplement') AS \"supplement!: i64\",\n            count(*) FILTER (WHERE category = 'maybe') AS \"maybe!: i64\",\n            count(*) FILTER (WHERE missing) AS \"missing!: i64\"\n        FROM classified",
+  "describe": {
+    "columns": [
+      {
+        "name": "ids!: Json<Vec<Classified>>",
+        "ordinal": 0,
+        "type_info": "Null",
+        "origin": "Expression"
+      },
+      {
+        "name": "total!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "all!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "new!: i64",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "supplement!: i64",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "maybe!: i64",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "missing!: i64",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c301ce93ad0978b19edda5434becb86d320b847268c5fbee3c8178a2c1534c26"
+}

@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT university, school FROM crawl WHERE id = ? AND kind = 'site'",
+  "describe": {
+    "columns": [
+      {
+        "name": "university",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl",
+            "name": "university"
+          }
+        }
+      },
+      {
+        "name": "school",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl",
+            "name": "school"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "7140beb69e34bd8446cbd95e8e7e94ea9f71687eb0ab5996be4c7fa62dc3c643"
+}

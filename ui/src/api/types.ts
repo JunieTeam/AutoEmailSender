@@ -72,21 +72,38 @@ export type Candidate = { id: number, name: string, reason: string | null, conta
  */
 hasResearch: boolean, previous: PreviousLetter | null, };
 
-export type CandidateDetail = { evidence: Array<Evidence>, id: number, crawlId: number | null, review: string, mentorId: number | null, fields: MentorFields, papers: Array<string>, sourceUrl: string | null, note: string | null, enrich: EnrichState, enrichChanges: Array<EnrichChange>, enrichError: Failure | null, };
+export type CandidateCounts = { all: number, new: number, supplement: number, maybe: number, missingEmail: number, };
+
+export type CandidateDetail = { evidence: Array<Evidence>,
+/**
+ * Of the addresses, those the pages give only in images, whose recognition can get a letter
+ * wrong.
+ */
+recognized: Array<string>, id: number, crawlId: number | null, review: string, mentorId: number | null, fields: MentorFields, papers: Array<string>, sourceUrl: string | null, note: string | null, enrich: EnrichState, enrichChanges: Array<EnrichChange>, enrichError: Failure | null, };
 
 export type CandidateFilter = "all" | "new" | "supplement" | "maybe" | "missing_email";
 
 export type CandidateIds = { ids: Array<number>, };
 
-export type CandidatePage = { candidates: Array<CandidateRow>, total: number, };
+export type CandidatePage = { candidates: Array<CandidateRow>, total: number, counts: CandidateCounts, };
 
-export type CandidateQuery = { crawlId: number | null, processed: boolean, filter: CandidateFilter,
+export type CandidateQuery = { page: number, crawlId: number | null, processed: boolean, filter: CandidateFilter,
 /**
  * Every word must appear in the name, aliases, addresses, affiliations or research.
  */
-keyword?: string, page: number, };
+keyword?: string, };
 
-export type CandidateRow = { id: number, crawlId: number | null, name: string, emails: Array<string>, affiliation: Affiliation | null, research: string | null, sourceUrl: string | null, review: string, mentorId: number | null, category: CandidateFilter, issue: string | null, enrich: EnrichState, enrichChanges: Array<EnrichChange>, enrichError: Failure | null, };
+export type CandidateRow = { id: number, crawlId: number | null, name: string, emails: Array<string>, affiliation: Affiliation | null, research: string | null, sourceUrl: string | null, review: string, mentorId: number | null, category: CandidateFilter, issue: string | null,
+/**
+ * As in `CandidateDetail`.
+ */
+recognized: Array<string>, enrich: EnrichState, enrichChanges: Array<EnrichChange>, enrichError: Failure | null, };
+
+export type CandidateSelection = { crawlId: number | null, processed: boolean, filter: CandidateFilter,
+/**
+ * Every word must appear in the name, aliases, addresses, affiliations or research.
+ */
+keyword?: string, };
 
 export type Capacity = { windows: number, emails: number, nextChangeAt: number | null, };
 
@@ -240,7 +257,11 @@ export type Costs = { cny: number | null, usd: number | null, };
 
 export type CrawlDetail = { summary: CrawlSummary, urls: Array<string>, limits: Array<string>, pages: Array<CrawlPage>, runs: Array<CrawlRun>, pageTotal: number, };
 
-export type CrawlDetailQuery = { id: number, page: number, };
+export type CrawlDetailQuery = { id: number, page: number,
+/**
+ * Only the pages that did not open.
+ */
+failed: boolean, };
 
 export type CrawlFinished = { id: number, message: string, };
 
@@ -278,11 +299,21 @@ modelIds: Array<number>,
 /**
  * These and the models of the failed pages: retrying them sets the crawl going again.
  */
-retryModelIds: Array<number>, profiles: number, candidates: number, failed: number,
+retryModelIds: Array<number>,
+/**
+ * The teachers' pages the lists linked to, and how many of them have been read or failed.
+ */
+profiles: number, profilesDone: number, candidates: number, withEmail: number,
+/**
+ * Its candidates still to review.
+ */
+pending: number, failed: number,
 /**
  * The failed pages a retry reads again: not those of candidates already reviewed.
  */
 retryable: number, tokens: number | null, stage: CrawlStage, };
+
+export type CrawlUnit = { id: number, university: string, school: string | null, };
 
 export type CrawlUrls = { urls: string, };
 
@@ -1556,6 +1587,8 @@ export interface Operations {
   listCrawls: { input: CrawlQuery; output: CrawlList };
   crawlOptions: { input: Nothing; output: Array<CrawlOption> };
   getCrawl: { input: CrawlDetailQuery; output: CrawlDetail };
+  crawlUsage: { input: CrawlId; output: TokenTotals };
+  setCrawlUnit: { input: CrawlUnit; output: null };
   pauseCrawl: { input: CrawlId; output: null };
   resumeCrawl: { input: CrawlId; output: null };
   cancelCrawl: { input: CrawlId; output: null };
@@ -1566,6 +1599,7 @@ export interface Operations {
   previewEnrichMentors: { input: MentorIds; output: EnrichPlan };
   enrichMentors: { input: MentorIds; output: MentorEnrichment };
   listCandidates: { input: CandidateQuery; output: CandidatePage };
+  listCandidateIds: { input: CandidateSelection; output: Array<number> };
   getCandidate: { input: CrawlId; output: CandidateDetail };
   previewCandidates: { input: ReviewInput; output: IntakePreview };
   acceptCandidates: { input: ReviewInput; output: Reviewed };

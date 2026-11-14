@@ -65,7 +65,7 @@ async fn export_crawl_log(
     id: i64,
 ) -> Result<bool, CallError> {
     let exported = async {
-        let detail = crawl::queue::detail(&ctx.db, id, 1)
+        let detail = crawl::queue::detail(&ctx.db, id, 1, false)
             .await?
             .ok_or_else(|| CallError::not_found("这次整理已被删除"))?;
         let at = DateTime::from_timestamp_millis(detail.summary.created_at)

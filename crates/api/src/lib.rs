@@ -675,6 +675,11 @@ operations! {
         "crawlOptions" [none] => crawl_options(Nothing) -> Vec<crawl::queue::CrawlOption>;
         /// 读取指定 id 的整理详情。
         "getCrawl" [none] => get_crawl(CrawlDetailQuery) -> crawl::queue::CrawlDetail;
+        /// 这次整理用掉的 Token，和按模型现在填的单价估算的花费。
+        "crawlUsage" [none] => crawl_usage(CrawlId) -> stats::TokenTotals;
+        /// 修改智能整理认出的学校和学院，school 为空表示全校；这次整理待审核的候选在原学校学院的单位跟着改。
+        /// Agent 提交和补全已有导师的记录不能改。
+        "setCrawlUnit" [none] => set_crawl_unit(CrawlUnit) -> ();
         /// 暂停指定整理。
         "pauseCrawl" [none] => pause_crawl(CrawlId) -> ();
         /// 继续指定整理。
@@ -696,6 +701,9 @@ operations! {
         /// 按筛选条件分页列出候选导师。
         "listCandidates" [none] => list_candidates(crawl::review::CandidateQuery)
             -> crawl::review::CandidatePage;
+        /// 按筛选条件列出全部候选导师的 id，用于全选。
+        "listCandidateIds" [none] => list_candidate_ids(crawl::review::CandidateSelection)
+            -> Vec<i64>;
         /// 读取指定 id 的候选导师详情。
         "getCandidate" [none] => get_candidate(CrawlId) -> crawl::review::CandidateDetail;
         /// 预览候选导师入库，包含可能重复的导师。

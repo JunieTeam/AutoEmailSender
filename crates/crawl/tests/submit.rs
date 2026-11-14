@@ -33,10 +33,12 @@ async fn list(db: &SqlitePool, crawl: i64) -> review::CandidatePage {
     review::list(
         db,
         &review::CandidateQuery {
-            crawl_id: Some(crawl),
-            processed: false,
-            filter: review::CandidateFilter::All,
-            keyword: None,
+            selection: review::CandidateSelection {
+                crawl_id: Some(crawl),
+                processed: false,
+                filter: review::CandidateFilter::All,
+                keyword: None,
+            },
             page: 1,
         },
     )
@@ -437,10 +439,12 @@ async fn candidates_are_found_by_every_word_of_a_keyword(db: SqlitePool) {
         let page = review::list(
             &db,
             &review::CandidateQuery {
-                crawl_id: Some(crawl),
-                processed: false,
-                filter: review::CandidateFilter::All,
-                keyword: Some(keyword.into()),
+                selection: review::CandidateSelection {
+                    crawl_id: Some(crawl),
+                    processed: false,
+                    filter: review::CandidateFilter::All,
+                    keyword: Some(keyword.into()),
+                },
                 page: 1,
             },
         )

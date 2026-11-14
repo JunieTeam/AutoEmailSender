@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!\", affiliations AS \"affiliations: Json<Vec<mentor::Affiliation>>\",\n            profile_fields AS \"profile_fields: Json<MentorFields>\"\n        FROM candidate\n        WHERE crawl_id = ? AND review = 'pending'",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "candidate",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "affiliations: Json<Vec<mentor::Affiliation>>",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate",
+            "name": "affiliations"
+          }
+        }
+      },
+      {
+        "name": "profile_fields: Json<MentorFields>",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate",
+            "name": "profile_fields"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "94423816fe41bc8af66bf2a208568ffac9cdcfaee3338e94ad7a5ddd6c8ce83f"
+}

@@ -574,10 +574,12 @@ pub async fn run(path: &Path) -> Result {
     .execute(&db)
     .await?;
     let candidates = crawl::review::CandidateQuery {
-        crawl_id: None,
-        processed: false,
-        filter: crawl::review::CandidateFilter::All,
-        keyword: None,
+        selection: crawl::review::CandidateSelection {
+            crawl_id: None,
+            processed: false,
+            filter: crawl::review::CandidateFilter::All,
+            keyword: None,
+        },
         page: 1,
     };
     report(
@@ -592,10 +594,12 @@ pub async fn run(path: &Path) -> Result {
     ] {
         for page in [1, 20] {
             let query = crawl::review::CandidateQuery {
-                filter,
+                selection: crawl::review::CandidateSelection {
+                    filter,
+                    keyword: None,
+                    ..candidates.selection
+                },
                 page,
-                keyword: None,
-                ..candidates
             };
             report(
                 &format!("候选分类，{label}，第 {page} 页（1 万候选、10 万导师）"),
@@ -605,8 +609,11 @@ pub async fn run(path: &Path) -> Result {
         }
     }
     let searched = crawl::review::CandidateQuery {
-        keyword: Some("学习".into()),
-        ..candidates
+        selection: crawl::review::CandidateSelection {
+            keyword: Some("学习".into()),
+            ..candidates.selection
+        },
+        page: 1,
     };
     report(
         "候选搜索关键词，第 1 页（1 万候选、10 万导师）",

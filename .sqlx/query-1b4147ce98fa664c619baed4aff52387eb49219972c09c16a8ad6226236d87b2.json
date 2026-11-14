@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT count(*) FROM crawl_page WHERE crawl_id = ? AND status != 'success'",
+  "query": "SELECT count(*)\n        FROM crawl_page\n        WHERE crawl_id = ?1 AND (NOT ?2 OR (work_state = 'done' AND status != 'success'))",
   "describe": {
     "columns": [
       {
@@ -11,11 +11,11 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false
     ]
   },
-  "hash": "bb3b376406c852df37fbdb4b362891037c65420440a909c10a5464c5c09cd89b"
+  "hash": "1b4147ce98fa664c619baed4aff52387eb49219972c09c16a8ad6226236d87b2"
 }

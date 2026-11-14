@@ -269,9 +269,21 @@ pub struct TokenUsage {
 
 /// Costs are estimated with the configurations' prices now, and a call's peak or off-peak hours.
 pub async fn tokens(db: &SqlitePool, window: &Window) -> Result<TokenUsage, sqlx::Error> {
-    let start = window.start;
-    let end = window.end;
-    let rows = sqlx::query_file!("src/tokens.sql", start, end)
+    usage(db, window.start, window.end, None).await
+}
+
+/// What a crawl's calls took, and are estimated to cost as `tokens` estimates.
+pub async fn crawl_tokens(db: &SqlitePool, crawl: i64) -> Result<TokenTotals, sqlx::Error> {
+    Ok(usage(db, None, i64::MAX, Some(crawl)).await?.total)
+}
+
+async fn usage(
+    db: &SqlitePool,
+    start: Option<i64>,
+    end: i64,
+    crawl: Option<i64>,
+) -> Result<TokenUsage, sqlx::Error> {
+    let rows = sqlx::query_file!("src/tokens.sql", start, end, crawl)
         .fetch_all(db)
         .await?;
     let mut purposes: Vec<PurposeUsage> = Vec::new();

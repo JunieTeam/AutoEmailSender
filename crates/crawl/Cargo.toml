@@ -18,6 +18,7 @@ imagesize = "0.15"
 material.workspace = true
 mentor.workspace = true
 failure = { workspace = true, features = ["ts-rs"] }
+futures-util = { version = "0.3.31", default-features = false, features = ["alloc"] }
 model.workspace = true
 net.workspace = true
 ocr.workspace = true

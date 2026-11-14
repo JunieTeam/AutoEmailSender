@@ -11,6 +11,7 @@ use crate::{
     store::{PageKind, PageMethod, PageStatus, PageStep},
 };
 use failure::Failure;
+use mentor::Affiliation;
 use model::{
     Chosen,
     background::{CONCURRENCY, Effect, LASTING, Limit, Limited, RateLimit, Rounds},
@@ -103,13 +104,14 @@ async fn save_material(
 }
 
 impl Pages {
+    /// The page, and whether the browser read it.
     async fn fetch(
         &self,
         db: &SqlitePool,
         c: &Claim,
         target: &PageTarget,
         cooldown: &Cooldown,
-    ) -> Result<Material, ReadError> {
+    ) -> Result<(Material, bool), ReadError> {
         // A limit can begin while this page is being claimed; it then waits its turn again.
         if cooldown.until().is_some() {
             return Err(ReadError::Wait);
@@ -151,17 +153,50 @@ impl Pages {
             );
         }
         save_material(db, c, &m, PageMethod::Http).await?;
-        let Some(browser) = self
-            .browser
-            .as_ref()
-            .filter(|_| m.needs_browser.is_some() || !c.steps.is_empty())
-        else {
-            return Ok(m);
-        };
-        save_material(db, c, &m, PageMethod::Webview).await?;
+        if m.needs_browser.is_none() && c.steps.is_empty() {
+            return Ok((m, false));
+        }
+        match self
+            .browse(db, c, target, &m, fetched.relaxed_certificate)
+            .await
+        {
+            None => Ok((m, false)),
+            Some(rendered) => Ok((rendered?, true)),
+        }
+    }
+
+    /// The page `read` over HTTP, read once more in the browser; none when there is no browser to
+    /// read it in.
+    async fn render_again(
+        &self,
+        db: &SqlitePool,
+        c: &Claim,
+        target: &PageTarget,
+        read: &Material,
+    ) -> Result<Option<Material>, ReadError> {
+        if self.browser.is_some() {
+            tracing::info!(
+                url = c.url.as_str(),
+                "nothing over HTTP, reading in the browser"
+            );
+        }
+        self.browse(db, c, target, read, false).await.transpose()
+    }
+
+    async fn browse(
+        &self,
+        db: &SqlitePool,
+        c: &Claim,
+        target: &PageTarget,
+        read: &Material,
+        relaxed_certificate: bool,
+    ) -> Option<Result<Material, ReadError>> {
+        let browser = self.browser.as_ref()?;
+        if let Err(e) = save_material(db, c, read, PageMethod::Webview).await {
+            return Some(Err(e));
+        }
         let started = Instant::now();
-        let result =
-            Self::render(browser.as_ref(), db, c, target, fetched.relaxed_certificate).await;
+        let result = Self::render(browser.as_ref(), db, c, target, relaxed_certificate).await;
         let status = match &result {
             Ok(_) => "success",
             Err(ReadError::Gone) => "canceled",
@@ -174,7 +209,7 @@ impl Pages {
             elapsed_ms = started.elapsed().as_millis(),
             "page fetched"
         );
-        result
+        Some(result)
     }
 
     async fn render(
@@ -255,9 +290,28 @@ struct Page {
     next: Vec<PageUrl>,
     /// The page proved to be its one person's own, so where it ended up identifies them.
     own: bool,
+    /// The school and college the page says it belongs to.
+    unit: Option<Affiliation>,
+}
+impl Page {
+    fn nothing(material: Material, kind: PageKind) -> Self {
+        Page {
+            material,
+            kind,
+            people: vec![],
+            next: vec![],
+            own: false,
+            unit: None,
+        }
+    }
+    /// Gives no one and leads nowhere.
+    fn is_empty(&self) -> bool {
+        let p = &self.material.pagination;
+        self.people.is_empty() && self.next.is_empty() && p.urls.is_empty() && p.buttons.is_empty()
+    }
 }
 enum Outcome {
-    Done(Page),
+    Done(Box<Page>),
     Failed(Failure),
     Mismatched {
         reason: Failure,
@@ -476,7 +530,7 @@ async fn process(
     }
     Ok(
         match read(db, net, fetcher, limit, c, &chosen, cooldown).await {
-            Ok(page) => Outcome::Done(page),
+            Ok(page) => Outcome::Done(Box::new(page)),
             Err(ReadError::Pause(reason)) => Outcome::Pause(reason, Some(chosen)),
             Err(ReadError::Database {
                 source,
@@ -520,7 +574,7 @@ async fn read(
             .page(c.url.clone())
             .map_err(|e| ReadError::Failed(e.failure()))?
     };
-    let m = fetcher.fetch(db, c, &target, cooldown).await?;
+    let (mut m, mut rendered) = fetcher.fetch(db, c, &target, cooldown).await?;
     let reader = Reader {
         writes: &fetcher.writes,
         db,
@@ -531,26 +585,72 @@ async fn read(
         cooldown,
     };
     let targeted = targeted(c.kind);
-    if (m.units.is_empty() && !targeted)
-        || matches!(
-            m.needs_browser,
-            Some(crate::BrowserReason::Challenge | crate::BrowserReason::JavaScript)
-        )
+    // A page that shows nothing over HTTP may fill in once its scripts have run.
+    if !rendered
+        && m.units.is_empty()
+        && m.needs_browser.is_none()
+        && let Some(material) = fetcher.render_again(db, c, &target, &m).await?
     {
-        return Ok(Page {
-            material: m,
-            kind: if targeted { c.kind } else { PageKind::Entry },
-            people: vec![],
-            next: vec![],
-            own: false,
-        });
+        (m, rendered) = (material, true);
     }
+    let blocked = matches!(
+        m.needs_browser,
+        Some(crate::BrowserReason::Challenge | crate::BrowserReason::JavaScript)
+    );
+    if blocked || (m.units.is_empty() && !targeted) {
+        return Ok(Page::nothing(
+            m,
+            if targeted { c.kind } else { PageKind::Entry },
+        ));
+    }
+    let unit = crawl_unit(db, c.crawl).await?;
     if targeted {
-        return read_for_candidate(&reader, fetcher, &scope, m).await;
+        return read_for_candidate(&reader, fetcher, &scope, m, unit.as_ref()).await;
     }
+    let page = interpret(&reader, &scope, m, unit.as_ref()).await?;
+    // A list that loads its teachers with scripts gives none over HTTP: read it in the browser,
+    // which fails the page when it shows nothing either.
+    if !rendered
+        && page.is_empty()
+        && let Some(material) = fetcher.render_again(db, c, &target, &page.material).await?
+    {
+        return interpret(&reader, &scope, material, unit.as_ref()).await;
+    }
+    Ok(page)
+}
+
+/// The school and college a crawl from a website found its pages to belong to.
+async fn crawl_unit(db: &SqlitePool, crawl: i64) -> Result<Option<Affiliation>, ReadError> {
+    let row = sqlx::query!(
+        r#"SELECT university, school FROM crawl WHERE id = ? AND kind = 'site'"#,
+        crawl
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(database("read crawl unit", READ_FAILED))?;
+    Ok(row.and_then(|r| {
+        Some(Affiliation {
+            university: Some(r.university?),
+            school: r.school,
+            ..Default::default()
+        })
+    }))
+}
+
+/// What a page found while looking for lists is, and what it gives.
+async fn interpret(
+    reader: &Reader<'_>,
+    scope: &Scope,
+    m: Material,
+    unit: Option<&Affiliation>,
+) -> Result<Page, ReadError> {
+    let c = reader.claim;
     let route = reader
-        .ask::<extract::Route>("route", extract::ROUTE, extract::routing(&m, &scope))
+        .ask::<extract::Route>("route", extract::ROUTE, extract::routing(&m, scope))
         .await?;
+    let found = route.affiliation();
+    // The crawl's way of writing its school and college, once one page has named them.
+    let unit = unit.or(found.as_ref());
     let mut next: Vec<PageUrl> = Vec::new();
     let kind = match route.kind {
         Kind::Profile => PageKind::Profile,
@@ -559,10 +659,12 @@ async fn read(
     };
     if kind != PageKind::Profile {
         let links = extract::links(&m);
-        for id in route.next {
+        for id in &route.next {
             if let Some((_, url)) = id.checked_sub(1).and_then(|n| links.get(n))
                 && scope.page((*url).clone()).is_ok()
                 && !m.pagination.urls.contains(url)
+                && !url.is_normalization_of(&c.url)
+                && !url.is_normalization_of(&m.url)
                 && !next.contains(*url)
             {
                 next.push((*url).clone());
@@ -571,16 +673,15 @@ async fn read(
     }
     let people = match route.kind {
         Kind::List => {
-            let mut all = Vec::new();
-            for range in extract::segments(&m) {
-                all.extend(
-                    reader
-                        .ask::<extract::People>("list", extract::LIST, extract::data(&m, range))
-                        .await?
-                        .people,
-                );
-            }
-            extract::listed(&m, all, &scope).map_err(|reason| {
+            let parts = extract::segments(&m).into_iter().map(|range| {
+                reader.ask::<extract::People>("list", extract::LIST, extract::data(&m, range))
+            });
+            let all = futures_util::future::try_join_all(parts)
+                .await?
+                .into_iter()
+                .flat_map(|p| p.people)
+                .collect();
+            extract::listed(&m, all, scope, unit).map_err(|reason| {
                 tracing::info!(reason = "invalid_people", "page extraction failed");
                 ReadError::Failed(Failure::new(reason))
             })?
@@ -597,6 +698,9 @@ async fn read(
                 tracing::info!(reason = "invalid_profile", "page extraction failed");
                 ReadError::Failed(Failure::new(reason))
             })?;
+            if let Some(unit) = unit {
+                extract::fill(&mut p.fields.affiliations, unit);
+            }
             p.profile = Some(c.url.clone());
             vec![p]
         }
@@ -608,6 +712,7 @@ async fn read(
         people,
         next,
         own: kind == PageKind::Profile,
+        unit: found,
     })
 }
 
@@ -645,6 +750,7 @@ async fn read_for_candidate(
     pages: &Pages,
     scope: &Scope,
     m: Material,
+    unit: Option<&Affiliation>,
 ) -> Result<Page, ReadError> {
     let c = reader.claim;
     let mut conn = reader
@@ -688,13 +794,7 @@ async fn read_for_candidate(
         error = invalidated(reader.db, c) => return Err(error),
     };
     if m.units.is_empty() {
-        return Ok(Page {
-            material: m,
-            kind: c.kind,
-            people: vec![],
-            next: vec![],
-            own: false,
-        });
+        return Ok(Page::nothing(m, c.kind));
     }
     let mut data = extract::data(&m, 0..m.units.len());
     data["target"] = serde_json::json!({
@@ -754,6 +854,9 @@ async fn read_for_candidate(
     if c.kind == PageKind::Profile {
         person.profile = Some(c.url.clone());
     }
+    if let Some(unit) = unit {
+        extract::fill(&mut person.fields.affiliations, unit);
+    }
     let own = result.relation == extract::Relation::Matched;
     // Only one person's own page vouches for every address on it. Elsewhere an address must sit
     // by their name, as on a list, and a subpage that gives more than one is not trusted for any.
@@ -797,6 +900,7 @@ async fn read_for_candidate(
         people: vec![person],
         next,
         own,
+        unit: None,
     })
 }
 /// Whom a list's profile page is read for, or whom they have merged into since; none when it is
@@ -845,6 +949,18 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
             )
             .execute(&mut *tx)
             .await?;
+            // The first page to name its school and college names the crawl's.
+            if let Some(unit) = &p.unit {
+                sqlx::query!(
+                    r#"UPDATE crawl SET university = ?, school = ?
+                    WHERE id = ? AND kind = 'site' AND university IS NULL AND school IS NULL"#,
+                    unit.university,
+                    unit.school,
+                    c.crawl
+                )
+                .execute(&mut *tx)
+                .await?;
+            }
             if let Some(id) = c.candidate_id {
                 if c.kind == PageKind::EnrichProfile
                     && !sqlx::query_scalar!(
@@ -1091,25 +1207,26 @@ async fn finish(db: &SqlitePool, at: i64) -> Result<Vec<CrawlFinished>, sqlx::Er
             sqlx::query_scalar!("SELECT count(*) FROM candidate WHERE crawl_id = ?", id)
                 .fetch_one(&mut *tx)
                 .await?;
-        let failed = sqlx::query_scalar!(
-            "SELECT count(*) FROM crawl_page WHERE crawl_id = ? AND status != 'success'",
+        let pages = sqlx::query!(
+            r#"SELECT count(*) FILTER (WHERE status = 'success') AS "read!: i64",
+                count(*) FILTER (WHERE status != 'success') AS "failed!: i64"
+            FROM crawl_page
+            WHERE crawl_id = ?"#,
             id
         )
         .fetch_one(&mut *tx)
         .await?;
-        if candidates == 0 && failed > 0 {
+        let failed = pages.failed;
+        if candidates == 0 {
+            let reason = if pages.read == 0 {
+                "本次整理未能处理任何页面。请查看各页面的原因后重试。"
+            } else {
+                "没有在读到的网页上找到导师。请换成学院“师资队伍”“教师名录”这类页面再试；\
+                要登录或只对校内开放的页面读不到。"
+            };
             sqlx::query!(
-                r#"UPDATE crawl
-                SET state = 'failed', error = ?
-                WHERE id = ? AND NOT EXISTS (
-                    SELECT 1
-                    FROM crawl_page
-                    WHERE crawl_id = ? AND status = 'success'
-                )"#,
-                Json(Failure::new(
-                    "本次整理未能处理任何页面。请查看各页面的原因后重试。"
-                )),
-                id,
+                "UPDATE crawl SET state = 'failed', error = ? WHERE id = ?",
+                Json(Failure::new(reason)),
                 id
             )
             .execute(&mut *tx)
@@ -1128,9 +1245,11 @@ async fn finish(db: &SqlitePool, at: i64) -> Result<Vec<CrawlFinished>, sqlx::Er
         .await?;
         let mut messages = Vec::new();
         if activity.iter().any(|p| p.candidate_id.is_none()) {
-            messages.push(format!(
-                "整理完成：找到 {candidates} 位候选，{failed} 个页面未打开"
-            ));
+            messages.push(match (candidates, pages.read) {
+                (0, 0) => format!("整理未能完成：{failed} 个页面未打开，去智能整理里查看原因"),
+                (0, _) => "整理没有找到导师，去智能整理里查看原因".to_owned(),
+                _ => format!("整理完成：找到 {candidates} 位候选，{failed} 个页面未打开"),
+            });
         }
         let enriched = activity
             .iter()

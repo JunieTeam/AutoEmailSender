@@ -258,7 +258,7 @@ async fn browser_failures_preserve_http_text_and_preview_still_needs_browser(db:
         queue::retry(&db, id, Some(claim.id), 2).await.unwrap();
         claim = queue::next(&db).await.unwrap().unwrap();
     }
-    let m = Pages::local(site.port)
+    let (m, _) = Pages::local(site.port)
         .fetch(&db, &claim, &target, &Cooldown::new(Arc::default()))
         .await
         .unwrap_or_else(|_| panic!("preview HTTP material"));
@@ -446,4 +446,78 @@ async fn a_profile_the_browser_shows_as_only_a_picture_is_read(db: SqlitePool) {
     save(&db, &claim, &read.await.unwrap()).await.unwrap();
     let d = review::detail(&db, id).await.unwrap().unwrap();
     assert_eq!(d.candidate.fields.emails, vec!["zs@example.edu"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_that_shows_no_teacher_over_http_is_read_in_the_browser(db: SqlitePool) {
+    let site = Site::new().await;
+    // One list fills in its teachers with scripts; another page is blank until they run.
+    site.page(
+        "/",
+        "<title>教师名单</title><h1>师资队伍</h1><div id='list'></div>",
+    );
+    site.page("/blank", "<html><body></body></html>");
+    let browser = Arc::new(FakeBrowser::default());
+    browser.page(
+        &site.url("/"),
+        "<title>教师名单</title><p>张三 a@school.example.edu</p>",
+    );
+    browser.page(
+        &site.url("/blank"),
+        "<title>教师名单</title><p>李四 b@school.example.edu</p>",
+    );
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let responder = tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let data = request.body["messages"][1]["content"].as_str().unwrap();
+            let output = if system.starts_with("你整理学院") {
+                json!({"kind":"list","next":[]})
+            } else if data.contains("张三") {
+                json!({"people":[listed("张三", None, vec!["a@school.example.edu"])]})
+            } else if data.contains("李四") {
+                json!({"people":[listed("李四", None, vec!["b@school.example.edu"])]})
+            } else {
+                json!({"people":[]})
+            };
+            request
+                .respond
+                .send(Response::answer(&output.to_string()))
+                .ok();
+        }
+    });
+    let id = queue::start(&db, &[site.url("/"), site.url("/blank")], model, 1)
+        .await
+        .unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser),
+        recognize: super::recognize,
+    };
+    let net = net::Net::new(vec![]).unwrap();
+    let limit = Limit::default();
+    while let Some(claim) = queue::next(&db).await.unwrap() {
+        let cooldown = Cooldown::new(Arc::default());
+        let outcome = process(&db, &net, &pages, &limit, &claim, &cooldown)
+            .await
+            .unwrap();
+        assert!(save(&db, &claim, &outcome).await.unwrap());
+    }
+    let records: Vec<(String, String)> =
+        sqlx::query_as("SELECT mode,status FROM crawl_page WHERE crawl_id=? ORDER BY id")
+            .bind(id)
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(records, vec![("webview".into(), "success".into()); 2]);
+    let names: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM candidate WHERE crawl_id=? ORDER BY id")
+            .bind(id)
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(names, vec!["张三", "李四"]);
+    responder.abort();
 }

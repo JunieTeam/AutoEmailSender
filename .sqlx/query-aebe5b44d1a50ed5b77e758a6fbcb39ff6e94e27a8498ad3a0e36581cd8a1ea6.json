@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT kind AS \"kind: queue::CrawlKind\", university, school FROM crawl WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "kind: queue::CrawlKind",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "university",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl",
+            "name": "university"
+          }
+        }
+      },
+      {
+        "name": "school",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl",
+            "name": "school"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "aebe5b44d1a50ed5b77e758a6fbcb39ff6e94e27a8498ad3a0e36581cd8a1ea6"
+}

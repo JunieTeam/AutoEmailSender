@@ -57,6 +57,19 @@ async fn addresses_drawn_as_pictures_are_read_in_place_and_marked(db: SqlitePool
         d.evidence.last().unwrap().recognized,
         vec!["zs@example.edu"]
     );
+    // Review warns of it, in the list as in the detail.
+    assert_eq!(d.recognized, vec!["zs@example.edu"]);
+    let query = CandidateQuery {
+        selection: CandidateSelection {
+            crawl_id: d.candidate.crawl_id,
+            processed: false,
+            filter: CandidateFilter::All,
+            keyword: None,
+        },
+        page: 1,
+    };
+    let listed = review::list(&db, &query).await.unwrap();
+    assert_eq!(listed.candidates[0].recognized, d.recognized);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

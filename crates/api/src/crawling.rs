@@ -18,6 +18,9 @@ pub struct CrawlQuery {
 pub struct CrawlDetailQuery {
     pub id: i64,
     pub page: u32,
+    /// Only the pages that did not open.
+    #[serde(default)]
+    pub failed: bool,
 }
 #[derive(Debug, Deserialize, TS)]
 pub struct CrawlRetry {
@@ -27,6 +30,29 @@ pub struct CrawlRetry {
 #[derive(Debug, Deserialize, TS)]
 pub struct CandidateIds {
     pub ids: Vec<i64>,
+}
+#[derive(Debug, Deserialize, TS)]
+pub struct CrawlUnit {
+    pub id: i64,
+    pub university: String,
+    pub school: Option<String>,
+}
+pub(super) async fn set_crawl_unit(ctx: &Context, input: CrawlUnit) -> Result<(), CallError> {
+    let text = |s: &str| Some(s.trim()).filter(|s| !s.is_empty()).map(str::to_owned);
+    let university =
+        text(&input.university).ok_or_else(|| CallError::invalid("请填写学校".into()))?;
+    let unit = mentor::Affiliation {
+        university: Some(university),
+        school: input.school.as_deref().and_then(text),
+        ..Default::default()
+    };
+    match review::set_unit(&ctx.db, input.id, &unit).await? {
+        review::UnitChange::Set => Ok(()),
+        review::UnitChange::Deleted => Err(CallError::not_found("这次整理已被删除")),
+        review::UnitChange::NotSite => Err(CallError::invalid(
+            "只有智能整理的记录能改学校和学院；Agent 提交和补全已有导师的候选按各自的单位".into(),
+        )),
+    }
 }
 pub(super) async fn submit_candidates(
     ctx: &Context,
@@ -103,9 +129,15 @@ pub(super) async fn get_crawl(
     ctx: &Context,
     input: CrawlDetailQuery,
 ) -> Result<queue::CrawlDetail, CallError> {
-    queue::detail(&ctx.db, input.id, input.page)
+    queue::detail(&ctx.db, input.id, input.page, input.failed)
         .await?
         .ok_or_else(|| CallError::not_found("这次整理已被删除"))
+}
+pub(super) async fn crawl_usage(
+    ctx: &Context,
+    input: CrawlId,
+) -> Result<stats::TokenTotals, CallError> {
+    Ok(stats::crawl_tokens(&ctx.db, input.id).await?)
 }
 pub(super) async fn pause_crawl(ctx: &Context, input: CrawlId) -> Result<(), CallError> {
     queue::control(&ctx.db, input.id, "pause", now()).await?;
@@ -240,6 +272,12 @@ pub(super) async fn list_candidates(
     input: review::CandidateQuery,
 ) -> Result<review::CandidatePage, CallError> {
     Ok(review::list(&ctx.db, &input).await?)
+}
+pub(super) async fn list_candidate_ids(
+    ctx: &Context,
+    input: review::CandidateSelection,
+) -> Result<Vec<i64>, CallError> {
+    Ok(review::ids(&ctx.db, &input).await?)
 }
 pub(super) async fn get_candidate(
     ctx: &Context,
@@ -465,7 +503,7 @@ mod tests {
                 .await
                 .unwrap()
         );
-        let detail = queue::detail(&db, crawl, 1).await.unwrap().unwrap();
+        let detail = queue::detail(&db, crawl, 1, false).await.unwrap().unwrap();
         assert_eq!(detail.summary.model_ids.0, vec![ids[0]]);
         let mut retried = detail.summary.retry_model_ids.0.clone();
         retried.sort();
@@ -509,7 +547,7 @@ mod tests {
             .execute(&db)
             .await
             .unwrap();
-        let detail = queue::detail(&db, crawl, 1).await.unwrap().unwrap();
+        let detail = queue::detail(&db, crawl, 1, false).await.unwrap().unwrap();
         assert_eq!(detail.summary.retryable, 0);
         assert!(detail.pages.iter().all(|p| !p.retryable));
         for page in [Some(failed), None] {

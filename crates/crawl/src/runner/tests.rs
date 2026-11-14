@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     extract,
-    review::{CandidateFilter, CandidateQuery, ReviewInput},
+    review::{CandidateFilter, CandidateQuery, CandidateSelection, ReviewInput},
 };
 use mentor::{MentorFields, import::Decisions};
 use provider::{Provider, Response};
@@ -227,7 +227,7 @@ async fn extraction_requests_a_json_object(db: SqlitePool) {
 }
 
 fn listed(name: &str, profile: Option<usize>, emails: Vec<&str>) -> Value {
-    json!({"name":name,"title":"教授","profile":profile,"emails":emails,"research":null})
+    json!([name, "教授", profile, emails])
 }
 fn person(name: &str, email: &str) -> Value {
     json!({
@@ -396,10 +396,12 @@ async fn home_categories_pagination_profiles_evidence_and_retry_end_to_end() {
     let candidates = review::list(
         &db,
         &CandidateQuery {
-            crawl_id: Some(crawl),
-            processed: false,
-            filter: CandidateFilter::All,
-            keyword: None,
+            selection: CandidateSelection {
+                crawl_id: Some(crawl),
+                processed: false,
+                filter: CandidateFilter::All,
+                keyword: None,
+            },
             page: 1,
         },
     )
@@ -427,13 +429,21 @@ async fn home_categories_pagination_profiles_evidence_and_retry_end_to_end() {
             .iter()
             .any(|p| p == "/news" || p == "/must-not-visit" || p == "/alternate-alice")
     );
-    let detail = queue::detail(&db, crawl, 1).await.unwrap().unwrap();
+    let detail = queue::detail(&db, crawl, 1, false).await.unwrap().unwrap();
     assert!(
         detail
             .pages
             .iter()
             .any(|p| p.status == PageStatus::NeedsBrowser)
     );
+    let s = &detail.summary;
+    assert_eq!(
+        (s.profiles, s.profiles_done, s.with_email, s.pending),
+        (2, 2, 3, 3)
+    );
+    let failed = queue::detail(&db, crawl, 1, true).await.unwrap().unwrap();
+    assert_eq!(failed.page_total, 2);
+    assert!(failed.pages.iter().all(|p| p.status != PageStatus::Success));
     site.page(
         "/missing",
         "<title>教师名单二</title><p>王五 c@school.example.edu</p>",
@@ -447,7 +457,7 @@ async fn home_categories_pagination_profiles_evidence_and_retry_end_to_end() {
     assert_eq!(queue::retry(&db, crawl, Some(failed), 2).await.unwrap(), 1);
     runner.wake();
     changed_until(&db, crawl, &mut events, "done").await;
-    let detail = queue::detail(&db, crawl, 1).await.unwrap().unwrap();
+    let detail = queue::detail(&db, crawl, 1, false).await.unwrap().unwrap();
     assert_eq!(
         detail.pages.iter().find(|p| p.id == failed).unwrap().status,
         PageStatus::Success
@@ -566,7 +576,7 @@ async fn claims_pause_resume_cancel_restart_and_limits(db: SqlitePool) {
         60
     );
     assert!(
-        !queue::detail(&db, id, 1)
+        !queue::detail(&db, id, 1, false)
             .await
             .unwrap()
             .unwrap()
@@ -664,10 +674,12 @@ async fn candidate_identity_person_limit_and_review_transactions(db: SqlitePool)
     }
     tx.commit().await.unwrap();
     let q = CandidateQuery {
-        crawl_id: Some(crawl),
-        processed: false,
-        filter: CandidateFilter::All,
-        keyword: None,
+        selection: CandidateSelection {
+            crawl_id: Some(crawl),
+            processed: false,
+            filter: CandidateFilter::All,
+            keyword: None,
+        },
         page: 1,
     };
     let page = review::list(&db, &q).await.unwrap();
@@ -789,6 +801,7 @@ fn segments_preserve_blocks_and_external_output_is_checked() {
             research: None,
         }],
         &Scope::new(&url),
+        None,
     )
     .unwrap();
     assert_eq!(people.len(), 1);
@@ -1084,10 +1097,12 @@ async fn late_results_restart_and_retry_after_preserve_work(db: SqlitePool) {
     let candidates = review::list(
         &db,
         &CandidateQuery {
-            crawl_id: Some(id),
-            processed: false,
-            filter: CandidateFilter::All,
-            keyword: None,
+            selection: CandidateSelection {
+                crawl_id: Some(id),
+                processed: false,
+                filter: CandidateFilter::All,
+                keyword: None,
+            },
             page: 1,
         },
     )
@@ -1098,7 +1113,7 @@ async fn late_results_restart_and_retry_after_preserve_work(db: SqlitePool) {
         candidates.candidates[0].emails,
         vec!["geoffrey.hinton@gmail.com"]
     );
-    let detail = queue::detail(&db, id, 1).await.unwrap().unwrap();
+    let detail = queue::detail(&db, id, 1, false).await.unwrap().unwrap();
     assert!(detail.runs.len() >= 3);
     assert!(
         sqlx::query_scalar::<_, String>("SELECT text FROM crawl_page WHERE id=?")
@@ -1733,7 +1748,10 @@ async fn b3_redirect_to_another_person_must_not_merge(db: SqlitePool) {
         links(&db, ids[0]).await,
         (None, vec![(old_zhang.clone(), true)])
     );
-    let detail = queue::detail(&db, root.crawl, 1).await.unwrap().unwrap();
+    let detail = queue::detail(&db, root.crawl, 1, false)
+        .await
+        .unwrap()
+        .unwrap();
     let page = detail.pages.iter().find(|p| p.id == claim.id).unwrap();
     assert_eq!(page.status, PageStatus::Failed);
     assert!(page.error.as_deref().unwrap().message.contains("张三"));
@@ -1779,7 +1797,10 @@ async fn b3_redirect_to_another_person_must_not_merge(db: SqlitePool) {
     assert_eq!(retry.id, claim.id);
     process_claim(&db, &site, &retry).await;
     assert_eq!(candidate_ids(&db).await, ids);
-    let detail = queue::detail(&db, root.crawl, 1).await.unwrap().unwrap();
+    let detail = queue::detail(&db, root.crawl, 1, false)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         detail
             .pages
@@ -2236,7 +2257,10 @@ async fn b3_same_request_changed_destination_must_not_merge(db: SqlitePool) {
         identities,
         vec![site.url("/old").as_str(), site.url("/zhang").as_str()]
     );
-    let detail = queue::detail(&db, root.crawl, 1).await.unwrap().unwrap();
+    let detail = queue::detail(&db, root.crawl, 1, false)
+        .await
+        .unwrap()
+        .unwrap();
     let page = detail.pages.iter().find(|p| p.id == retry.id).unwrap();
     assert_eq!(page.status, PageStatus::Failed);
     assert!(page.error.as_deref().unwrap().message.contains("张三"));
@@ -2348,6 +2372,7 @@ async fn b3_direct_external_profile_same_site_redirect(db: SqlitePool) {
             research: None,
         }],
         &scope,
+        None,
     )
     .unwrap();
     let mut tx = db.begin_with("BEGIN IMMEDIATE").await.unwrap();
@@ -2433,7 +2458,10 @@ async fn a_listed_profile_link_to_another_teacher_fills_nothing(db: SqlitePool) 
         serde_json::to_value(review::detail(&db, ids[0]).await.unwrap()).unwrap(),
         before
     );
-    let detail = queue::detail(&db, root.crawl, 1).await.unwrap().unwrap();
+    let detail = queue::detail(&db, root.crawl, 1, false)
+        .await
+        .unwrap()
+        .unwrap();
     let page = detail.pages.iter().find(|p| p.id == claim.id).unwrap();
     assert_eq!(page.status, PageStatus::Failed);
     assert!(page.error.as_deref().unwrap().message.contains("张三"));
@@ -2488,7 +2516,10 @@ async fn expect_completed_profile(
     aliases: &[&str],
     email: &str,
 ) {
-    let crawl = queue::detail(db, claim.crawl, 1).await.unwrap().unwrap();
+    let crawl = queue::detail(db, claim.crawl, 1, false)
+        .await
+        .unwrap()
+        .unwrap();
     let page = crawl.pages.iter().find(|p| p.id == claim.id).unwrap();
     assert_eq!(page.status, PageStatus::Success, "{:?}", page.error);
     let ids = candidate_ids(db).await;
@@ -3205,7 +3236,7 @@ async fn regression_invalid_name_is_corrected_or_fails_with_page_reason(db: Sqli
         }
         save(&db, &c, &outcome).await.unwrap();
         finish(&db, now()).await.unwrap();
-        let detail = queue::detail(&db, id, 1).await.unwrap().unwrap();
+        let detail = queue::detail(&db, id, 1, false).await.unwrap().unwrap();
         assert_eq!(
             detail.pages[0].status,
             if correct {
@@ -3618,7 +3649,12 @@ async fn regression_background_includes_old_running_paused_and_failed_crawls(db:
     for id in [c.crawl, paused, failed] {
         assert!(work.iter().any(|c| c.id == id), "old work {id} is absent");
     }
-    assert!(queue::detail(&db, c.crawl, 1).await.unwrap().is_some());
+    assert!(
+        queue::detail(&db, c.crawl, 1, false)
+            .await
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -3653,10 +3689,12 @@ async fn candidate_classification_pages_follow_normalized_names_schools_and_ment
         .await;
     }
     let mut query = CandidateQuery {
-        crawl_id: Some(c.crawl),
-        processed: false,
-        filter: CandidateFilter::Maybe,
-        keyword: None,
+        selection: CandidateSelection {
+            crawl_id: Some(c.crawl),
+            processed: false,
+            filter: CandidateFilter::Maybe,
+            keyword: None,
+        },
         page: 1,
     };
     let first = review::list(&db, &query).await.unwrap();
@@ -3673,7 +3711,7 @@ async fn candidate_classification_pages_follow_normalized_names_schools_and_ment
     local.affiliations = vec![affiliation("另一所大学")];
     mentor::update(&db, target, &local, 2).await.unwrap();
     assert_eq!(review::list(&db, &query).await.unwrap().total, 0);
-    query.filter = CandidateFilter::New;
+    query.selection.filter = CandidateFilter::New;
     let new = review::list(&db, &query).await.unwrap();
     assert_eq!((new.total, new.candidates.len()), (55, 5));
 }
@@ -3696,17 +3734,19 @@ async fn candidate_categories_do_not_depend_on_other_rows_on_the_page(db: Sqlite
         .await;
     }
     let mut q = CandidateQuery {
-        crawl_id: Some(c.crawl),
-        processed: false,
-        filter: CandidateFilter::All,
-        keyword: None,
+        selection: CandidateSelection {
+            crawl_id: Some(c.crawl),
+            processed: false,
+            filter: CandidateFilter::All,
+            keyword: None,
+        },
         page: 1,
     };
     let all = review::list(&db, &q).await.unwrap();
     assert_eq!(all.candidates[0].category, CandidateFilter::New);
     assert_eq!(all.candidates[1].category, CandidateFilter::Maybe);
     for filter in [CandidateFilter::New, CandidateFilter::Maybe] {
-        q.filter = filter;
+        q.selection.filter = filter;
         let page = review::list(&db, &q).await.unwrap();
         assert_eq!(page.total, 1);
         assert_eq!(page.candidates[0].category, filter);
@@ -3869,4 +3909,155 @@ async fn deleting_a_crawl_removes_pages_and_pending_candidates_but_keeps_reviewe
             .unwrap(),
         0
     );
+}
+
+/// A candidate's units, those their own page gave, and the schools they are matched by.
+async fn units(db: &SqlitePool, name: &str) -> (Vec<Affiliation>, Vec<Affiliation>, Vec<String>) {
+    let (Json(units), profile, Json(schools)) = sqlx::query_as::<
+        _,
+        (
+            Json<Vec<Affiliation>>,
+            Option<Json<MentorFields>>,
+            Json<Vec<String>>,
+        ),
+    >(
+        "SELECT affiliations, profile_fields, match_schools FROM candidate WHERE name = ?",
+    )
+    .bind(name)
+    .fetch_one(db)
+    .await
+    .unwrap();
+    let profile = profile.map(|Json(p)| p.affiliations).unwrap_or_default();
+    (units, profile, schools)
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_crawl_s_pages_name_its_school_and_its_candidates_follow_the_user_s_change(
+    db: SqlitePool,
+) {
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>示例大学计算机学院 师资队伍</title><p><a href='/zhang'>张三</a> 教授</p>\
+        <p>李四 教授 li@school.example.edu</p>",
+    );
+    site.page(
+        "/zhang",
+        "<title>张三</title><p>张三 教授 软件工程系 zhang@school.example.edu</p>\
+        <p>另一大学数学学院兼职教授</p>",
+    );
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let server = tokio::spawn(async move {
+        while let Some(r) = provider.requests.recv().await {
+            let system = r.body["messages"][0]["content"].as_str().unwrap();
+            let answer = if system.starts_with("你整理学院") {
+                json!({"kind":"list","next":[],"university":"示例大学","school":"计算机学院"})
+            } else if system.starts_with("你从教师") {
+                json!({"people":[
+                    listed("张三", Some(1), vec![]),
+                    listed("李四", None, vec!["li@school.example.edu"])
+                ]})
+            } else {
+                // A teacher's page takes its own school and college for granted.
+                let mut answer = targeted("zhang@school.example.edu");
+                answer["affiliations"] = json!([
+                    {"university":null,"school":null,"department":"软件工程系","title":"教授"},
+                    {"university":"另一大学","school":"数学学院","department":null,"title":"兼职教授"}
+                ]);
+                answer
+            };
+            r.respond.send(Response::answer(&answer.to_string())).ok();
+        }
+    });
+    let crawl = queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    while let Some(claim) = queue::next(&db).await.unwrap() {
+        process_claim(&db, &site, &claim).await;
+    }
+    let unit = |university: &str, school: &str| Affiliation {
+        university: Some(university.into()),
+        school: Some(school.into()),
+        ..Default::default()
+    };
+    let at = |university: &str, school: &str, department: Option<&str>, title: &str| Affiliation {
+        department: department.map(Into::into),
+        title: Some(title.into()),
+        ..unit(university, school)
+    };
+    assert_eq!(
+        crawl_unit(&db, crawl).await.unwrap(),
+        Some(unit("示例大学", "计算机学院"))
+    );
+    let elsewhere = at("另一大学", "数学学院", None, "兼职教授");
+    let zhang = vec![
+        at("示例大学", "计算机学院", Some("软件工程系"), "教授"),
+        elsewhere.clone(),
+    ];
+    assert_eq!(
+        units(&db, "张三").await,
+        (
+            zhang.clone(),
+            zhang,
+            vec!["示例大学".into(), "另一大学".into()]
+        )
+    );
+    let li = (
+        vec![at("示例大学", "计算机学院", None, "教授")],
+        vec![],
+        vec!["示例大学".into()],
+    );
+    assert_eq!(units(&db, "李四").await, li);
+    // The user rejects one, then writes the school and college as they should be.
+    let rejected = sqlx::query_scalar::<_, i64>("SELECT id FROM candidate WHERE name = '李四'")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    review::reject(&db, &[rejected]).await.unwrap();
+    let changed = unit("示例理工大学", "软件学院");
+    assert_eq!(
+        review::set_unit(&db, crawl, &changed).await.unwrap(),
+        review::UnitChange::Set
+    );
+    assert_eq!(crawl_unit(&db, crawl).await.unwrap(), Some(changed));
+    let zhang = vec![
+        at("示例理工大学", "软件学院", Some("软件工程系"), "教授"),
+        elsewhere,
+    ];
+    assert_eq!(
+        units(&db, "张三").await,
+        (
+            zhang.clone(),
+            zhang,
+            vec!["示例理工大学".into(), "另一大学".into()]
+        )
+    );
+    assert_eq!(units(&db, "李四").await, li);
+    server.abort();
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_crawl_that_finds_no_teacher_fails_and_says_what_to_try(db: SqlitePool) {
+    let site = Site::new().await;
+    site.page("/", "<title>学院概况</title><p>本院成立于 1990 年。</p>");
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let server = tokio::spawn(async move {
+        while let Some(r) = provider.requests.recv().await {
+            let answer = json!({"kind":"other","next":[]});
+            r.respond.send(Response::answer(&answer.to_string())).ok();
+        }
+    });
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let claim = queue::next(&db).await.unwrap().unwrap();
+    process_claim(&db, &site, &claim).await;
+    assert!(
+        finish(&db, now()).await.unwrap()[0]
+            .message
+            .contains("没有找到导师")
+    );
+    let crawl = &queue::list(&db, 1).await.unwrap().crawls[0];
+    assert_eq!(crawl.state, queue::CrawlState::Failed);
+    let reason = &crawl.error.as_ref().unwrap().message;
+    assert!(reason.contains("没有在读到的网页上找到导师"), "{reason}");
+    server.abort();
 }
