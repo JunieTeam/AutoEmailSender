@@ -82,18 +82,20 @@ fn canceled() -> CallError {
 impl Context {
     /// A turn at the model of the configuration `read` gives, as it is once the turn comes, unless
     /// the UI cancels `request` first.
-    pub(crate) async fn writing_turn<F>(
+    pub(crate) async fn writing_turn<E, F>(
         &self,
         request: Option<String>,
         read: impl Fn() -> F,
     ) -> Result<(Turn<'_>, Chosen), CallError>
     where
-        F: Future<Output = Result<Option<Chosen>, sqlx::Error>>,
+        F: Future<Output = Result<Option<Chosen>, E>>,
+        E: Into<CallError>,
     {
         let take = async {
             self.turns
                 .take_current(Priority::Interactive, read)
-                .await?
+                .await
+                .map_err(Into::<CallError>::into)?
                 .ok_or_else(|| CallError::from(writing::Error::NoModel))
         };
         let Some(request) = request else {

@@ -3474,8 +3474,9 @@ mod writing_tests {
         }
     }
 
-    #[sqlx::test(migrator = "db::MIGRATOR")]
-    async fn a_task_letter_canceled_while_its_task_is_read_never_reaches_the_model(db: SqlitePool) {
+    /// A template task with a draft, and a model to write letters with: the context, the task, the
+    /// draft and what the model receives.
+    async fn task_draft(db: SqlitePool) -> (Context, i64, i64, provider::Received) {
         let mentor = mentor::create(
             &db,
             &mentor::MentorFields {
@@ -3543,7 +3544,12 @@ mod writing_tests {
         .unwrap();
         let id = model::create(&ctx.db, &fields, "", 0).await.unwrap();
         assert!(model::agree(&ctx.db, id, &fields.source).await.unwrap());
+        (ctx, task, draft, received)
+    }
 
+    #[sqlx::test(migrator = "db::MIGRATOR")]
+    async fn a_task_letter_canceled_while_its_task_is_read_never_reaches_the_model(db: SqlitePool) {
+        let (ctx, task, draft, received) = task_draft(db).await;
         // Before it knows which model the task writes with, the UI can already withdraw it.
         let mut held = Vec::new();
         for _ in 0..ctx.db.options().get_max_connections() {
@@ -3567,6 +3573,45 @@ mod writing_tests {
             .unwrap();
         drop(held);
         assert!(writing.await.is_err());
+        assert!(received.lock().unwrap().is_empty());
+    }
+
+    #[sqlx::test(migrator = "db::MIGRATOR")]
+    async fn a_task_deleted_while_its_letter_waits_says_the_letter_is_gone(db: SqlitePool) {
+        let (ctx, task, draft, received) = task_draft(db).await;
+        let chosen = model::chosen(&ctx.db, model::Feature::Writing)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut held = Vec::new();
+        for _ in 0..model::background::CONCURRENCY {
+            held.push(
+                ctx.turns
+                    .take(
+                        &chosen.access,
+                        &chosen.model,
+                        model::background::Priority::Background,
+                    )
+                    .await,
+            );
+        }
+        let mut writing = std::pin::pin!(call(
+            &ctx,
+            "writeTaskDraft",
+            serde_json::json!({
+                "taskId": task, "id": draft, "subject": "", "bodyMd": "", "attachments": []
+            }),
+        ));
+        poll_fn(|cx| {
+            assert!(writing.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+        task::delete(&ctx.db, task, 0).await.unwrap();
+        drop(held);
+        let error = writing.await.unwrap_err();
+        assert!(matches!(error.code, ErrorCode::NotFound));
+        assert_eq!(error.message, "这封邮件已被删除");
         assert!(received.lock().unwrap().is_empty());
     }
 

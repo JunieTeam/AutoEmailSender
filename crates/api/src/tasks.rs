@@ -59,9 +59,11 @@ pub async fn get_task_draft(
     ctx: &Context,
     key: task::TaskEmail,
 ) -> Result<task::TaskDraft, CallError> {
-    task::draft(&ctx.db, &key)
-        .await?
-        .ok_or_else(|| CallError::not_found("这封邮件已被删除"))
+    task::draft(&ctx.db, &key).await?.ok_or_else(deleted_draft)
+}
+/// The draft, or its whole task, is gone.
+fn deleted_draft() -> CallError {
+    CallError::not_found("这封邮件已被删除")
 }
 pub async fn save_task_draft(ctx: &Context, edit: task::DraftEdit) -> Result<(), CallError> {
     Ok(task::save(&ctx.db, &edit, now()).await?)
@@ -83,14 +85,16 @@ pub async fn write_task_draft(
                 "SELECT model_config_id FROM task WHERE id = ?",
                 edit.task_id
             )
-            .fetch_one(&ctx.db)
-            .await?;
-            model::selected(&ctx.db, fixed, model::Feature::Writing).await
+            .fetch_optional(&ctx.db)
+            .await?
+            .ok_or_else(deleted_draft)?;
+            Ok::<_, CallError>(model::selected(&ctx.db, fixed, model::Feature::Writing).await?)
         })
         .await?;
     let kind = sqlx::query_scalar!("SELECT kind FROM task WHERE id = ?", edit.task_id)
-        .fetch_one(&ctx.db)
-        .await?;
+        .fetch_optional(&ctx.db)
+        .await?
+        .ok_or_else(deleted_draft)?;
     let d = get_task_draft(
         ctx,
         task::TaskEmail {
