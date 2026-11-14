@@ -1376,6 +1376,97 @@ async fn a_teacher_s_page_linked_over_http_and_https_is_one_candidate(db: Sqlite
     assert_eq!(candidates, 1);
 }
 
+#[tokio::test]
+async fn a_copy_of_a_teacher_s_page_read_before_is_not_read_again() {
+    // As chem.fzu.edu.cn and www.auto.uestc.edu.cn publish a teacher's page under each column that
+    // lists them, at another address each time.
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>教授</title><p><a href='/info/1/7.htm'>张三</a></p><a href='/boshi'>博士生导师</a>",
+    );
+    site.page(
+        "/boshi",
+        "<title>博士生导师</title><p><a href='/info/2/8.htm'>张三</a></p>",
+    );
+    for path in ["/info/1/7.htm", "/info/2/8.htm"] {
+        site.page(
+            path,
+            "<title>张三</title><p>张三 a@school.example.edu 机器学习</p>",
+        );
+    }
+    let mut provider = Provider::start().await.unwrap();
+    let id = config(&db, &provider.address).await;
+    let (saved, seen) = watch::channel(());
+    let read = Arc::new(Mutex::new(0));
+    let model = {
+        let (db, read) = (db.clone(), read.clone());
+        tokio::spawn(async move {
+            while let Some(r) = provider.requests.recv().await {
+                let (db, read, mut seen) = (db.clone(), read.clone(), seen.clone());
+                tokio::spawn(async move {
+                    let system = r.body["messages"][0]["content"].as_str().unwrap();
+                    let data: Value =
+                        serde_json::from_str(r.body["messages"][1]["content"].as_str().unwrap())
+                            .unwrap();
+                    let answer = if system.starts_with("你整理学院") {
+                        let next: Vec<_> = (offered(&data).into_iter())
+                            .filter(|(text, _)| text == "博士生导师")
+                            .map(|(_, n)| n)
+                            .collect();
+                        json!({"kind": "list", "next": next})
+                    } else if system.starts_with("你从教师") {
+                        // The second list gives its copy once the first has given the address.
+                        while data["title"] == "博士生导师"
+                            && sqlx::query_scalar::<_, i64>(
+                                "SELECT count(*) FROM candidate WHERE emails LIKE '%a@school%'",
+                            )
+                            .fetch_one(&db)
+                            .await
+                            .unwrap()
+                                == 0
+                        {
+                            seen.changed().await.unwrap();
+                        }
+                        json!({"people": [listed("张三", Some(1), vec![])]})
+                    } else {
+                        *read.lock().unwrap() += 1;
+                        targeted("a@school.example.edu")
+                    };
+                    r.respond.send(Response::answer(&answer.to_string())).ok();
+                });
+            }
+        })
+    };
+    let crawl = queue::start(&db, &[site.url("/")], id, 1).await.unwrap();
+    let (tx, mut events) = mpsc::unbounded_channel();
+    let task = tokio::spawn(run_with_pages(
+        db.clone(),
+        net::Net::new(vec![]).unwrap(),
+        Arc::new(Pages::local(site.port)),
+        Crawler::default(),
+        Turns::default(),
+        move || {
+            tx.send(()).ok();
+            saved.send_replace(());
+        },
+        |_| {},
+    ));
+    changed_until(&db, crawl, &mut events, "done").await;
+    assert_eq!(*read.lock().unwrap(), 1);
+    let ids = candidate_ids(&db).await;
+    assert_eq!(ids.len(), 1);
+    let (_, profiles) = links(&db, ids[0]).await;
+    let profiles: Vec<_> = profiles.iter().map(|(url, _)| url.as_str()).collect();
+    let copies = [site.url("/info/1/7.htm"), site.url("/info/2/8.htm")];
+    assert_eq!(profiles, copies.each_ref().map(PageUrl::as_str));
+    task.abort();
+    model.abort();
+    db.close().await;
+    dir.close().unwrap();
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn later_profile_facts_need_review_and_keep_the_user_approved_identity(db: SqlitePool) {
     let url = PageUrl::parse("https://school.example.edu/profile").unwrap();

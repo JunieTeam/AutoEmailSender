@@ -615,6 +615,33 @@ pub async fn set_unit(
 }
 
 /// Returns whether this person added a candidate rather than merging into existing candidates.
+/// The addresses among `addresses` that another candidate of the crawl sharing a name with `id`
+/// already has: by the rule `save` follows, the two are one person.
+pub(crate) async fn known(
+    db: impl sqlx::SqliteExecutor<'_>,
+    crawl: i64,
+    id: i64,
+    addresses: &[&str],
+) -> Result<Vec<String>, sqlx::Error> {
+    let others = sqlx::query_scalar!(
+        r#"SELECT emails AS "emails!: Json<Vec<String>>"
+        FROM candidate
+        WHERE crawl_id = ?1 AND id != ?2 AND emails IS NOT NULL
+        AND EXISTS (
+            SELECT 1
+            FROM json_each(match_names) a
+            JOIN json_each((SELECT match_names FROM candidate WHERE id = ?2)) b ON a.value = b.value
+        )"#,
+        crawl,
+        id
+    )
+    .fetch_all(db)
+    .await?;
+    Ok((others.into_iter().flat_map(|Json(emails)| emails))
+        .filter(|e| addresses.iter().any(|a| a.eq_ignore_ascii_case(e)))
+        .collect())
+}
+
 pub(crate) async fn save(
     conn: &mut SqliteConnection,
     crawl: i64,
