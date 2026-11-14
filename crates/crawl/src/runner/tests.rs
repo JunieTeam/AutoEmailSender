@@ -3492,6 +3492,69 @@ async fn a_website_asking_to_slow_down_holds_new_pages_and_keeps_the_page(db: Sq
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_long_list_records_what_each_part_used_when_one_is_limited(db: SqlitePool) {
+    let site = Site::new().await;
+    // Two blocks too long to be read in one part.
+    let block = format!(
+        "<p>{}</p>",
+        "张三 教授 研究方向：机器学习与数据挖掘。".repeat(200)
+    );
+    site.page("/", &format!("<title>教师名单</title>{block}{block}"));
+    let mut p = Provider::start().await.unwrap();
+    let config = config(&db, &p.address).await;
+    queue::start(&db, &[site.url("/")], config, 1)
+        .await
+        .unwrap();
+    let claim = queue::next(&db).await.unwrap().unwrap();
+    let page = tokio::spawn({
+        let db = db.clone();
+        let port = site.port;
+        async move {
+            let cooldown = Cooldown::new(Arc::default());
+            let pages = Pages::local(port);
+            let net = net::Net::new(vec![]).unwrap();
+            process(&db, &net, &pages, &Limit::default(), &claim, &cooldown)
+                .await
+                .unwrap()
+        }
+    });
+    let route = p.requests.recv().await.unwrap();
+    route
+        .respond
+        .send(Response::answer(r#"{"kind":"list","next":[]}"#))
+        .ok();
+    let first = p.requests.recv().await.unwrap();
+    let second = p.requests.recv().await.unwrap();
+    first
+        .respond
+        .send(Response::Refused {
+            status: 429,
+            message: "slow down".into(),
+            retry_after: Some(60),
+        })
+        .ok();
+    first.completed.await.unwrap();
+    tokio::pin!(page);
+    // What the other part used is paid for even though the page is to be read again.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), &mut page)
+            .await
+            .is_err(),
+        "the page gave up on a part already asked for"
+    );
+    second
+        .respond
+        .send(Response::answer(r#"{"people":[]}"#))
+        .ok();
+    assert!(matches!(page.await.unwrap(), Outcome::RateLimit(..)));
+    let calls = sqlx::query_scalar::<_, i64>("SELECT count(*) FROM usage")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(calls, 2, "the route and the part that was answered");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn regression_retry_after_blocks_inflight_pages_next_request(db: SqlitePool) {
     let site = Site::new().await;
     for path in ["/a", "/b"] {

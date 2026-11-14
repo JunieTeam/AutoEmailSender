@@ -684,11 +684,11 @@ async fn interpret(
             let parts = extract::segments(&m).into_iter().map(|range| {
                 reader.ask::<extract::People>("list", extract::LIST, extract::data(&m, range))
             });
-            let all = futures_util::future::try_join_all(parts)
-                .await?
-                .into_iter()
-                .flat_map(|p| p.people)
-                .collect();
+            // Each request runs to its end, so that what it used is recorded when another fails.
+            let mut all = Vec::new();
+            for part in futures_util::future::join_all(parts).await {
+                all.extend(part?.people);
+            }
             extract::listed(&m, all, scope, unit).map_err(|reason| {
                 tracing::info!(reason = "invalid_people", "page extraction failed");
                 ReadError::Failed(Failure::new(reason))
