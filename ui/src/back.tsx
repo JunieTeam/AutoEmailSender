@@ -56,24 +56,74 @@ export function BackButton({ up, className }: { up?: () => void; className?: str
   );
 }
 
-/** How to answer whether to throw away what was typed in a layer, once going back would close it. */
+/** What a page waits for before going elsewhere (`useBeforeLeave`). */
+type Hold = { wait: () => Promise<boolean>; unloading: () => boolean };
+const holds = new Set<Hold>();
+
+/**
+ * Holds every navigation away from the page, the sidebar's and going back included, until `wait`
+ * settles: true keeps the page. `unloading` says whether closing or reloading the window asks
+ * first. Pages hold through here and not the router's `useBlocker`, so that the steps of open
+ * layers (`LayerSteps`) wait for a navigation held.
+ */
+export function useBeforeLeave(wait: () => Promise<boolean>, unloading: () => boolean) {
+  const waiting = useEffectEvent(wait);
+  const asking = useEffectEvent(unloading);
+  useEffect(() => {
+    const hold = { wait: () => waiting(), unloading: () => asking() };
+    holds.add(hold);
+    return () => void holds.delete(hold);
+  }, []);
+}
+
+/** Whether a page holding going elsewhere keeps it. */
+async function held(): Promise<boolean> {
+  for (const hold of holds) if (await hold.wait()) return true;
+  return false;
+}
+
+/** How to answer whether to throw away what was typed, once going back would close the layers holding it. */
 export type Asking = { stay: () => void; leave: () => void };
 
 type Layer = {
   /** Closes it, as going back over its step does, unless it cannot close now. */
   back: () => void;
-  /** Whether going back may close it: with unsaved input, once the user has said. */
-  leave: () => Promise<boolean>;
+  /** Whether it holds input not saved yet. */
+  unsaved: () => boolean;
+  /** Shows the question in it, or takes it away. */
+  show: (asking: Asking | null) => void;
 };
 
 /** The open dialogs and panels that are steps in the history, in the order they opened. */
 const layers: Layer[] = [];
 let layersChanged = () => {};
 
+/** The question going back waits on: asked in the top one of the layers it would close. */
+let question: { layer: Layer; about: Layer[]; answer: (leave: boolean) => void } | undefined;
+
+/** Asks in `layer` whether to throw away the input of those `about`; true to throw it away. */
+function ask(layer: Layer, about: Layer[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    const asked = {
+      layer,
+      about,
+      answer: (leave: boolean) => {
+        if (question !== asked) return;
+        question = undefined;
+        layer.show(null);
+        resolve(leave);
+      },
+    };
+    question = asked;
+    layer.show({ stay: () => asked.answer(false), leave: () => asked.answer(true) });
+  });
+}
+
 /**
  * Makes an open dialog or panel a step in the history, as a page opened over this one is: going
  * back over it calls `back`, which closes it. With `unsaved` input, going back past it first asks
- * whether to throw that away, and waits; while it asks, this returns how to answer.
+ * whether to throw that away, once, in the top one of the layers it closes, and waits; while that
+ * is this one, this returns how to answer.
  */
 export function useLayerStep(open: boolean, back: () => void, unsaved = false): Asking | null {
   const goneBack = useEffectEvent(back);
@@ -81,25 +131,14 @@ export function useLayerStep(open: boolean, back: () => void, unsaved = false): 
   const [asking, setAsking] = useState<Asking | null>(null);
   useEffect(() => {
     if (!open) return undefined;
-    let answer: ((leave: boolean) => void) | undefined;
-    const layer = {
-      back: () => goneBack(),
-      leave: () =>
-        holding()
-          ? new Promise<boolean>((resolve) => {
-              answer = (leave) => {
-                setAsking(null);
-                resolve(leave);
-              };
-              setAsking({ stay: () => answer?.(false), leave: () => answer?.(true) });
-            })
-          : Promise.resolve(true),
-    };
+    const layer: Layer = { back: () => goneBack(), unsaved: () => holding(), show: setAsking };
     layers.push(layer);
     layersChanged();
     return () => {
-      // Closed while asking, as by its close button, it no longer holds going back.
-      answer?.(true);
+      // Closed while asking, as by its close button, it lets going back go on, unless that would
+      // throw away the input of another layer.
+      if (question?.layer === layer)
+        question.answer(!question.about.some((l) => l !== layer && layers.includes(l) && l.unsaved()));
       layers.splice(layers.indexOf(layer), 1);
       layersChanged();
     };
@@ -112,11 +151,12 @@ export function useLayerStep(open: boolean, back: () => void, unsaved = false): 
  * as a save, a layer on top takes its step back with it; what the address became meanwhile, such
  * as a school chosen, stays with the page. A step left under a page opened from its layer is passed
  * over when going back or forward. Rendered once, inside the router, which keeps the browser's
- * history.
+ * history; it is also what holds navigation, for `useBeforeLeave` and the layers' questions.
  */
 export function LayerSteps() {
-  const { history } = useRouter();
+  const router = useRouter();
   useEffect(() => {
+    const { history } = router;
     // Entries are told apart by their place in the history: one pushed takes the place of all from
     // there on, so the last pushed is the last there is.
     /** The steps of open layers. */
@@ -124,10 +164,19 @@ export function LayerSteps() {
     /** The places of steps whose layers have closed. */
     const passed = new Set<number>();
     let last = history.location.state.__TSR_index;
+    /** Where the router was last told it is. */
+    let at = last;
     /** The address to keep while going back over the steps of closed layers. */
     let landing: string | undefined;
-    // After the task that changed something: a page a closing layer opens comes once the router
-    // has checked with whatever holds navigation, and then takes the place of the layer's step.
+    /**
+     * Layers gone back over, which close once the router shows where it went: a page left takes
+     * its own with it, and they do not navigate from where it no longer is.
+     */
+    const closing = new Set<Layer>();
+    /** The app's navigations waiting on a page's hold, over which no step comes or goes. */
+    let navigating = 0;
+    // After the task that changed something, so that a page a closing layer opens is in the
+    // history first and takes the place of the layer's step.
     let timer: ReturnType<typeof setTimeout> | undefined;
     const schedule = () => {
       timer ??= setTimeout(() => {
@@ -135,8 +184,9 @@ export function LayerSteps() {
         sync();
       });
     };
+    const stepOf = (layer: Layer) => steps.find((s) => s.layer === layer);
     function sync() {
-      if (landing !== undefined) return;
+      if (landing !== undefined || navigating > 0) return;
       const { location } = history;
       // While a going back or forward waits, as for a page that saves first or a layer that asks,
       // the browser is already where the router is not yet; it is left to finish.
@@ -155,7 +205,7 @@ export function LayerSteps() {
         return;
       }
       for (const layer of layers) {
-        if (steps.some((s) => s.layer === layer)) continue;
+        if (closing.has(layer) || stepOf(layer)) continue;
         const { href, state } = history.location;
         history.push(href, { ...state, layers: (state.layers ?? 0) + 1 }, { ignoreBlocker: true });
         // Its own entry: pushes left to the browser together become one.
@@ -165,6 +215,8 @@ export function LayerSteps() {
     }
     const stop = history.subscribe(({ location, action }) => {
       const index = location.state.__TSR_index;
+      const from = at;
+      at = index;
       if (action.type === "PUSH") {
         last = index;
         for (const i of passed) if (i >= index) passed.delete(i);
@@ -179,12 +231,10 @@ export function LayerSteps() {
           return;
         }
         if (landing === undefined) {
-          const over = steps.filter((s) => s.index > index);
+          // Going back closes the layers stepped over, and those not in the history yet, on top.
+          for (const s of steps) if (s.index > index) passed.add(s.index);
           steps = steps.filter((s) => s.index <= index);
-          for (const s of over.toReversed()) {
-            passed.add(s.index);
-            if (layers.includes(s.layer)) s.layer.back();
-          }
+          if (index < from) for (const layer of layers) if (!stepOf(layer)) closing.add(layer);
         } else {
           // Replaced at once, as in openSection: the address left behind never shows.
           if (landing !== location.href) history.replace(landing, location.state, { ignoreBlocker: true });
@@ -193,16 +243,39 @@ export function LayerSteps() {
       }
       schedule();
     });
+    const resolved = router.subscribe("onResolved", () => {
+      for (const layer of [...closing].toReversed()) if (layers.includes(layer)) layer.back();
+      closing.clear();
+      schedule();
+    });
     const unblock = history.block({
-      // Going back past layers waits for each holding unsaved input to say whether to throw it away.
       blockerFn: async ({ nextLocation, action }) => {
-        if (action === "PUSH" || action === "REPLACE") return false;
+        if (action === "PUSH" || action === "REPLACE") {
+          navigating += 1;
+          try {
+            return await held();
+          } finally {
+            navigating -= 1;
+            schedule();
+          }
+        }
+        // The browser has gone back or forward again since a question was asked: it is taken back,
+        // and what waited on it never goes on.
+        if (question) {
+          question.layer.show(null);
+          question = undefined;
+        }
         const to = nextLocation.state.__TSR_index;
-        for (const s of steps.toReversed())
-          if (s.index > to && layers.includes(s.layer) && !(await s.layer.leave())) return true;
-        return false;
+        const back = to < history.location.state.__TSR_index;
+        const leaving = layers.filter((l) => {
+          const step = stepOf(l);
+          return !closing.has(l) && (step ? step.index > to : back);
+        });
+        const top = leaving.at(-1);
+        if (top && leaving.some((l) => l.unsaved()) && !(await ask(top, leaving))) return true;
+        return held();
       },
-      enableBeforeUnload: false,
+      enableBeforeUnload: () => [...holds].some((h) => h.unloading()),
     });
     layersChanged = schedule;
     // The router undoing a going back it held tells no one once the browser is back.
@@ -212,11 +285,12 @@ export function LayerSteps() {
     return () => {
       clearTimeout(timer);
       stop();
+      resolved();
       unblock();
       window.removeEventListener("popstate", schedule);
       layersChanged = () => {};
     };
-  }, [history]);
+  }, [router]);
   return null;
 }
 

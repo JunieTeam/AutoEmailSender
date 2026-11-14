@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useSearch, useParams, useBlocker, useRouter } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch, useParams, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ListChecks, Mail, MoreHorizontal, SearchX } from "lucide-react";
-import { BackButton, openSection } from "@/back";
+import { BackButton, openSection, useBeforeLeave } from "@/back";
 import { call, failureOf } from "@/api/call";
 import { refreshTasks } from "@/components/task-cache";
 import { FailureNote } from "@/components/failure";
@@ -282,11 +282,8 @@ export function TaskReviewPage() {
   });
   const scroller = useKeptScroll<HTMLDivElement>(list, `${filter} ${page}`);
   // Every router navigation, including the sidebar and browser back, waits for the current letter's operations.
-  useBlocker({
-    enableBeforeUnload: () =>
-      client.isMutating({ mutationKey: ["saveTaskDraft"] }) > 0 ||
-      client.isMutating({ mutationKey: ["taskDraftAction", id] }) > 0,
-    shouldBlockFn: async () => {
+  useBeforeLeave(
+    async () => {
       try {
         await flush();
         return false;
@@ -295,7 +292,10 @@ export function TaskReviewPage() {
         return true;
       }
     },
-  });
+    () =>
+      client.isMutating({ mutationKey: ["saveTaskDraft"] }) > 0 ||
+      client.isMutating({ mutationKey: ["taskDraftAction", id] }) > 0,
+  );
   const current = search.email ?? list.data?.drafts[0]?.id;
   useEffect(() => {
     const compact = matchMedia(COMPACT);
