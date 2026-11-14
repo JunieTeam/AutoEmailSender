@@ -108,12 +108,13 @@ async fn save_material(
 }
 
 impl Pages {
-    /// The page, and whether the browser read it.
+    /// The page, and whether the browser read it. `target` becomes the address the page was
+    /// reached at, where the browser opens it too.
     async fn fetch(
         &self,
         db: &SqlitePool,
         c: &Claim,
-        target: &PageTarget,
+        target: &mut PageTarget,
         cooldown: &Cooldown,
     ) -> Result<(Material, bool), ReadError> {
         // A limit can begin while this page is being claimed; it then waits its turn again.
@@ -145,6 +146,9 @@ impl Pages {
                 }
                 e => ReadError::Failed(e.failure()),
             })?;
+        if fetched.over_http {
+            *target = target.over_http();
+        }
         let mut m = fetched.material;
         if !c.steps.is_empty() && m.needs_browser.is_none() {
             m.needs_browser = Some(crate::BrowserReason::Pagination);
@@ -603,14 +607,14 @@ async fn read(
 ) -> Result<Page, ReadError> {
     let scope = Scope::new(&c.scope);
     // External targets can only have been persisted from Scope::linked_profile.
-    let target = if c.kind == PageKind::Profile {
+    let mut target = if c.kind == PageKind::Profile {
         PageTarget { url: c.url.clone() }
     } else {
         scope
             .page(c.url.clone())
             .map_err(|e| ReadError::Failed(e.failure()))?
     };
-    let (mut m, mut rendered) = fetcher.fetch(db, c, &target, cooldown).await?;
+    let (mut m, mut rendered) = fetcher.fetch(db, c, &mut target, cooldown).await?;
     let reader = Reader {
         writes: &fetcher.writes,
         db,

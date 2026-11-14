@@ -79,9 +79,7 @@ impl Net {
 
     /// Crawlers must check every redirect before following it.
     pub fn page_http_builder(&self) -> reqwest::ClientBuilder {
-        http_builder(reqwest::Client::builder())
-            .redirect(reqwest::redirect::Policy::none())
-            .tls_backend_preconfigured((*self.tls).clone())
+        page_builder().tls_backend_preconfigured((*self.tls).clone())
     }
 
     /// Only for retrying public pages after a certificate error, never for credentials.
@@ -89,10 +87,16 @@ impl Net {
         let mut tls = (*self.tls).clone();
         tls.dangerous()
             .set_certificate_verifier(Arc::new(PageCertificate));
-        http_builder(reqwest::Client::builder())
-            .redirect(reqwest::redirect::Policy::none())
-            .tls_backend_preconfigured(tls)
+        page_builder().tls_backend_preconfigured(tls)
     }
+}
+
+fn page_builder() -> reqwest::ClientBuilder {
+    http_builder(reqwest::Client::builder())
+        .redirect(reqwest::redirect::Policy::none())
+        // Taking longer to connect is a website that cannot be reached, which callers tell apart
+        // from one that is slow to answer.
+        .connect_timeout(Duration::from_secs(10))
 }
 
 /// Not this computer, its networks or addresses reserved for special uses

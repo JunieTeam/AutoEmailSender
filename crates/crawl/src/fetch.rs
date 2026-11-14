@@ -53,6 +53,8 @@ pub struct FetchedPage {
     pub material: Material,
     pub status: u16,
     pub relaxed_certificate: bool,
+    /// Read at its http address: the https one could not be connected to.
+    pub over_http: bool,
 }
 
 impl Fetcher {
@@ -159,6 +161,7 @@ impl Fetcher {
             retry_after,
             body,
             relaxed_certificate,
+            over_http,
         } = self
             .get(target.url(), accept, limit, |url, location| {
                 // A location without a fragment keeps the requested one (RFC 9110), so a
@@ -207,6 +210,7 @@ impl Fetcher {
             material,
             status: status.as_u16(),
             relaxed_certificate,
+            over_http,
         })
     }
 
@@ -220,6 +224,7 @@ impl Fetcher {
     ) -> Result<Response, CrawlError> {
         let mut url = target.clone();
         let mut relaxed_certificate = false;
+        let mut over_http = false;
         for redirects in 0..=MAX_REDIRECTS {
             // A file can move to another website, such as a CDN, whose limit it then counts against.
             let site = self.site(&url).await;
@@ -231,6 +236,15 @@ impl Fetcher {
                     );
                     relaxed_certificate = true;
                     self.send(&self.untrusted, &url, &site, accept).await?
+                }
+                // Many college websites answer only over HTTP, as browsers then find too.
+                Err(CrawlError::Http(error))
+                    if redirects == 0 && error.is_connect() && url.parsed().scheme() == "https" =>
+                {
+                    tracing::info!(url = url.as_str(), "retry page over HTTP");
+                    url = url.over_http();
+                    over_http = true;
+                    self.send(&self.trusted, &url, &site, accept).await?
                 }
                 result => result?,
             };
@@ -274,6 +288,7 @@ impl Fetcher {
                 retry_after,
                 body,
                 relaxed_certificate,
+                over_http,
             });
         }
         Err(CrawlError::Redirect)
@@ -294,7 +309,8 @@ impl Fetcher {
             .send()
             .await
             .map_err(|e| {
-                if e.is_timeout() {
+                // Not connecting in time is not reaching the website at all.
+                if e.is_timeout() && !e.is_connect() {
                     CrawlError::TimedOut
                 } else {
                     CrawlError::Http(e)
@@ -311,6 +327,7 @@ struct Response {
     retry_after: Option<Duration>,
     body: Result<Vec<u8>, CrawlError>,
     relaxed_certificate: bool,
+    over_http: bool,
 }
 
 /// How long a website that asked to be left alone is.

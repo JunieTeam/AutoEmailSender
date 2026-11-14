@@ -79,7 +79,11 @@ impl Server {
                         if let Ok(stream) = tls.accept(stream).await {
                             serve(stream, tx).await;
                         }
-                    } else {
+                        return;
+                    }
+                    // A handshake is dropped, as by a website only on HTTP.
+                    let mut first = [0];
+                    if stream.peek(&mut first).await.is_ok_and(|n| n == 1) && first[0] != 22 {
                         serve(stream, tx).await;
                     }
                 });
@@ -359,6 +363,29 @@ async fn certificate_errors_retry_once_using_the_relaxed_net_client() {
     let page = fetcher.fetch(&target, false).await.unwrap();
     assert!(page.relaxed_certificate);
     assert!(page.material.text().contains("可读取的个人资料"));
+    responder.await.unwrap();
+}
+
+#[tokio::test]
+async fn a_page_its_https_address_cannot_connect_to_is_read_over_http() {
+    let mut server = Server::start(false).await;
+    let port = server.port;
+    let fetcher = server.fetcher();
+    let target = server.target("/list", true);
+    let responder = tokio::spawn(async move {
+        let request = server.requests.recv().await.unwrap();
+        assert_eq!(request.path, "/list");
+        request
+            .respond
+            .send(reply(200, "", "<p>教师名单</p>"))
+            .unwrap();
+    });
+    let page = fetcher.fetch(&target, false).await.unwrap();
+    assert!(page.over_http);
+    assert_eq!(
+        page.material.url.as_str(),
+        format!("http://cs.pku.edu.cn:{port}/list")
+    );
     responder.await.unwrap();
 }
 

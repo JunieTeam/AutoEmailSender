@@ -10,6 +10,8 @@ use std::{
 #[derive(Default)]
 struct FakeBrowser {
     results: Mutex<VecDeque<Result<RenderedPage, BrowserError>>>,
+    /// Where each render opened the page.
+    opened: Mutex<Vec<String>>,
     steps: Mutex<Vec<Vec<PageStep>>>,
     entered: Notify,
     release: Notify,
@@ -26,7 +28,7 @@ impl FakeBrowser {
 impl Browser for FakeBrowser {
     fn render<'a>(
         &'a self,
-        _: &'a PageTarget,
+        target: &'a PageTarget,
         steps: &'a [PageStep],
     ) -> Pin<Box<dyn Future<Output = Result<RenderedPage, BrowserError>> + Send + 'a>> {
         Box::pin(async move {
@@ -38,6 +40,10 @@ impl Browser for FakeBrowser {
             }
             self.active.fetch_add(1, Ordering::SeqCst);
             let _active = Active(&self.active);
+            self.opened
+                .lock()
+                .unwrap()
+                .push(target.url().as_str().into());
             self.steps.lock().unwrap().push(steps.to_vec());
             self.entered.notify_one();
             let result = self.results.lock().unwrap().pop_front();
@@ -169,6 +175,74 @@ async fn browser_extracts_people_and_replays_each_list_page(db: SqlitePool) {
     responder.abort();
 }
 
+/// Reads every page the crawl queues, saving each.
+async fn drain(db: &SqlitePool, pages: &Pages) {
+    let net = net::Net::new(vec![]).unwrap();
+    let turns = Turns::default();
+    while let Some(claim) = queue::next(db).await.unwrap() {
+        let outcome = process(
+            db,
+            &net,
+            pages,
+            &turns,
+            &claim,
+            &Cooldown::new(Arc::default()),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(outcome, Outcome::Done(_)));
+        assert!(save(db, &claim, &outcome).await.unwrap());
+    }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_page_reached_over_http_opens_there_in_the_browser(db: SqlitePool) {
+    let site = Site::new().await;
+    challenge(&site);
+    let browser = Arc::new(FakeBrowser::default());
+    browser.page(
+        &site.url("/"),
+        "<title>名单</title><p>张三 a@school.example.edu</p>",
+    );
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let responder = tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let output = if system.starts_with("你整理学院") {
+                json!({"kind": "list", "next": []})
+            } else {
+                json!({"people": [listed("张三", None, vec!["a@school.example.edu"])]})
+            };
+            assert!(
+                request
+                    .respond
+                    .send(Response::answer(&output.to_string()))
+                    .is_ok()
+            );
+        }
+    });
+    let https = PageUrl::parse(&format!("https://school.example.edu:{}/", site.port)).unwrap();
+    let id = queue::start(&db, &[https], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    assert_eq!(*browser.opened.lock().unwrap(), [site.url("/").as_str()]);
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT name FROM candidate WHERE crawl_id = ?")
+            .bind(id)
+            .fetch_all(&db)
+            .await
+            .unwrap(),
+        ["张三"]
+    );
+    responder.abort();
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn browser_failures_preserve_http_text_and_preview_still_needs_browser(db: SqlitePool) {
     let site = Site::new().await;
@@ -184,7 +258,7 @@ async fn browser_failures_preserve_http_text_and_preview_still_needs_browser(db:
         browser: Some(browser.clone()),
         recognize: super::recognize,
     };
-    let target = Scope::new(&claim.scope).page(claim.url.clone()).unwrap();
+    let mut target = Scope::new(&claim.scope).page(claim.url.clone()).unwrap();
     for (result, reason) in [
         (
             Ok(RenderedPage {
@@ -238,7 +312,7 @@ async fn browser_failures_preserve_http_text_and_preview_still_needs_browser(db:
     ] {
         browser.results.lock().unwrap().push_back(result);
         let Err(ReadError::Failed(error)) = pages
-            .fetch(&db, &claim, &target, &Cooldown::new(Arc::default()))
+            .fetch(&db, &claim, &mut target, &Cooldown::new(Arc::default()))
             .await
         else {
             panic!("browser should fail");
@@ -259,7 +333,7 @@ async fn browser_failures_preserve_http_text_and_preview_still_needs_browser(db:
         claim = queue::next(&db).await.unwrap().unwrap();
     }
     let (m, _) = Pages::local(site.port)
-        .fetch(&db, &claim, &target, &Cooldown::new(Arc::default()))
+        .fetch(&db, &claim, &mut target, &Cooldown::new(Arc::default()))
         .await
         .unwrap_or_else(|_| panic!("preview HTTP material"));
     assert_eq!(m.needs_browser, Some(crate::BrowserReason::Challenge));
@@ -282,9 +356,9 @@ async fn pause_and_cancel_drop_browser_and_reject_late_results(db: SqlitePool) {
             browser: Some(browser.clone()),
             recognize: super::recognize,
         };
-        let target = Scope::new(&claim.scope).page(claim.url.clone()).unwrap();
+        let mut target = Scope::new(&claim.scope).page(claim.url.clone()).unwrap();
         let cooldown = Cooldown::new(Arc::default());
-        let read = pages.fetch(&db, &claim, &target, &cooldown);
+        let read = pages.fetch(&db, &claim, &mut target, &cooldown);
         tokio::pin!(read);
         tokio::select! {
             _ = browser.entered.notified() => {},

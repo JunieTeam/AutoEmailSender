@@ -107,6 +107,14 @@ impl PageUrl {
     pub(crate) fn parsed(&self) -> &Url {
         &self.0
     }
+
+    /// The same address over plain HTTP.
+    pub(crate) fn over_http(&self) -> Self {
+        let mut url = self.0.clone();
+        url.set_scheme("http")
+            .unwrap_or_else(|()| unreachable!("a page address has an HTTP form"));
+        Self(url)
+    }
 }
 
 fn public_v4(ip: Ipv4Addr) -> bool {
@@ -151,6 +159,13 @@ pub struct PageTarget {
 impl PageTarget {
     pub fn url(&self) -> &PageUrl {
         &self.url
+    }
+
+    /// The same page at its http address.
+    pub(crate) fn over_http(&self) -> Self {
+        Self {
+            url: self.url.over_http(),
+        }
     }
 
     pub fn redirect(&self, current: &PageUrl, location: &str) -> Result<PageUrl, CrawlError> {

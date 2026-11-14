@@ -61,18 +61,19 @@ impl Site {
                 let (p, f, v) = (p.clone(), f.clone(), v.clone());
                 let acceptor = acceptor.clone();
                 tokio::spawn(async move {
-                    if let Some(acceptor) = acceptor {
-                        let mut first = [0];
-                        if stream.peek(&mut first).await.unwrap() == 0 {
-                            return;
+                    let mut first = [0];
+                    if stream.peek(&mut first).await.unwrap() == 0 {
+                        return;
+                    }
+                    // Without TLS the handshake is dropped, as by a website only on HTTP.
+                    if first[0] == 22 {
+                        // The trusted client rejects the fixture certificate before retrying.
+                        if let Some(acceptor) = acceptor
+                            && let Ok(stream) = acceptor.accept(stream).await
+                        {
+                            Self::serve(stream, p, f, v, true).await;
                         }
-                        if first[0] == 22 {
-                            // The trusted client rejects the fixture certificate before retrying.
-                            if let Ok(stream) = acceptor.accept(stream).await {
-                                Self::serve(stream, p, f, v, true).await;
-                            }
-                            return;
-                        }
+                        return;
                     }
                     Self::serve(stream, p, f, v, false).await;
                 });
