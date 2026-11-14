@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   skipToken,
   type UseMutationResult,
   type UseQueryResult,
@@ -42,7 +43,7 @@ import { BatchBar, Confirm } from "@/components/batch-bar";
 import { Field, formClose } from "@/components/form";
 import { IntakeChoices } from "@/components/intake-choices";
 import { Missing, refreshMentors, placeOf } from "@/components/mentor";
-import { Pager } from "@/components/mentor-table";
+import { Pager, useLastPage } from "@/components/mentor-table";
 import { LibraryTab } from "@/pages/library";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -191,6 +192,9 @@ function Crawls() {
   });
   // The address also holds the other tabs' state.
   const scroller = useKeptScroll<HTMLDivElement>(records, String(s.recordPage));
+  useLastPage(records.isSuccess && !records.isFetching ? records.data.total : undefined, s.recordPage, (recordPage) =>
+    navigate({ search: (old) => ({ ...old, recordPage }), replace: true }),
+  );
   const start = useMutation({
     mutationFn: () => {
       if (!chosen) throw new UiError("请在设置中添加模型");
@@ -405,11 +409,13 @@ function CrawlDialog({ id }: { id: number }) {
     refetchInterval: 2000,
   });
   const c = detail.data?.summary;
+  // Read once more as the crawl stops, for what its last calls used.
   const usage = useQuery({
-    queryKey: ["crawlUsage", id],
+    queryKey: ["crawlUsage", id, c?.state],
     queryFn: () => call("crawlUsage", { id }),
     enabled: c?.kind === "site",
     refetchInterval: c?.state === "running" ? 2000 : false,
+    placeholderData: keepPreviousData,
   });
   const now = useNow();
   const retry = useMutation({
@@ -436,7 +442,7 @@ function CrawlDialog({ id }: { id: number }) {
       <DialogContent className="w-[760px]">
         <DialogHeader>{c ? crawlName(c) : "整理详情"}</DialogHeader>
         <DialogBody className="space-y-5 pb-4 text-sm">
-          <ErrorText error={detail.error ?? retry.error} />
+          <ErrorText error={detail.error ?? usage.error ?? retry.error} />
           {!d || !c ? (
             !detail.error && <Loading />
           ) : (
@@ -729,6 +735,9 @@ function Candidates() {
     refetchInterval: 3000,
   });
   const scroller = useKeptScroll<HTMLDivElement>(list, JSON.stringify(q));
+  useLastPage(list.isSuccess && !list.isFetching ? list.data.total : undefined, s.page, (page) =>
+    navigate({ search: (old) => ({ ...old, page, candidate: undefined }), replace: true }),
+  );
   const crawls = useQuery({
     queryKey: ["crawlOptions"],
     queryFn: () => call("crawlOptions", {}),
@@ -755,12 +764,17 @@ function Candidates() {
   function choose(candidate: number | undefined, step = matchMedia(COMPACT).matches) {
     void navigate({ search: (old) => ({ ...old, candidate }), replace: !step });
   }
-  /** Shows another page of the list, and on it the candidate `pick` chooses. */
+  /** Shows a page of the list as it is now, and on it the candidate `pick` chooses. */
   function turn(page: number, pick: (shown: CandidatePage) => number | undefined) {
     const next = { ...q, page };
     void client
       .fetchQuery({ queryKey: ["listCandidates", next], queryFn: () => call("listCandidates", next) })
-      .then((shown) => navigate({ search: (old) => ({ ...old, page, candidate: pick(shown) }), replace: true }))
+      .then((shown) =>
+        // One emptied since, as by reviewing the last one on it: the page before, at its end.
+        shown.candidates.length === 0 && page > 1
+          ? turn(page - 1, (before) => before.candidates.at(-1)?.id)
+          : navigate({ search: (old) => ({ ...old, page, candidate: pick(shown) }), replace: true }),
+      )
       .catch(setError);
   }
   function move(delta: number) {
@@ -769,11 +783,14 @@ function Candidates() {
     else if (delta > 0 && s.page * 50 < total) turn(s.page + 1, (shown) => shown.candidates[0]?.id);
     else if (delta < 0 && s.page > 1) turn(s.page - 1, (shown) => shown.candidates.at(-1)?.id);
   }
-  /** docs/ui.md#找导师: once one is reviewed, the next one is on show, which takes its place on the list. */
+  /**
+   * docs/ui.md#找导师: once one is reviewed, the one after it is on show, which takes its place on the
+   * list, from the next page too; after the last one, the one before it.
+   */
   function reviewed(id: number) {
     const index = items.findIndex((c) => c.id === id);
-    choose((items[index + 1] ?? items[index - 1])?.id, false);
     refreshCrawls(client);
+    turn(s.page, (shown) => (shown.candidates[index] ?? shown.candidates.at(-1))?.id);
   }
   useEffect(() => {
     function key(e: KeyboardEvent) {

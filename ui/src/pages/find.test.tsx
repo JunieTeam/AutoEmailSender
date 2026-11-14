@@ -13,22 +13,28 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { CandidateDetail, CandidateRow, CrawlSummary, IntakePreview, ModelConfig } from "@/api/types";
 import { FindPage, findSearch, ResumeCrawl } from "./find";
 
-// What the candidates' list shows: by default one candidate named after the keyword.
+// What the candidates' list shows, 50 to a page: by default one candidate named after the keyword.
 const remote = vi.hoisted(
-  (): { list: (keyword: string) => CandidateRow[]; total: number; ids: number[]; rejected: number[][] } => ({
+  (): { list: (keyword: string) => CandidateRow[]; total: number | null; ids: number[]; rejected: number[][] } => ({
     list: (keyword) => [candidate(keyword.length, `候选${keyword}`)],
-    total: 1,
+    total: null,
     ids: [],
     rejected: [],
   }),
 );
 vi.mock("@/api/call", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/call")>()),
-  call: async (op: string, input: { keyword?: string; id?: number; ids?: number[] }) => {
+  call: async (op: string, input: { keyword?: string; id?: number; ids?: number[]; page?: number }) => {
     if (op === "listCandidates") {
-      const candidates = remote.list(input.keyword ?? "");
-      const n = candidates.length;
-      return { candidates, total: remote.total, counts: { all: n, new: n, supplement: 0, maybe: 0, missingEmail: n } };
+      const all = remote.list(input.keyword ?? "");
+      const start = ((input.page ?? 1) - 1) * 50;
+      const candidates = all.slice(start, start + 50);
+      const n = all.length;
+      return {
+        candidates,
+        total: remote.total ?? n,
+        counts: { all: n, new: n, supplement: 0, maybe: 0, missingEmail: n },
+      };
     }
     if (op === "listCandidateIds") return remote.ids;
     if (op === "getCandidate") return detail(input.id ?? 0);
@@ -45,7 +51,7 @@ vi.mock("@/api/call", async (importOriginal) => ({
 
 beforeEach(() => {
   remote.list = (keyword) => [candidate(keyword.length, `候选${keyword}`)];
-  remote.total = 1;
+  remote.total = null;
   remote.ids = [];
   remote.rejected = [];
 });
@@ -197,7 +203,6 @@ it("ticks every candidate the filter finds, on the pages not shown too", async (
 it("goes on to the next candidate once the one on show is rejected", async () => {
   remote.list = () =>
     [candidate(1, "候选甲"), candidate(2, "候选乙")].filter((c) => !remote.rejected.flat().includes(c.id));
-  remote.total = 2;
   await page("/find", async (container) => {
     const name = () => container.querySelector("h2")?.textContent;
     const reject = () => [...container.querySelectorAll("button")].find((b) => b.textContent === "拒绝");
@@ -206,6 +211,33 @@ it("goes on to the next candidate once the one on show is rejected", async () =>
     await act(async () => reject()?.click());
     await vi.waitFor(() => expect(name()).toBe("候选乙"));
     expect(remote.rejected).toEqual([[1]]);
+  });
+});
+
+it("goes on across a page's end as the one on show is rejected", async () => {
+  // 52 candidates: 50 on page 1, two on page 2.
+  remote.list = () =>
+    Array.from({ length: 52 }, (_, i) => candidate(i + 1, `候选${i + 1}`)).filter(
+      (c) => !remote.rejected.flat().includes(c.id),
+    );
+  await page("/find?candidate=50", async (container, router) => {
+    const name = () => container.querySelector("h2")?.textContent;
+    const button = () => [...container.querySelectorAll("button")].find((b) => b.textContent === "拒绝");
+    const reject = async () => {
+      await vi.waitFor(() => expect(button()?.disabled).toBe(false));
+      await act(async () => button()?.click());
+    };
+    await vi.waitFor(() => expect(name()).toBe("候选50"));
+    await reject();
+    // The one after has moved up from page 2 into its place.
+    await vi.waitFor(() => expect(name()).toBe("候选51"));
+    expect(router.state.location.search).toMatchObject({ page: 1, candidate: 51 });
+    // The last one alone on page 2: once it is gone, the one before it, at the end of page 1.
+    await act(async () => router.navigate({ to: "/find", search: findSearch({ page: 2, candidate: 52 }) }));
+    await vi.waitFor(() => expect(name()).toBe("候选52"));
+    await reject();
+    await vi.waitFor(() => expect(router.state.location.search).toMatchObject({ page: 1, candidate: 51 }));
+    expect(name()).toBe("候选51");
   });
 });
 
