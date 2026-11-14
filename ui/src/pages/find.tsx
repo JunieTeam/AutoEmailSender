@@ -7,7 +7,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
 import { Inbox, SearchX } from "lucide-react";
 import { BackButton } from "@/back";
@@ -700,6 +700,7 @@ const COUNTS: Record<CandidateFilter, keyof CandidateCounts> = {
 function Candidates() {
   const s = useSearch({ from: "/find" });
   const navigate = useNavigate({ from: "/find" });
+  const router = useRouter();
   const client = useQueryClient();
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [enrich, setEnrich] = useState<number[] | null>(null);
@@ -727,7 +728,10 @@ function Candidates() {
     refetchInterval: 3000,
   });
   const scroller = useKeptScroll<HTMLDivElement>(list, JSON.stringify(q));
-  useLastPage(list.isSuccess && !list.isFetching ? list.data.total : undefined, s.page, (page) =>
+  // `turn` picks the page and the candidate on it; the list finding its page gone meanwhile does not
+  // move first.
+  const [turning, setTurning] = useState(false);
+  useLastPage(list.isSuccess && !list.isFetching && !turning ? list.data.total : undefined, s.page, (page) =>
     navigate({ search: (old) => ({ ...old, page, candidate: undefined }), replace: true }),
   );
   const crawls = useQuery({
@@ -757,7 +761,7 @@ function Candidates() {
     void navigate({ search: (old) => ({ ...old, candidate }), replace: !step });
   }
   /** Whether the user is still where `s` has them: on the same filter, page and candidate. */
-  const unmoved = (old: typeof s) =>
+  const unmoved = (old: typeof router.state.location.search) =>
     old.crawl === s.crawl &&
     old.filter === s.filter &&
     old.processed === s.processed &&
@@ -766,22 +770,28 @@ function Candidates() {
     old.candidate === s.candidate;
   /**
    * Shows a page of the list as it is now, and on it the candidate `pick` chooses; unless the user
-   * has turned elsewhere meanwhile, as to another filter or candidate, which stays.
+   * has turned elsewhere meanwhile, as to another page, filter or candidate, which stays.
    */
   function turn(page: number, pick: (shown: CandidatePage) => number | undefined) {
+    setTurning(true);
     const next = { ...q, page };
-    void client
-      .fetchQuery({ queryKey: ["listCandidates", next], queryFn: () => call("listCandidates", next) })
-      .then((shown) =>
+    void client.fetchQuery({ queryKey: ["listCandidates", next], queryFn: () => call("listCandidates", next) }).then(
+      (shown) => {
         // One emptied since, as by reviewing the last one on it: the page before, at its end.
-        shown.candidates.length === 0 && page > 1
-          ? turn(page - 1, (before) => before.candidates.at(-1)?.id)
-          : navigate({
-              search: (old) => (unmoved(old) ? { ...old, page, candidate: pick(shown) } : old),
-              replace: true,
-            }),
-      )
-      .catch(setError);
+        if (shown.candidates.length === 0 && page > 1) {
+          turn(page - 1, (before) => before.candidates.at(-1)?.id);
+          return;
+        }
+        const { location } = router.state;
+        if (location.pathname === "/find" && unmoved(location.search))
+          void navigate({ search: (old) => ({ ...old, page, candidate: pick(shown) }), replace: true });
+        setTurning(false);
+      },
+      (e: unknown) => {
+        setTurning(false);
+        setError(e);
+      },
+    );
   }
   function move(delta: number) {
     const next = items[items.findIndex((c) => c.id === current) + delta];

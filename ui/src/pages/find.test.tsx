@@ -14,14 +14,15 @@ import type { CandidateDetail, CandidateRow, CrawlSummary, IntakePreview, ModelC
 import { FindPage, findSearch, ResumeCrawl } from "./find";
 
 // What the candidates' list shows, 50 to a page: by default one candidate named after the keyword.
-// The list for `slow.keyword` waits for `slow.release`, and `slow.served` says it has come.
+// The list for `slow.keyword`, on `slow.page` if given, waits for `slow.release`, and `slow.served`
+// says it has come.
 const remote = vi.hoisted(
   (): {
     list: (keyword: string) => CandidateRow[];
     total: number | null;
     ids: number[];
     rejected: number[][];
-    slow: { keyword: string; served: boolean; until?: Promise<void>; release?: () => void } | null;
+    slow: { keyword: string; page?: number; served: boolean; until?: Promise<void>; release?: () => void } | null;
   } => ({
     list: (keyword) => [candidate(keyword.length, `候选${keyword}`)],
     total: null,
@@ -35,7 +36,7 @@ vi.mock("@/api/call", async (importOriginal) => ({
   call: async (op: string, input: { keyword?: string; id?: number; ids?: number[]; page?: number }) => {
     if (op === "listCandidates") {
       const { slow } = remote;
-      if (slow && slow.keyword === (input.keyword ?? "")) {
+      if (slow && slow.keyword === (input.keyword ?? "") && (slow.page ?? input.page) === input.page) {
         slow.until ??= new Promise((resolve) => (slow.release = resolve));
         await slow.until;
         slow.served = true;
@@ -151,6 +152,7 @@ const preview: IntakePreview = {
 const root = createRootRoute();
 const routeTree = root.addChildren([
   createRoute({ getParentRoute: () => root, path: "/find", validateSearch: findSearch, component: FindPage }),
+  createRoute({ getParentRoute: () => root, path: "/mentors", component: () => <p>导师</p> }),
 ]);
 
 function routerAt(address: string) {
@@ -278,6 +280,47 @@ it("stays on another search turned to while the list after a review was on its w
     await act(() => new Promise((resolve) => setTimeout(resolve)));
     expect(router.state.location.search).toMatchObject({ keyword: "3", candidate: 3 });
     expect(name()).toBe("候选3");
+  });
+});
+
+it("stays on the page left for while the list after a review was on its way", async () => {
+  remote.list = () =>
+    [candidate(1, "候选甲"), candidate(2, "候选乙")].filter((c) => !remote.rejected.flat().includes(c.id));
+  await page("/find?candidate=1", async (container, router) => {
+    const reject = () => [...container.querySelectorAll("button")].find((b) => b.textContent === "拒绝");
+    await vi.waitFor(() => expect(reject()?.disabled).toBe(false));
+    const slow: NonNullable<typeof remote.slow> = { keyword: "", served: false };
+    remote.slow = slow;
+    await act(async () => reject()?.click());
+    await vi.waitFor(() => expect(slow.release).toBeDefined());
+    await act(async () => router.navigate({ to: "/mentors" }));
+    await act(async () => slow.release?.());
+    await vi.waitFor(() => expect(slow.served).toBe(true));
+    await act(() => new Promise((resolve) => setTimeout(resolve)));
+    expect(router.state.location.pathname).toBe("/mentors");
+  });
+});
+
+it("goes back a page to the one before once the last one alone on a page is reviewed", async () => {
+  // 51 candidates: the last alone on page 2.
+  remote.list = () =>
+    Array.from({ length: 51 }, (_, i) => candidate(i + 1, `候选${i + 1}`)).filter(
+      (c) => !remote.rejected.flat().includes(c.id),
+    );
+  await page("/find?page=2&candidate=51", async (container, router) => {
+    const name = () => container.querySelector("h2")?.textContent;
+    const reject = () => [...container.querySelectorAll("button")].find((b) => b.textContent === "拒绝");
+    await vi.waitFor(() => expect(name()).toBe("候选51"));
+    await vi.waitFor(() => expect(reject()?.disabled).toBe(false));
+    // The page before comes late, after the list on show has found its page gone.
+    const slow: NonNullable<typeof remote.slow> = { keyword: "", page: 1, served: false };
+    remote.slow = slow;
+    await act(async () => reject()?.click());
+    await vi.waitFor(() => expect(slow.release).toBeDefined());
+    await act(() => new Promise((resolve) => setTimeout(resolve)));
+    await act(async () => slow.release?.());
+    await vi.waitFor(() => expect(router.state.location.search).toMatchObject({ page: 1, candidate: 50 }));
+    await vi.waitFor(() => expect(name()).toBe("候选50"));
   });
 });
 
