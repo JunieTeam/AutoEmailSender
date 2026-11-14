@@ -116,8 +116,9 @@ impl Turns {
         }
     }
 
-    /// A turn at the configuration `read` gives, as it is once the turn comes: one changed to
-    /// another group meanwhile waits again there. None without a configuration.
+    /// A turn at the configuration `read` gives, as it is once the turn comes, and calling as it
+    /// says then: one changed to another group meanwhile waits again there. None without a
+    /// configuration.
     pub async fn take_current<E, F>(
         &self,
         priority: Priority,
@@ -130,9 +131,13 @@ impl Turns {
             return Ok(None);
         };
         loop {
-            let turn = self.take(&chosen.access, &chosen.model, priority).await;
+            let mut turn = self.take(&chosen.access, &chosen.model, priority).await;
             match read().await? {
-                Some(current) if turn.serves(&current) => return Ok(Some((turn, current))),
+                Some(current) if turn.serves(&current) => {
+                    // The same group, but how it is asked follows the provider, which may not be.
+                    turn.access = current.access.clone();
+                    return Ok(Some((turn, current)));
+                }
                 Some(current) => chosen = current,
                 None => return Ok(None),
             }
@@ -594,6 +599,32 @@ mod tests {
                 .await
                 .is_some()
         );
+    }
+
+    #[tokio::test]
+    async fn a_call_whose_provider_changes_while_waiting_goes_out_as_the_provider_now_is() {
+        let turns = Turns::default();
+        let glm = chosen("a", "m");
+        // The same address, key and model, entered as an address of the user's own.
+        let entered = Chosen {
+            provider: crate::providers::CUSTOM.into(),
+            access: Source::check(crate::providers::CUSTOM, None, &glm.access.base_url)
+                .unwrap()
+                .access(Some("a".into())),
+            ..glm.clone()
+        };
+        let current = Mutex::new(entered);
+        let read = || async { Ok::<_, ()>(Some(current.lock().unwrap().clone())) };
+        let mut running = Vec::new();
+        for _ in 0..CONCURRENCY {
+            running.push(turns.take(&glm.access, "m", Priority::Background).await);
+        }
+        let mut waiting = std::pin::pin!(turns.take_current(Priority::Background, read));
+        assert!(at_once(&mut waiting).await.is_none());
+        *current.lock().unwrap() = glm;
+        running.pop();
+        let (turn, _) = waiting.await.unwrap().unwrap();
+        assert!(turn.access().provider.is_some());
     }
 
     fn refused(status: u16, code: &str, reply: &str) -> ModelError {
