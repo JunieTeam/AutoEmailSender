@@ -3459,6 +3459,17 @@ mod writing_tests {
         drop(held);
         assert!(last.await.is_err());
 
+        // Canceled once it holds its turn, it does not go out when it would.
+        let (turn, _) = ctx
+            .writing_turn(Some("r4".into()), || {
+                model::chosen(&ctx.db, model::Feature::Writing)
+            })
+            .await
+            .unwrap();
+        cancel("r4").await.unwrap();
+        assert!(turn.send().is_err());
+        drop(turn);
+
         assert!(received.lock().unwrap().is_empty());
         // None of them kept a turn.
         let mut free = Vec::new();
