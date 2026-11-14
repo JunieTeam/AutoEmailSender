@@ -14,18 +14,32 @@ import type { CandidateDetail, CandidateRow, CrawlSummary, IntakePreview, ModelC
 import { FindPage, findSearch, ResumeCrawl } from "./find";
 
 // What the candidates' list shows, 50 to a page: by default one candidate named after the keyword.
+// The list for `slow.keyword` waits for `slow.release`, and `slow.served` says it has come.
 const remote = vi.hoisted(
-  (): { list: (keyword: string) => CandidateRow[]; total: number | null; ids: number[]; rejected: number[][] } => ({
+  (): {
+    list: (keyword: string) => CandidateRow[];
+    total: number | null;
+    ids: number[];
+    rejected: number[][];
+    slow: { keyword: string; served: boolean; until?: Promise<void>; release?: () => void } | null;
+  } => ({
     list: (keyword) => [candidate(keyword.length, `候选${keyword}`)],
     total: null,
     ids: [],
     rejected: [],
+    slow: null,
   }),
 );
 vi.mock("@/api/call", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/call")>()),
   call: async (op: string, input: { keyword?: string; id?: number; ids?: number[]; page?: number }) => {
     if (op === "listCandidates") {
+      const { slow } = remote;
+      if (slow && slow.keyword === (input.keyword ?? "")) {
+        slow.until ??= new Promise((resolve) => (slow.release = resolve));
+        await slow.until;
+        slow.served = true;
+      }
       const all = remote.list(input.keyword ?? "");
       const start = ((input.page ?? 1) - 1) * 50;
       const candidates = all.slice(start, start + 50);
@@ -54,6 +68,7 @@ beforeEach(() => {
   remote.total = null;
   remote.ids = [];
   remote.rejected = [];
+  remote.slow = null;
 });
 
 // The only model, which 智能整理 follows as the default, not agreed to yet.
@@ -238,6 +253,31 @@ it("goes on across a page's end as the one on show is rejected", async () => {
     await reject();
     await vi.waitFor(() => expect(router.state.location.search).toMatchObject({ page: 1, candidate: 51 }));
     expect(name()).toBe("候选51");
+  });
+});
+
+it("stays on another search turned to while the list after a review was on its way", async () => {
+  remote.list = (keyword) =>
+    [candidate(1, "候选甲"), candidate(2, "候选乙"), candidate(3, "候选3")].filter(
+      (c) => c.name.includes(keyword) && !remote.rejected.flat().includes(c.id),
+    );
+  await page("/find?candidate=1", async (container, router) => {
+    const name = () => container.querySelector("h2")?.textContent;
+    const reject = () => [...container.querySelectorAll("button")].find((b) => b.textContent === "拒绝");
+    await vi.waitFor(() => expect(name()).toBe("候选甲"));
+    await vi.waitFor(() => expect(reject()?.disabled).toBe(false));
+    const slow: NonNullable<typeof remote.slow> = { keyword: "", served: false };
+    remote.slow = slow;
+    await act(async () => reject()?.click());
+    await vi.waitFor(() => expect(slow.release).toBeDefined());
+    await act(async () => router.navigate({ to: "/find", search: findSearch({ keyword: "3" }) }));
+    await vi.waitFor(() => expect(name()).toBe("候选3"));
+    await act(async () => slow.release?.());
+    await vi.waitFor(() => expect(slow.served).toBe(true));
+    // Whatever came of the list once it was in.
+    await act(() => new Promise((resolve) => setTimeout(resolve)));
+    expect(router.state.location.search).toMatchObject({ keyword: "3", candidate: 3 });
+    expect(name()).toBe("候选3");
   });
 });
 

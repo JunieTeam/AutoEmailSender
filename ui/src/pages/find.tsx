@@ -1,5 +1,4 @@
 import {
-  keepPreviousData,
   skipToken,
   type UseMutationResult,
   type UseQueryResult,
@@ -409,13 +408,12 @@ function CrawlDialog({ id }: { id: number }) {
     refetchInterval: 2000,
   });
   const c = detail.data?.summary;
-  // Read once more as the crawl stops, for what its last calls used.
   const usage = useQuery({
-    queryKey: ["crawlUsage", id, c?.state],
+    queryKey: ["crawlUsage", id],
     queryFn: () => call("crawlUsage", { id }),
     enabled: c?.kind === "site",
-    refetchInterval: c?.state === "running" ? 2000 : false,
-    placeholderData: keepPreviousData,
+    // Also once the crawl stops: the calls under way then are paid for as they answer.
+    refetchInterval: 2000,
   });
   const now = useNow();
   const retry = useMutation({
@@ -764,7 +762,18 @@ function Candidates() {
   function choose(candidate: number | undefined, step = matchMedia(COMPACT).matches) {
     void navigate({ search: (old) => ({ ...old, candidate }), replace: !step });
   }
-  /** Shows a page of the list as it is now, and on it the candidate `pick` chooses. */
+  /** Whether the user is still where `s` has them: on the same filter, page and candidate. */
+  const unmoved = (old: typeof s) =>
+    old.crawl === s.crawl &&
+    old.filter === s.filter &&
+    old.processed === s.processed &&
+    old.keyword === s.keyword &&
+    old.page === s.page &&
+    old.candidate === s.candidate;
+  /**
+   * Shows a page of the list as it is now, and on it the candidate `pick` chooses; unless the user
+   * has turned elsewhere meanwhile, as to another filter or candidate, which stays.
+   */
   function turn(page: number, pick: (shown: CandidatePage) => number | undefined) {
     const next = { ...q, page };
     void client
@@ -773,7 +782,10 @@ function Candidates() {
         // One emptied since, as by reviewing the last one on it: the page before, at its end.
         shown.candidates.length === 0 && page > 1
           ? turn(page - 1, (before) => before.candidates.at(-1)?.id)
-          : navigate({ search: (old) => ({ ...old, page, candidate: pick(shown) }), replace: true }),
+          : navigate({
+              search: (old) => (unmoved(old) ? { ...old, page, candidate: pick(shown) } : old),
+              replace: true,
+            }),
       )
       .catch(setError);
   }
