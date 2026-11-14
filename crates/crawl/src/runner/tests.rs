@@ -1333,6 +1333,50 @@ async fn a_run_with_only_failed_pages_can_retry_without_losing_its_page(db: Sqli
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_teacher_s_page_linked_over_http_and_https_is_one_candidate(db: SqlitePool) {
+    // As cse.csu.edu.cn's lists of teachers and of supervisors link the same pages.
+    let url = PageUrl::parse("https://cse.csu.edu.cn/szdw/jsml.htm").unwrap();
+    let config = config(&db, "http://127.0.0.1:1").await;
+    let crawl = queue::start(&db, std::slice::from_ref(&url), config, 1)
+        .await
+        .unwrap();
+    let page = queue::next(&db).await.unwrap().unwrap();
+    let mut tx = db.begin_with("BEGIN IMMEDIATE").await.unwrap();
+    for scheme in ["http", "https"] {
+        let profile = PageUrl::parse(&format!(
+            "{scheme}://faculty.csu.edu.cn/heshiwen/zh_CN/index.htm"
+        ))
+        .unwrap();
+        let fields = MentorFields {
+            name: "何世文".into(),
+            homepages: vec![profile.as_str().into()],
+            ..Default::default()
+        };
+        let person = Person {
+            fields,
+            papers: vec![],
+            profile: Some(profile),
+            recognized: vec![],
+        };
+        review::save(
+            &mut tx,
+            crawl,
+            review::Source::List { id: page.id },
+            url.as_str(),
+            person,
+        )
+        .await
+        .unwrap();
+    }
+    tx.commit().await.unwrap();
+    let candidates: i64 = sqlx::query_scalar("SELECT count(*) FROM candidate")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(candidates, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn later_profile_facts_need_review_and_keep_the_user_approved_identity(db: SqlitePool) {
     let url = PageUrl::parse("https://school.example.edu/profile").unwrap();
     let config = config(&db, "http://127.0.0.1:1").await;

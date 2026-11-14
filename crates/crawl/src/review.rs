@@ -630,6 +630,19 @@ pub(crate) async fn save(
         Source::Agent { note } => (None, None, profile == Some(url), None, note.as_deref()),
     };
     let identities: Vec<_> = profile.into_iter().chain(reached).collect();
+    // One site can link a teacher's page over http from one list and over https from another.
+    let addresses: Vec<String> = (identities.iter())
+        .flat_map(|url| {
+            let other = (url
+                .strip_prefix("https://")
+                .map(|rest| format!("http://{rest}")))
+            .or_else(|| {
+                url.strip_prefix("http://")
+                    .map(|rest| format!("https://{rest}"))
+            });
+            std::iter::once((*url).to_owned()).chain(other)
+        })
+        .collect();
     let (target, proved) = match &source {
         Source::Profile { own, target, .. } => (*target, *own),
         _ => (None, false),
@@ -657,7 +670,7 @@ pub(crate) async fn save(
         )))
         ORDER BY id"#,
         crawl,
-        Json(&identities),
+        Json(&addresses),
         Json(&names),
         Json(&f.emails),
         target
@@ -679,7 +692,7 @@ pub(crate) async fn save(
                     ORDER BY url IS ?3 DESC, candidate_id
                     LIMIT 1"#,
                     crawl,
-                    Json(&identities),
+                    Json(&addresses),
                     profile
                 )
                 .fetch_optional(&mut *conn)
