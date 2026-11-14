@@ -293,6 +293,7 @@ function TagManager({ onClose }: { onClose: () => void }) {
         // A change still saving could fail, and its error needs the dialog to show it.
         if (!open && !run.isPending && !(dirty && stray)) onClose();
       }}
+      unsaved={dirty && !run.isPending}
     >
       <DialogContent className="w-[480px]">
         <DialogHeader>管理标签</DialogHeader>

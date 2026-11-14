@@ -31,7 +31,7 @@ import { showsFeedbackLog } from "@/components/feedback";
 import { AgentRequests } from "@/components/agent-requests";
 import { TermsUpdate, useAccount } from "@/components/account";
 import { UpdateEntry } from "@/components/update";
-import { openSection } from "@/back";
+import { LayerSteps, openSection } from "@/back";
 import { desktop, dragsWindow, titleBar } from "@/host";
 import { useBackground } from "@/pages/background";
 import { findSearch, refreshCrawls } from "@/pages/find";
@@ -231,6 +231,7 @@ export function Shell() {
         <div key={page} className="flex min-h-0 flex-1 animate-enter flex-col">
           <Outlet />
         </div>
+        <LayerSteps />
         {desktop && <AgentRequests />}
         {desktop && <TermsUpdate />}
         {completed && (

@@ -165,7 +165,7 @@ it("keeps its dialog open on Esc while it shows what it does not take", async ()
   function Priced() {
     const [price, setPrice] = useState<number | null>(null);
     return (
-      <Dialog open onOpenChange={formClose(price !== null, false, close)}>
+      <Dialog open {...formClose(price !== null, false, close)}>
         <DialogContent>
           <NumberField aria-label="数" min={0} decimals={6} value={price} onValueChange={setPrice} />
         </DialogContent>

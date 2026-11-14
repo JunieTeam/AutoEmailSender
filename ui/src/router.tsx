@@ -272,8 +272,8 @@ declare module "@tanstack/react-router" {
   interface HistoryState {
     /** Set when the sidebar returns to a page as it was left (docs/ui.md#交互). */
     returning?: boolean;
-    /** Set on the step that opened a crawl's details from its record, which closing them undoes. */
-    opened?: boolean;
+    /** On the steps of open dialogs (back.tsx's `LayerSteps`): how many are open on the page. */
+    layers?: number;
     /** In a narrow window, a mentor's profile in place of the correspondence: a step of its own. */
     profile?: boolean;
   }

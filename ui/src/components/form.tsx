@@ -6,17 +6,23 @@ import { Dialog } from "@/components/ui/dialog";
 
 // Pieces of the settings dialogs.
 
-/** Closes a form's dialog, but not while it saves, nor on a stray click or Esc with input in it. */
+/**
+ * Closes a form's dialog, but not while it saves, nor on a stray click or Esc with input in it;
+ * going back with input in it asks first. Spread on the `Dialog`.
+ */
 export function formClose(
   dirty: boolean,
   pending: boolean,
   close: () => void,
-): NonNullable<ComponentProps<typeof Dialog>["onOpenChange"]> {
-  return (open, details) => {
-    // docs/development.md#界面: what the user typed is not thrown away by a stray click or Esc,
-    // nor while it is being saved.
-    const stray = details.reason === "outside-press" || details.reason === "escape-key";
-    if (!open && !pending && !(dirty && stray)) close();
+): Pick<ComponentProps<typeof Dialog>, "onOpenChange" | "unsaved"> {
+  return {
+    onOpenChange: (open, details) => {
+      // docs/development.md#界面: what the user typed is not thrown away by a stray click or Esc,
+      // nor while it is being saved.
+      const stray = details.reason === "outside-press" || details.reason === "escape-key";
+      if (!open && !pending && !(dirty && stray)) close();
+    },
+    unsaved: dirty && !pending,
   };
 }
 

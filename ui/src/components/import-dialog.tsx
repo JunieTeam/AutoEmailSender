@@ -123,6 +123,7 @@ export function ImportDialog({ onClose, onImported }: { onClose: () => void; onI
         if (file && (event.reason === "outside-press" || event.reason === "escape-key")) return;
         onClose();
       }}
+      unsaved={file !== null && !busy}
     >
       <DialogContent className={preview ? "w-[1040px]" : ""}>
         <DialogHeader>导入表格</DialogHeader>

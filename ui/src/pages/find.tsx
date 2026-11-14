@@ -7,7 +7,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Link, useNavigate, useRouter, useRouterState, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
 import { Inbox, SearchX } from "lucide-react";
 import { BackButton } from "@/back";
@@ -203,7 +203,7 @@ function Crawls() {
     onSuccess: (r) => {
       setUrls("");
       refreshCrawls(client);
-      void navigate({ search: (old) => ({ ...old, recordPage: 1, detail: r.id }), state: { opened: true } });
+      void navigate({ search: (old) => ({ ...old, recordPage: 1, detail: r.id }), replace: true });
     },
   });
   return (
@@ -291,8 +291,8 @@ function CrawlRow({ crawl: c }: { crawl: CrawlSummary }) {
     <div className="mb-[3px] flex animate-fade-in items-center gap-2 rounded-md hover:bg-muted phone:flex-wrap">
       <button
         className="min-w-0 grow px-4 py-3 text-left"
-        // docs/ui.md#交互: the details are a step, which going back closes.
-        onClick={() => void navigate({ search: (s) => ({ ...s, detail: c.id }), state: { opened: true } })}
+        // The address says whose details are open; as any dialog, they are a step of their own.
+        onClick={() => void navigate({ search: (s) => ({ ...s, detail: c.id }), replace: true })}
       >
         <span className="flex items-center gap-3">
           <span className="min-w-0 grow truncate font-medium">{crawlName(c)}</span>
@@ -392,15 +392,9 @@ function CrawlActions({ crawl: c, row = false }: { crawl: CrawlSummary; row?: bo
 /** docs/ui.md#找导师: all about one crawl, opened from its row as a step that going back closes. */
 function CrawlDialog({ id }: { id: number }) {
   const client = useQueryClient();
-  const router = useRouter();
   const navigate = useNavigate({ from: "/find" });
-  const opened = useRouterState({ select: (s) => s.location.state.opened === true });
   const [editing, setEditing] = useState(false);
-  // Opened from elsewhere, as from 后台, the details give way to the records in place.
-  const close = () => {
-    if (opened) router.history.back();
-    else void navigate({ search: (s) => ({ ...s, detail: undefined }), replace: true });
-  };
+  const close = () => void navigate({ search: (s) => ({ ...s, detail: undefined }), replace: true });
   const [page, setPage] = useState(1);
   const detail = useQuery({
     queryKey: ["getCrawl", id, page, true],
@@ -436,7 +430,7 @@ function CrawlDialog({ id }: { id: number }) {
   });
   const d = detail.data;
   return (
-    <Dialog open onOpenChange={formClose(editing, false, close)}>
+    <Dialog open {...formClose(editing, false, close)}>
       <DialogContent className="w-[760px]">
         <DialogHeader>{c ? crawlName(c) : "整理详情"}</DialogHeader>
         <DialogBody className="space-y-5 pb-4 text-sm">
@@ -1512,6 +1506,7 @@ function ReviewDialog({
       onOpenChange={(open, event) => {
         if (!open && !accept.isPending && event.reason !== "outside-press" && event.reason !== "escape-key") onClose();
       }}
+      unsaved={decisions !== initialDecisions && !accept.isPending}
     >
       <DialogContent className="w-[920px]">
         <DialogHeader>接受候选 · {ids.length} 位</DialogHeader>

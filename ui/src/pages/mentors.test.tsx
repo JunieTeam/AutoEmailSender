@@ -12,7 +12,7 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => () => undefined,
   useSearch: () => ({}),
   useRouter: () => ({}),
-  useCanGoBack: () => false,
+  useRouterState: () => false,
 }));
 vi.mock("@/kept-scroll", () => ({ useKeptScroll: () => undefined }));
 vi.mock("@/api/call", async (importOriginal) => ({

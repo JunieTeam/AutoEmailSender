@@ -93,6 +93,7 @@ export function LibraryAddDialog({
       onOpenChange={(open, event) => {
         if (!open && !add.isPending && event.reason !== "outside-press" && event.reason !== "escape-key") onClose();
       }}
+      unsaved={decisions !== null && !add.isPending}
     >
       <DialogContent className="w-[920px]">
         <DialogHeader>从导师库添加 · {ids.length} 位</DialogHeader>

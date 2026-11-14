@@ -73,7 +73,7 @@ export function TemplateDialog({
   const dirty = form.name !== initial.name || form.subject !== initial.subject || bodyEdited;
   const complete = form.name.trim() !== "" && form.subject.trim() !== "" && form.bodyMd.trim() !== "";
   return (
-    <Dialog open onOpenChange={formClose(dirty, save.isPending, onClose)}>
+    <Dialog open {...formClose(dirty, save.isPending, onClose)}>
       <DialogContent className="w-[760px]" initialFocus={nameRef}>
         <form
           className="flex min-h-0 flex-1 flex-col"

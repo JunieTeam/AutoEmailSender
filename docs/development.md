@@ -353,6 +353,7 @@ GitHub 账号受限、Actions 或 Releases 用不了时，在本机打包，只�
   - 批量审核时切换草稿前先保存。
   - 列表的筛选、排序和翻页放进网址（TanStack Router 的 search 参数），返回时还在。
 - 浏览记录照 [ui.md](ui.md#交互) 的返回：筛选、排序、翻页、分段控件和并排时在列表里换一项都用 `replace`；切换侧边栏和底部标签用 `ui/src/back.tsx` 的 `openSection`，返回箭头用同一处的 `BackButton`。
+  - 开着的弹窗在浏览记录里占一步：`Dialog` 自带，别的盖住页面的层（窄窗口里导师库的学校列表）用 `useLayerStep`，由 `back.tsx` 的 `LayerSteps` 统一管。返回时照关闭按钮关掉，`unsaved` 时先问；弹窗自己关掉时（保存、关闭按钮）退回这一步，其间用 `replace` 改的网址留给下面的页面；从弹窗里打开了别的页面时这一步留在记录里，之后返回、前进经过它时跳过。`unsaved` 和点外面、按 Esc 不关的条件相同，`formClose` 一并给出。网址里带着的弹窗（整理详情）打开时用 `replace`，这一步同样由弹窗自己加。
 - 界面在 WebKit（macOS 的 WKWebView、iOS Safari）和 Chromium（Windows 的 WebView2、Android）上都要测。
 - 组件用 shadcn/ui 的 Base UI 版：`pnpm --dir ui exec shadcn add <组件>` 加到 `ui/src/components/ui`，再按 [ui.md](ui.md#样式) 改样式，只留用得上的部分；它没有的（时间选择、输入提示）照同样的写法直接用 Base UI 写在这里。数字框是在 `Input` 上自己读数：Base UI 的数字框不告诉外面它拒收和读不出数的文字，框里显示的会和值对不上。各处用法都一样的组合包成一个组件，比如下拉直接传选项（`Select`、`PillSelect`）；菜单和列表项的样式用 `popover.tsx` 里的常量。不运行 `shadcn init`：它会换掉 ui.md 定的颜色变量，还会打包字体。
 

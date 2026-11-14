@@ -166,7 +166,7 @@ export function ChangeSchedule({ task, onClose }: { task: TaskSummary; onClose: 
     },
   });
   return (
-    <Dialog open onOpenChange={formClose(true, save.isPending, onClose)}>
+    <Dialog open {...formClose(true, save.isPending, onClose)}>
       <DialogContent className="w-[620px]">
         <DialogHeader>修改发送时间</DialogHeader>
         <DialogBody className="space-y-4 py-4">
@@ -230,7 +230,7 @@ export function DateTimeDialog({
       ? selected.getTime()
       : NaN;
   return (
-    <Dialog open onOpenChange={formClose(true, pending, onClose)}>
+    <Dialog open {...formClose(true, pending, onClose)}>
       <DialogContent className="w-[380px]">
         <DialogHeader>{title}</DialogHeader>
         <DialogBody className="space-y-4 py-4">

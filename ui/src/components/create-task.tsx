@@ -145,7 +145,7 @@ function TaskSteps({
     eligible.length > 0 &&
     (step !== 1 || form.writer === "ai" || form.templateId !== null || form.templateSourceId !== null);
   return (
-    <Dialog open onOpenChange={formClose(true, create.isPending, onClose)}>
+    <Dialog open {...formClose(true, create.isPending, onClose)}>
       <DialogContent className="w-[620px]">
         <DialogHeader>{kind === "follow_up" ? "新建追问任务" : "新建任务"}</DialogHeader>
         {/* docs/ui.md#控件: numbered circles, a tick once done, the current step in the brand's colour. */}

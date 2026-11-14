@@ -147,7 +147,7 @@ export function MailboxDialog({
 
   const pending = save.isPending || sending.isPending || receiving.isPending;
   return (
-    <Dialog open onOpenChange={formClose(dirty, save.isPending, onClose)}>
+    <Dialog open {...formClose(dirty, save.isPending, onClose)}>
       <DialogContent initialFocus={addressRef}>
         <form
           className="flex min-h-0 flex-1 flex-col"

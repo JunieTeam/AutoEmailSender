@@ -305,7 +305,7 @@ function RedeemDialog({ submit, onClose }: { submit: (code: string) => Promise<v
   const inputRef = useRef<HTMLInputElement>(null);
   const run = useMutation({ mutationFn: () => submit(code), onSuccess: onClose });
   return (
-    <Dialog open onOpenChange={formClose(code !== "", run.isPending, onClose)}>
+    <Dialog open {...formClose(code !== "", run.isPending, onClose)}>
       <DialogContent className="w-[460px]" initialFocus={inputRef}>
         <form
           className="flex min-h-0 flex-1 flex-col"
@@ -368,7 +368,7 @@ function DeleteDialog({ email, onClose }: { email: string; onClose: () => void }
     server && server.tracking.packLeft > 0 && `额度包还剩 ${server.tracking.packLeft} 封`,
   ].filter(Boolean);
   return (
-    <Dialog open onOpenChange={formClose(password !== "" && !remove.isSuccess, remove.isPending, onClose)}>
+    <Dialog open {...formClose(password !== "" && !remove.isSuccess, remove.isPending, onClose)}>
       <DialogContent className="w-[480px]" initialFocus={passwordRef}>
         {remove.isSuccess ? (
           <>

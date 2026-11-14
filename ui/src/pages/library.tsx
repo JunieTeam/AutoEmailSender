@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ChevronLeft, SearchX, UsersRound } from "lucide-react";
 import { Fragment, type ReactNode, useMemo, useState } from "react";
 import { call, failureOf } from "@/api/call";
+import { useLayerStep } from "@/back";
 import { FailureNote } from "@/components/failure";
 import type { LibraryAddPreview, LibraryAdded, LibraryMentor, LibraryOrg } from "@/api/types";
 import { AccountDialog, type AccountMode, AgreeTermsButton, useAccount } from "@/components/account";
@@ -78,8 +79,9 @@ function Library() {
   // Ticked records, and whether each was taken before and so does not count toward today's number.
   const [selected, setSelected] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [expanded, setExpanded] = useState<string | null>(null);
-  // On a phone the schools take the whole screen while choosing.
+  // On a phone the schools take the whole screen while choosing, a step that going back closes.
   const [picking, setPicking] = useState(false);
+  useLayerStep(picking, () => setPicking(false));
   const [choosing, setChoosing] = useState<{ ids: string[]; preview: LibraryAddPreview } | null>(null);
   const [added, setAdded] = useState<LibraryAdded | null>(null);
   const done = (result: LibraryAdded) => {

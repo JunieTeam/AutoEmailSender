@@ -11,7 +11,6 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   useParams: () => ({ mentorId: 7 }),
   useNavigate: () => () => undefined,
-  useCanGoBack: () => false,
   useRouter: () => ({ history: { back: () => undefined } }),
   useSearch: () => ({}),
   useRouterState: () => false,

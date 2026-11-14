@@ -96,7 +96,7 @@ export function AccountDialog({
   const error = deleting ? null : (submit.error ?? send.error);
   const link = "text-brand-text hover:underline";
   return (
-    <Dialog open onOpenChange={formClose(dirty, submit.isPending, onClose)}>
+    <Dialog open {...formClose(dirty, submit.isPending, onClose)}>
       <DialogContent className="w-[460px]" initialFocus={initialEmail ? passwordRef : emailRef}>
         <form
           className="flex min-h-0 flex-1 flex-col"

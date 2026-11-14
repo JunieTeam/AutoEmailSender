@@ -307,7 +307,7 @@ function EnableDialog({
   });
   const action = replacing ? "替换" : found ? "开启并替换" : "开启";
   return (
-    <Dialog open onOpenChange={formClose(password !== "", enable.isPending, onClose)}>
+    <Dialog open {...formClose(password !== "", enable.isPending, onClose)}>
       <DialogContent className="w-[480px]" initialFocus={locked ? passwordRef : undefined}>
         <form
           className="flex min-h-0 flex-1 flex-col"
@@ -368,7 +368,7 @@ function EnableDialog({
 function DeleteDialog({ onClose, onDeleted }: { onClose: () => void; onDeleted: () => void }) {
   const remove = useMutation({ mutationFn: () => call("deleteCloudBackup", {}), onSuccess: onDeleted });
   return (
-    <Dialog open onOpenChange={formClose(false, remove.isPending, onClose)}>
+    <Dialog open {...formClose(false, remove.isPending, onClose)}>
       <DialogContent className="w-[420px]">
         <DialogHeader>删除云端备份</DialogHeader>
         <DialogBody>

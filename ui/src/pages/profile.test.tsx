@@ -20,7 +20,7 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   // The guide is the first step: finished, it gives way to the mentor list (docs/ui.md#交互).
   useRouter: () => ({ navigate: remote.navigate, history: { location: { state: { __TSR_index: 0 } } } }),
-  useCanGoBack: () => false,
+  useRouterState: () => false,
 }));
 vi.mock("@/api/call", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/call")>()),

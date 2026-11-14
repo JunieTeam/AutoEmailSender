@@ -213,7 +213,7 @@ export function ModelDialog({
     <p className="mt-1.5 text-sm break-all text-muted-foreground select-text">接口地址：{endpoint.baseUrl}</p>
   );
   return (
-    <Dialog open onOpenChange={formClose(dirty, save.isPending, onClose)}>
+    <Dialog open {...formClose(dirty, save.isPending, onClose)}>
       <DialogContent initialFocus={providerRef}>
         <form
           className="flex min-h-0 flex-1 flex-col"

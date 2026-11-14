@@ -74,7 +74,7 @@ export function MentorDialog<T>({
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const nameRef = useRef<HTMLInputElement>(null);
   return (
-    <Dialog open onOpenChange={formClose(dirty, mutation.isPending, onClose)}>
+    <Dialog open {...formClose(dirty, mutation.isPending, onClose)}>
       <DialogContent initialFocus={nameRef}>
         <form
           className="flex min-h-0 flex-1 flex-col"
