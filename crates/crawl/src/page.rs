@@ -269,8 +269,12 @@ fn encrypted_field(element: ElementRef<'_>) -> bool {
 }
 
 fn hidden(element: ElementRef<'_>) -> bool {
+    concealed(element) || element.value().attr("aria-hidden") == Some("true")
+}
+
+/// Whether the element does not show; one only hidden from screen readers, such as an icon, does.
+fn concealed(element: ElementRef<'_>) -> bool {
     element.value().attr("hidden").is_some()
-        || element.value().attr("aria-hidden") == Some("true")
         || element.value().attr("style").is_some_and(|s| {
             let style: String = s
                 .chars()
@@ -396,7 +400,13 @@ fn shows_something(element: ElementRef<'_>) -> bool {
         || element
             .descendants()
             .filter_map(ElementRef::wrap)
-            .any(|e| matches!(e.value().name(), "img" | "svg" | "i"))
+            .filter(|e| matches!(e.value().name(), "img" | "svg" | "i"))
+            .any(|e| {
+                !std::iter::once(e)
+                    .chain(e.ancestors().filter_map(ElementRef::wrap))
+                    .take_while(|a| a.id() != element.id())
+                    .any(concealed)
+            })
 }
 
 fn label(element: ElementRef<'_>) -> String {

@@ -265,6 +265,14 @@ fn a_mailto_link_counts_only_when_it_shows_something() {
             "label@school.edu.cn"
         ]
     );
+    // Nor does an image that is not shown.
+    assert!(
+        addresses(
+            "<a href='mailto:hidden@school.edu.cn'><img hidden src='/mail.png'></a>\
+            <a href='mailto:styled@school.edu.cn'><span style='display: none'><img src='/mail.png'></span></a>"
+        )
+        .is_empty()
+    );
 }
 
 #[test]
