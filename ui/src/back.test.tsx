@@ -397,6 +397,22 @@ it("takes back the question once the browser goes forward again", async () => {
   expect(app.page()).toContain("导师详情");
 });
 
+it("takes back the question once the app goes on to another address of the page", async () => {
+  const app = await render();
+  await app.click("打开弹窗");
+  await app.click("改动");
+  await app.back();
+  expect(app.shows("放弃未保存的内容？")).toBe(true);
+
+  await settle(() => void app.router.navigate({ href: "/mentors/1?page=2" }));
+  expect(app.shows("放弃未保存的内容？")).toBe(false);
+  expect(app.shows("编辑导师")).toBe(true);
+  await app.back();
+  await app.click("放弃");
+  expect(app.shows("编辑导师")).toBe(false);
+  expect(app.page()).toContain("导师详情");
+});
+
 it("asks about a dialog's input before its step is in the history", async () => {
   const app = await render();
   // The browser goes back as the dialog opens, before its step is added.

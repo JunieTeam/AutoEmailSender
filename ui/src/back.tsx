@@ -120,6 +120,15 @@ function ask(layer: Layer, about: Layer[]): Promise<boolean> {
 }
 
 /**
+ * Takes the question away as another navigation goes ahead. What waited on it never goes on: the
+ * router would take it up from where the browser is by then, not where going back had led.
+ */
+function withdraw() {
+  question?.layer.show(null);
+  question = undefined;
+}
+
+/**
  * Makes an open dialog or panel a step in the history, as a page opened over this one is: going
  * back over it calls `back`, which closes it. With `unsaved` input, going back past it first asks
  * whether to throw that away, once, in the top one of the layers it closes, and waits; while that
@@ -253,18 +262,15 @@ export function LayerSteps() {
         if (action === "PUSH" || action === "REPLACE") {
           navigating += 1;
           try {
-            return await held();
+            const kept = await held();
+            if (!kept) withdraw();
+            return kept;
           } finally {
             navigating -= 1;
             schedule();
           }
         }
-        // The browser has gone back or forward again since a question was asked: it is taken back,
-        // and what waited on it never goes on.
-        if (question) {
-          question.layer.show(null);
-          question = undefined;
-        }
+        withdraw();
         const to = nextLocation.state.__TSR_index;
         const back = to < history.location.state.__TSR_index;
         const leaving = layers.filter((l) => {
