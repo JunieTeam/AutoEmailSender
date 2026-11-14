@@ -27,14 +27,18 @@ impl<'a> Control<'a> {
         let control_text = text.trim().to_owned();
         let text = text.trim().to_lowercase();
         let label = text.trim_matches(['<', '>', '«', '»', '‹', '›', '→', '←', ' ']);
-        let kind = if element.value().attr("rel").is_some_and(|rel| {
+        // A tab shows a part of the page, as a carousel's numbered dots do, not a page of a list.
+        let kind = if element.value().attr("role") == Some("tab") {
+            Kind::Other
+        } else if element.value().attr("rel").is_some_and(|rel| {
             rel.split_whitespace()
                 .any(|r| r.eq_ignore_ascii_case("next"))
         }) || matches!(text.as_str(), ">" | "»" | "›" | "→")
             || matches!(
                 label,
                 "下一页" | "下页" | "下翻" | "后页" | "next" | "next page"
-            ) {
+            )
+        {
             Kind::Forward
         } else if matches!(label, "末页" | "尾页" | "last" | "last page") {
             Kind::Last
@@ -200,11 +204,17 @@ static PAGE_COUNTS: LazyLock<Regex> = LazyLock::new(|| {
 pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool) -> Pagination {
     let mut contexts: Vec<Context<'_>> = Vec::new();
     let mut pagination = Pagination::default();
+    // A last-page control leading here says this is the last page, which another pager on it, as
+    // one for phones, can still offer a next page past.
+    let at_last =
+        (controls.iter()).any(|c| matches!(c.kind, Kind::Last) && c.link.as_ref() == Some(url));
     for control in controls {
         if disabled(control.element) {
             continue;
         }
-        let mut context = None;
+        // The nearest pager the control is in, and the nearest of its own that counts the pages:
+        // a pager can count them beside its controls, as "页码：1/1" after them.
+        let (mut context, mut counted) = (None, None);
         for element in control
             .element
             .ancestors()
@@ -273,10 +283,16 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                     contexts.len() - 1
                 };
             if contexts[index].recognized {
-                context = Some(&contexts[index]);
+                context.get_or_insert(index);
+                if contexts[index].last_page.is_some() {
+                    counted = Some(index);
+                    break;
+                }
+            } else if context.is_some() {
                 break;
             }
         }
+        let (context, counted) = (context.map(|i| &contexts[i]), counted.map(|i| &contexts[i]));
         let is_page = match control.kind {
             Kind::Forward | Kind::Last | Kind::Backward | Kind::Jump => true,
             Kind::First => {
@@ -296,8 +312,8 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
             Kind::Other => control.link.as_ref().is_some_and(query_page),
         };
         if !is_page
-            || (matches!(control.kind, Kind::Forward | Kind::Last)
-                && context.is_some_and(|c| c.last))
+            || (matches!(control.kind, Kind::Forward | Kind::Last | Kind::Jump)
+                && (at_last || counted.is_some_and(|c| c.last)))
         {
             continue;
         }
@@ -306,21 +322,13 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                 pagination.urls.push(link.clone());
             }
         } else if !matches!(control.kind, Kind::Backward | Kind::First)
-            && (control.element.value().attr("onclick").is_some()
-                || control
-                    .element
-                    .value()
-                    .attr("href")
-                    .is_some_and(|h| javascript_control(h, has_scripts))
-                || control.element.value().name() == "button"
-                || input_button(control.element)
-                || control.element.value().attr("role") == Some("button"))
+            && scripted(control.element, has_scripts)
         {
             pagination.needs_browser = true;
             if !matches!(control.kind, Kind::Jump) {
                 let page = match control.kind {
                     Kind::Number(n) => Some(n),
-                    Kind::Last => context.and_then(|c| c.last_page),
+                    Kind::Last => counted.and_then(|c| c.last_page),
                     _ => None,
                 };
                 if (!matches!(control.kind, Kind::Last) || page.is_some())
@@ -335,6 +343,46 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
         }
     }
     pagination
+}
+
+/// The labels of controls that lead nowhere by themselves but that the page's scripts may act on,
+/// such as the categories of a list loading each when clicked. Page turns are left out, and so are
+/// labels of more than one such control, as a click finds its control by the label among them: a
+/// link of the same label, as in a site's menu, is not clicked.
+pub(crate) fn clickable(controls: &[Control<'_>], has_scripts: bool) -> Vec<String> {
+    controls
+        .iter()
+        .filter(|c| {
+            c.link.is_none()
+                && matches!(c.kind, Kind::Other)
+                && !c.text.is_empty()
+                && c.text != crate::page::UNLABELED
+                // Longer is a sentence or a whole card rather than a name.
+                && c.text.chars().count() <= 20
+                // A number is a part's place, as a carousel dot's, not what the part shows.
+                && c.text.parse::<u32>().is_err()
+                && !disabled(c.element)
+                && scripted(c.element, has_scripts)
+                && (controls.iter())
+                    .filter(|other| other.link.is_none() && other.text == c.text)
+                    .count()
+                    == 1
+        })
+        .map(|c| c.text.clone())
+        .collect()
+}
+
+/// Leads nowhere by itself, so that only a script acts on it.
+fn scripted(element: ElementRef<'_>, has_scripts: bool) -> bool {
+    let value = element.value();
+    value.attr("onclick").is_some()
+        || match value.attr("href") {
+            Some(href) => javascript_control(href, has_scripts),
+            None => value.name() == "a" && has_scripts,
+        }
+        || value.name() == "button"
+        || input_button(element)
+        || value.attr("role") == Some("button")
 }
 
 fn javascript_control(href: &str, has_scripts: bool) -> bool {

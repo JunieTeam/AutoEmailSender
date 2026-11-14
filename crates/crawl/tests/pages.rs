@@ -504,6 +504,33 @@ fn a_single_application_bundle_needs_browser_while_short_static_pages_do_not() {
 }
 
 #[test]
+fn a_last_page_link_to_the_page_ends_the_list_whatever_another_pager_offers() {
+    let url = PageUrl::parse("https://eie.hebut.edu.cn/szdw/dsxx/index.htm").unwrap();
+    let page = parse(&url, include_str!("pages/hebut-dsxx.html"));
+    assert!(
+        page.pagination.urls.is_empty(),
+        "{:?}",
+        page.pagination.urls
+    );
+}
+
+#[test]
+fn a_pager_s_counts_beside_its_controls_end_all_of_them_on_its_last_page() {
+    // A category of chem.nju.edu.cn as its script writes it in a browser, its box to jump to a page
+    // among the controls.
+    let base = PageUrl::parse("https://chem.nju.edu.cn/szll/list.htm").unwrap();
+    let html = include_str!("pages/nju-chem-rendered.html");
+    let page = crawl::parse_rendered(&base, html);
+    assert_eq!(page.needs_browser, None);
+    assert!(page.pagination.buttons.is_empty());
+    let html = html.replace("pagecount=\"1\">1", "pagecount=\"2\">2");
+    let page = crawl::parse_rendered(&base, &html);
+    assert_eq!(page.needs_browser, Some(BrowserReason::Pagination));
+    let pages: Vec<_> = (page.pagination.buttons.iter()).map(|b| b.page).collect();
+    assert_eq!(pages, [None, Some(2)]);
+}
+
+#[test]
 fn last_page_placeholders_do_not_require_browser_pagination() {
     let base = PageUrl::parse("https://cyber.seu.edu.cn/yjsds_22371/list4.htm").unwrap();
     let html = include_str!("pages/seu.html")
@@ -922,6 +949,63 @@ fn rendered_encrypted_fields_keep_their_visible_email() {
         "<p>王凌云</p><span _tsites_encrypt_field='x' style='display:none'>ciphertext</span>",
     );
     assert_eq!(hidden.needs_browser, Some(BrowserReason::EncryptedContent));
+}
+
+#[test]
+fn categories_a_page_s_scripts_load_are_offered_by_their_labels() {
+    let url = PageUrl::parse("https://chem.nju.edu.cn/szll/list.htm").unwrap();
+    let page = parse(&url, include_str!("pages/nju-chem.html"));
+    assert_eq!(
+        page.controls,
+        [
+            "院士",
+            "无机化学",
+            "分析化学",
+            "有机化学",
+            "物理化学",
+            "高分子化学与物理",
+            "化学生物学",
+            "化学工程与技术",
+            "跨学科博导",
+            "兼职博导",
+            "实验技术人员",
+            "离退休人员"
+        ]
+    );
+    // A click finds its control by the label among those leading nowhere, as the site's menu links
+    // the institute of 分析化学 too.
+    let page = parse(
+        &url,
+        "<a href='/fxhx/list.htm'>分析化学</a><a>分析化学</a><a>教授</a><a>教授</a>\
+        <a href='/x'>副教授</a><button disabled>讲师</button>\
+        <a href='javascript:void(0)'>下一页</a><a><img src='x.png'></a>\
+        <button>按一下就会展开整段很长很长的说明文字直到这里</button>\
+        <button onclick='show()'>博士后</button><script>bind()</script>",
+    );
+    assert_eq!(page.controls, ["分析化学", "博士后"]);
+    // Without scripts, an anchor leading nowhere does nothing.
+    assert!(parse(&url, "<a>院士</a>").controls.is_empty());
+}
+
+#[test]
+fn a_carousel_s_numbered_dots_turn_no_pages_and_open_nothing() {
+    // As slick writes them in a browser, here on shss.sjtu.edu.cn's lists.
+    let dots: String = (1..=3)
+        .map(|n| {
+            format!(
+                "<li role='presentation'><button type='button' role='tab' \
+                aria-label='{n} of 3'>{n}</button></li>"
+            )
+        })
+        .collect();
+    let page = parse(
+        &url(),
+        &format!(
+            "<ul class='slick-dots' role='tablist'>{dots}</ul><p>张三</p><script>x()</script>"
+        ),
+    );
+    assert!(!page.pagination.needs_browser && page.pagination.buttons.is_empty());
+    assert!(page.controls.is_empty());
 }
 
 #[test]

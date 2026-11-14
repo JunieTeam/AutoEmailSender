@@ -352,25 +352,31 @@ pub fn links(m: &Material) -> Vec<(&str, &PageUrl)> {
 /// The words of a page's head and foot given with its links, where it names its school and college.
 const EDGE: usize = 150;
 
-/// The head and foot leave out blocks that are only a link's text: the links give those, and a
-/// site's menus could fill both, hiding the footer that names the school.
-pub fn routing(m: &Material, scope: &Scope) -> Value {
+/// `controls` are numbered after all of the page's links. The head and foot leave out blocks that
+/// are only a link's text: the links give those, and a site's menus could fill both, hiding the
+/// footer that names the school.
+pub fn routing(m: &Material, scope: &Scope, controls: &[String]) -> Value {
     let prose: Vec<&str> = (m.units.iter())
         .filter(|u| !u.text.is_empty() && !u.links.iter().any(|l| l.text == u.text))
         .map(|u| u.text.as_str())
         .collect();
     let text: Vec<char> = prose.join("\n\n").chars().collect();
+    let links = links(m);
     json!({
         "title": m.title,
         "head": text[..text.len().min(EDGE)].iter().collect::<String>(),
         "foot": text[text.len().saturating_sub(EDGE)..].iter().collect::<String>(),
-        "links": links(m)
+        "links": links
             .iter()
             .enumerate()
             .filter(|(_, (_, url))| {
                 scope.page((*url).clone()).is_ok() && !m.pagination.urls.contains(url)
             })
             .map(|(n, (text, _))| format!("[{text}]({})", n + 1))
+            .chain(
+                (controls.iter().enumerate())
+                    .map(|(n, text)| format!("[{text}]({})", links.len() + n + 1))
+            )
             .collect::<Vec<_>>()
     })
 }
@@ -717,6 +723,18 @@ mod tests {
     }
 
     #[test]
+    fn controls_are_numbered_after_all_of_the_page_s_links() {
+        let url = PageUrl::parse("https://chem.example.edu/szll/list.htm").unwrap();
+        let page = crate::parse(
+            &url,
+            "<a href='/news'>新闻</a><a href='https://other.example.org/'>外站</a>\
+            <a>无机化学</a><script>bind()</script>",
+        );
+        let routing = routing(&page, &Scope::new(&url), &page.controls);
+        assert_eq!(routing["links"], json!(["[新闻](1)", "[无机化学](3)"]));
+    }
+
+    #[test]
     fn a_page_s_head_and_foot_leave_out_its_menus() {
         let url = PageUrl::parse("https://seit.sysu.edu.cn/faculty").unwrap();
         let menu: String = (1..=30)
@@ -729,7 +747,7 @@ mod tests {
                 <ul>{menu}</ul>"
             ),
         );
-        let routing = routing(&page, &Scope::new(&url));
+        let routing = routing(&page, &Scope::new(&url), &[]);
         assert_eq!(
             (routing["head"].as_str(), routing["foot"].as_str()),
             (

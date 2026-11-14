@@ -19,11 +19,22 @@ pub enum PageMethod {
     Webview,
 }
 
-/// Raw replayable control labels and page numbers; their serialized values identify the page.
+/// A control clicked once the page has opened, by its raw label; the serialized steps identify
+/// the page.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PageStep {
-    pub page: u32,
+    /// The page of the list it turns to; none for a control showing another part of the page, such
+    /// as one category of a list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<u32>,
     pub control: String,
+}
+
+impl PageStep {
+    /// The page of the list that `steps` end on.
+    pub fn page_of(steps: &[PageStep]) -> u32 {
+        steps.iter().rev().find_map(|s| s.page).unwrap_or(1)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS, sqlx::Type)]

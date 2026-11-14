@@ -14,6 +14,9 @@
 | `nju-gbk.html` | 同上 | 从原 UTF-8 页面转码为 GBK，并修改编码声明，验证 GB2312／GBK 解码；不是网站原生编码的记录 |
 | `seu.html` | https://cyber.seu.edu.cn/yjsds_22371/list.htm | 东南大学网址翻页和不可用的上一页控件 |
 | `toronto.html` | https://www.cs.toronto.edu/~hinton/ | 多伦多大学真实个人页中的 `[at]`、`[dot]` 邮箱 |
+| `nju-chem.html` | https://chem.nju.edu.cn/szll/list.htm | 2026-11-15 获取。南京大学化学学院的名单分类是没有网址的链接，点了才由脚本加载这一类的教师 |
+| `nju-chem-rendered.html` | 同上 | 2026-11-15 按页面脚本和它的接口返回构造。点开“无机化学”后的名单只有一页，翻页栏把页数写在按钮旁边，还有一个“跳转”框 |
+| `hebut-dsxx.html` | https://eie.hebut.edu.cn/szdw/dsxx/index.htm | 2026-11-15 获取。河北工业大学的名单只有一页，“尾页”指回本页；给手机用的另一个翻页栏的“下一页”仍指向不存在的 `index1.htm` |
 
 Cloudflare 属性及错误输入等组合场景在测试中构造，不冒充真实网站样本。
 

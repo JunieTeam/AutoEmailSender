@@ -27,6 +27,9 @@ const PREFIX: &str = "crawl-browser-";
 const TIMEOUT: Duration = Duration::from_secs(20);
 const POLL: Duration = Duration::from_millis(500);
 const STABLE: Duration = Duration::from_millis(1500);
+/// How long a click has to change the page before what it shows is taken to be what the page
+/// showed already, as the category a list opens on does when clicked.
+const SHOWN: Duration = Duration::from_secs(5);
 const PAGE_SNAPSHOT: &str = r#"({
     state: document.readyState,
     url: location.href,
@@ -49,8 +52,12 @@ const CLICK_CONTROL: &str = r#"(label => {
         if (text) return text;
         return alternative(element) || [...element.querySelectorAll('img')].map(alternative).find(Boolean) || '无文字链接';
     };
+    // A link opens another page rather than acting here, and a site's menu can link a page by the
+    // label a control here has too.
+    const leads = element => element.tagName === 'A' && /^\s*(?!#|javascript:)\S/i.test(element.getAttribute('href') || '');
     const control = [...document.querySelectorAll('a,button,input,[role="button"],[onclick]')].find(element => {
         if (element.tagName === 'INPUT' && !['button', 'submit', 'image'].includes((element.getAttribute('type') || '').toLowerCase())) return false;
+        if (leads(element)) return false;
         const style = getComputedStyle(element);
         return !element.disabled && !element.closest('[disabled],[aria-disabled="true"],.disabled')
             && element.getClientRects().length && style.visibility !== 'hidden'
@@ -209,7 +216,7 @@ fn render(
 ) -> Result<RenderedPage, BrowserError> {
     tracing::info!(
         url = target.url().as_str(),
-        page = steps.last().map_or(1, |step| step.page),
+        page = PageStep::page_of(steps),
         steps = steps.len(),
         "browser render started"
     );
@@ -332,16 +339,16 @@ fn render(
     // Cancellation may request closure only after the destruction listener owns the slot.
     state.registered.store(true, Ordering::Release);
     state.check()?;
-    wait(&window, state, None)?;
+    wait(&window, state, None, TIMEOUT)?;
     for step in steps {
         let failed_step = |error| {
-            tracing::info!(page = step.page, "browser pagination failed");
+            tracing::info!(page = step.page, "browser step failed");
             error
         };
         let deadline = Instant::now() + TIMEOUT;
         let before = evaluate(&window, state, PAGE_SNAPSHOT, deadline).map_err(failed_step)?;
         let control = serde_json::to_string(&step.control)
-            .map_err(|_| failed_step(failed("无法读取翻页步骤")))?;
+            .map_err(|_| failed_step(failed("无法读取点击步骤")))?;
         redirects.store(0, Ordering::Relaxed);
         navigation
             .lock()
@@ -358,11 +365,21 @@ fn render(
             tracing::info!(
                 page = step.page,
                 reason = "control_missing",
-                "browser pagination failed"
+                "browser step failed"
             );
-            return Err(failed(&format!("找不到可点击的翻页控件“{}”", step.control)));
+            return Err(failed(&match step.page {
+                Some(_) => format!("找不到可点击的翻页控件“{}”", step.control),
+                None => format!("找不到可点开的“{}”", step.control),
+            }));
         }
-        wait(&window, state, Some(&before)).map_err(failed_step)?;
+        match step.page {
+            Some(_) => wait(&window, state, Some(&before), TIMEOUT),
+            None => match wait(&window, state, Some(&before), SHOWN) {
+                Err(BrowserError::TimedOut) => wait(&window, state, None, TIMEOUT),
+                result => result,
+            },
+        }
+        .map_err(failed_step)?;
     }
     let value = evaluate(
         &window,
@@ -407,8 +424,14 @@ fn public_url(url: &tauri::Url) -> Option<String> {
     }
 }
 
-fn wait(window: &WebviewWindow, state: &State, before: Option<&Value>) -> Result<(), BrowserError> {
-    let deadline = Instant::now() + TIMEOUT;
+/// Until the page has settled, changed from `before` when given, within `limit`.
+fn wait(
+    window: &WebviewWindow,
+    state: &State,
+    before: Option<&Value>,
+    limit: Duration,
+) -> Result<(), BrowserError> {
+    let deadline = Instant::now() + limit;
     let mut previous = Value::Null;
     let mut unchanged = Instant::now();
     loop {

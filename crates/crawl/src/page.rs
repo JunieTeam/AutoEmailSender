@@ -17,6 +17,8 @@ pub enum BrowserReason {
     JavaScript,
     EncryptedContent,
     Pagination,
+    /// A control has to be clicked for the part of the page to read.
+    Click,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +84,8 @@ pub struct Material {
     /// Text blocks in document order, including blocks with only link evidence.
     pub units: Vec<Unit>,
     pub pagination: Pagination,
+    /// The labels of controls the page's scripts may act on, such as the categories of a list.
+    pub controls: Vec<String>,
     pub needs_browser: Option<BrowserReason>,
     /// None for a PDF, which shows none.
     pub(crate) images: Option<Images>,
@@ -110,6 +114,7 @@ impl Material {
                 vec![unit]
             },
             pagination: Pagination::default(),
+            controls: vec![],
             needs_browser: None,
             images: None,
             documents: vec![],
@@ -422,8 +427,11 @@ fn label(element: ElementRef<'_>) -> String {
                 .filter(|e| e.value().name() == "img")
                 .find_map(alternative_text)
         })
-        .unwrap_or_else(|| "无文字链接".into())
+        .unwrap_or_else(|| UNLABELED.into())
 }
+
+/// What a control showing neither text nor a description is called.
+pub(crate) const UNLABELED: &str = "无文字链接";
 
 fn alternative_text(element: ElementRef<'_>) -> Option<String> {
     let attributes = if element.value().name() == "img" {
@@ -691,6 +699,7 @@ fn parse_page(
             .find(|o| regions.contains(o));
     }
     let pagination = pagination::extract(&controls, url, has_scripts);
+    let clickable = pagination::clickable(&controls, has_scripts);
     let script_entry = document.select(&SELECTORS.scripts).any(|e| {
         executable_script(e)
             && (e.value().attr("type") == Some("module")
@@ -764,6 +773,7 @@ fn parse_page(
         title,
         units,
         pagination,
+        controls: clickable,
         needs_browser,
         images: Some(Images {
             list: images,

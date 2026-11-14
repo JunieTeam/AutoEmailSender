@@ -157,16 +157,16 @@ async fn browser_extracts_people_and_replays_each_list_page(db: SqlitePool) {
         vec![
             vec![],
             vec![PageStep {
-                page: 2,
+                page: Some(2),
                 control: "下一页".into()
             }],
             vec![
                 PageStep {
-                    page: 2,
+                    page: Some(2),
                     control: "下一页".into()
                 },
                 PageStep {
-                    page: 3,
+                    page: Some(3),
                     control: "下一页".into()
                 }
             ]
@@ -193,6 +193,111 @@ async fn drain(db: &SqlitePool, pages: &Pages) {
         assert!(matches!(outcome, Outcome::Done(_)));
         assert!(save(db, &claim, &outcome).await.unwrap());
     }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn categories_a_list_loads_when_clicked_are_each_read_in_the_browser(db: SqlitePool) {
+    let site = Site::new().await;
+    site.pages.lock().unwrap().insert(
+        "/".into(),
+        (
+            200,
+            "<title>师资力量</title><ul><li><a>无机化学</a></li><li><a>分析化学</a></li></ul>\
+            <ul class='teacher-list'></ul><script src='list.js'></script>"
+                .into(),
+        ),
+    );
+    let browser = Arc::new(FakeBrowser::default());
+    for (name, email) in [("张三", "a"), ("李四", "b")] {
+        browser.page(
+            &site.url("/"),
+            &format!(
+                "<title>师资力量</title><a>无机化学</a><a>分析化学</a>\
+                <p>{name} {email}@school.example.edu</p>"
+            ),
+        );
+    }
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let responder = tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let data = request.body["messages"][1]["content"].as_str().unwrap();
+            let data: Value = serde_json::from_str(data).unwrap();
+            let output = if system.starts_with("你整理学院") {
+                // Only the page as it opens offers its controls, after its links.
+                if data["links"] == json!(["[无机化学](1)", "[分析化学](2)"]) {
+                    json!({"kind": "entry", "next": [1, 2]})
+                } else {
+                    assert_eq!(data["links"], json!([]));
+                    json!({"kind": "list", "next": []})
+                }
+            } else {
+                let text = data.to_string();
+                let people: Vec<_> = [
+                    ("张三", "a@school.example.edu"),
+                    ("李四", "b@school.example.edu"),
+                ]
+                .into_iter()
+                .filter(|(name, _)| text.contains(name))
+                .map(|(name, email)| listed(name, None, vec![email]))
+                .collect();
+                json!({ "people": people })
+            };
+            assert!(
+                request
+                    .respond
+                    .send(Response::answer(&output.to_string()))
+                    .is_ok()
+            );
+        }
+    });
+    let id = queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let click = |control: &str| PageStep {
+        page: None,
+        control: control.into(),
+    };
+    assert_eq!(
+        *browser.steps.lock().unwrap(),
+        [vec![click("无机化学")], vec![click("分析化学")]]
+    );
+    let records: Vec<(String, String, String)> =
+        sqlx::query_as("SELECT kind, steps, mode FROM crawl_page WHERE crawl_id = ? ORDER BY id")
+            .bind(id)
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        records,
+        [
+            ("entry".into(), "[]".into(), "http".into()),
+            (
+                "list".into(),
+                r#"[{"control":"无机化学"}]"#.into(),
+                "webview".into()
+            ),
+            (
+                "list".into(),
+                r#"[{"control":"分析化学"}]"#.into(),
+                "webview".into()
+            ),
+        ]
+    );
+    let names: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM candidate WHERE crawl_id = ? ORDER BY name")
+            .bind(id)
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(names, ["张三", "李四"]);
+    responder.abort();
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

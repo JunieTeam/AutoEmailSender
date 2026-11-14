@@ -150,8 +150,13 @@ impl Pages {
             *target = target.over_http();
         }
         let mut m = fetched.material;
-        if !c.steps.is_empty() && m.needs_browser.is_none() {
-            m.needs_browser = Some(crate::BrowserReason::Pagination);
+        if m.needs_browser.is_none()
+            && let Some(step) = c.steps.last()
+        {
+            m.needs_browser = Some(match step.page {
+                Some(_) => crate::BrowserReason::Pagination,
+                None => crate::BrowserReason::Click,
+            });
         }
         if let Some(reason) = &m.needs_browser {
             tracing::info!(
@@ -297,6 +302,8 @@ struct Page {
     kind: PageKind,
     people: Vec<Person>,
     next: Vec<PageUrl>,
+    /// The labels of controls to click on the page as it opens, each showing a part to read.
+    clicks: Vec<String>,
     /// The page proved to be its one person's own, so where it ended up identifies them.
     own: bool,
     /// The school and college the page says it belongs to.
@@ -312,6 +319,7 @@ impl Page {
             kind,
             people: vec![],
             next: vec![],
+            clicks: vec![],
             own: false,
             unit: None,
             filled: None,
@@ -320,7 +328,11 @@ impl Page {
     /// Gives no one and leads nowhere.
     fn is_empty(&self) -> bool {
         let p = &self.material.pagination;
-        self.people.is_empty() && self.next.is_empty() && p.urls.is_empty() && p.buttons.is_empty()
+        self.people.is_empty()
+            && self.next.is_empty()
+            && self.clicks.is_empty()
+            && p.urls.is_empty()
+            && p.buttons.is_empty()
     }
 }
 enum Outcome {
@@ -690,24 +702,36 @@ async fn interpret(
     unit: Option<&Affiliation>,
 ) -> Result<Page, ReadError> {
     let c = reader.claim;
+    // Clicks are replayed on the page as it opens, so only that page offers its controls.
+    let controls: &[String] = if c.steps.is_empty() { &m.controls } else { &[] };
     let route = reader
-        .ask::<extract::Route>("route", extract::ROUTE, extract::routing(&m, scope))
+        .ask::<extract::Route>(
+            "route",
+            extract::ROUTE,
+            extract::routing(&m, scope, controls),
+        )
         .await?;
     let found = route.affiliation(&m);
     // The crawl's way of writing its school and college, once one page has named them.
     let unit = unit.or(found.as_ref());
     let mut next: Vec<PageUrl> = Vec::new();
+    let mut clicks: Vec<String> = Vec::new();
     if !matches!(route.kind, Kind::Profile) {
         let links = extract::links(&m);
-        for id in &route.next {
-            if let Some((_, url)) = id.checked_sub(1).and_then(|n| links.get(n))
-                && scope.page((*url).clone()).is_ok()
-                && !m.pagination.urls.contains(url)
-                && !url.is_normalization_of(&c.url)
-                && !url.is_normalization_of(&m.url)
-                && !next.contains(*url)
+        for n in route.next.iter().filter_map(|id| id.checked_sub(1)) {
+            if let Some((_, url)) = links.get(n) {
+                if scope.page((*url).clone()).is_ok()
+                    && !m.pagination.urls.contains(url)
+                    && !url.is_normalization_of(&c.url)
+                    && !url.is_normalization_of(&m.url)
+                    && !next.contains(*url)
+                {
+                    next.push((*url).clone());
+                }
+            } else if let Some(control) = controls.get(n - links.len())
+                && !clicks.contains(control)
             {
-                next.push((*url).clone());
+                clicks.push(control.clone());
             }
         }
     }
@@ -776,6 +800,7 @@ async fn interpret(
         kind,
         people,
         next,
+        clicks,
         own: kind == PageKind::Profile,
         filled: unit.cloned(),
         unit: found,
@@ -965,6 +990,7 @@ async fn read_for_candidate(
         kind: c.kind,
         people: vec![person],
         next,
+        clicks: vec![],
         own,
         unit: None,
         filled: unit.cloned(),
@@ -983,6 +1009,7 @@ fn browser(reason: &crate::BrowserReason) -> &'static str {
         crate::BrowserReason::JavaScript => "页面需要 JavaScript 渲染",
         crate::BrowserReason::EncryptedContent => "页面内容需要浏览器解密",
         crate::BrowserReason::Pagination => "名单需要在浏览器中点击翻页",
+        crate::BrowserReason::Click => "名单的分类需要在浏览器中点开",
     }
 }
 #[tracing::instrument(name = "crawl", parent = None, skip_all, fields(id = c.crawl))]
@@ -1090,6 +1117,36 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                         }
                     }
                 }
+                // A part shown by a click counts as one more link away.
+                for control in &p.clicks {
+                    let steps = [PageStep {
+                        page: None,
+                        control: control.clone(),
+                    }];
+                    if c.depth < 2 {
+                        queue::enqueue_steps(
+                            &mut tx,
+                            c.crawl,
+                            &c.url,
+                            &c.scope,
+                            c.depth + 1,
+                            PageKind::Entry,
+                            &steps,
+                        )
+                        .await?;
+                    } else if !sqlx::query_scalar!(
+                        r#"SELECT EXISTS (SELECT 1 FROM crawl_page WHERE crawl_id = ?
+                            AND url = ? AND steps = ?) AS "found!: bool""#,
+                        c.crawl,
+                        c.url,
+                        Json(&steps[..])
+                    )
+                    .fetch_one(&mut *tx)
+                    .await?
+                    {
+                        queue::limit(&mut tx, c.crawl, "寻找名单已达到两层链接范围").await?;
+                    }
+                }
                 if p.kind == PageKind::List {
                     for url in &p.material.pagination.urls {
                         if Scope::new(&c.scope).page(url.clone()).is_ok() {
@@ -1106,7 +1163,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                     }
                 }
                 if p.kind == PageKind::List && p.material.needs_browser.is_none() {
-                    let current = c.steps.last().map_or(1, |s| s.page);
+                    let current = PageStep::page_of(&c.steps);
                     if let Some(button) = p
                         .material
                         .pagination
@@ -1117,7 +1174,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                     {
                         let mut steps = c.steps.clone();
                         steps.push(PageStep {
-                            page: button.page.unwrap_or(current + 1),
+                            page: Some(button.page.unwrap_or(current + 1)),
                             control: button.control.clone(),
                         });
                         queue::enqueue_steps(
