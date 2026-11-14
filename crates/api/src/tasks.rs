@@ -76,16 +76,20 @@ pub async fn write_task_draft(
     ctx: &Context,
     Writing { request, edit }: Writing<task::DraftEdit>,
 ) -> Result<writing::Letter, CallError> {
-    let t = sqlx::query!(
-        "SELECT kind,model_config_id FROM task WHERE id = ?",
-        edit.task_id
-    )
-    .fetch_one(&ctx.db)
-    .await?;
+    // The model the task writes with is read where the UI can already withdraw the call.
     let (turn, chosen) = ctx
-        .writing_turn(request, || {
-            model::selected(&ctx.db, t.model_config_id, model::Feature::Writing)
+        .writing_turn(request, || async {
+            let fixed = sqlx::query_scalar!(
+                "SELECT model_config_id FROM task WHERE id = ?",
+                edit.task_id
+            )
+            .fetch_one(&ctx.db)
+            .await?;
+            model::selected(&ctx.db, fixed, model::Feature::Writing).await
         })
+        .await?;
+    let kind = sqlx::query_scalar!("SELECT kind FROM task WHERE id = ?", edit.task_id)
+        .fetch_one(&ctx.db)
         .await?;
     let d = get_task_draft(
         ctx,
@@ -102,7 +106,7 @@ pub async fn write_task_draft(
     .fetch_all(&ctx.db)
     .await?;
     let refs = task::references(&mut *ctx.db.acquire().await?, &ids).await?;
-    let previous = if t.kind == "follow_up" {
+    let previous = if kind == "follow_up" {
         Some(task::history(&mut *ctx.db.acquire().await?, d.mentor_id).await?)
     } else {
         None
@@ -135,7 +139,7 @@ pub async fn write_task_draft(
     )
     .await
     .map_err(|e| crate::writing_failed(e, d.mentor_id, chosen.id))?;
-    if t.kind == "follow_up" {
+    if kind == "follow_up" {
         letter.subject = d.subject;
     }
     Ok(letter)

@@ -3475,6 +3475,102 @@ mod writing_tests {
     }
 
     #[sqlx::test(migrator = "db::MIGRATOR")]
+    async fn a_task_letter_canceled_while_its_task_is_read_never_reaches_the_model(db: SqlitePool) {
+        let mentor = mentor::create(
+            &db,
+            &mentor::MentorFields {
+                name: "王伟".into(),
+                emails: vec!["wang@example.com".into()],
+                ..Default::default()
+            },
+            0,
+        )
+        .await
+        .unwrap();
+        let template = template::create(
+            &db,
+            &template::TemplateForm {
+                name: "首封".into(),
+                subject: "申请".into(),
+                body_md: "{导师姓名}老师：您好！".into(),
+            }
+            .check()
+            .unwrap(),
+            0,
+        )
+        .await
+        .unwrap();
+        let task = task::create(
+            &db,
+            &task::NewTask {
+                name: "首封".into(),
+                kind: task::Kind::First,
+                writer: task::Writer::Template,
+                ids: vec![mentor],
+                schedule: email::schedule::Schedule::Now,
+                template_id: Some(template),
+                template_source_id: None,
+                source_task_id: None,
+                model_config_id: None,
+                references: vec![],
+                attachments: vec![],
+            },
+            0,
+        )
+        .await
+        .unwrap();
+        let draft: i64 = sqlx::query_scalar("SELECT id FROM email WHERE task_id = ?")
+            .bind(task)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        let ctx = Context::new(db, net::Net::new(vec![]).unwrap(), std::path::Path::new(""));
+        let (address, received) =
+            provider::scripted(vec![("<subject>申请</subject><body>信</body>", "stop")])
+                .await
+                .unwrap();
+        let fields = model::ModelForm {
+            name: String::new(),
+            provider: model::providers::CUSTOM.into(),
+            base_url: address,
+            model: "m".into(),
+            region: None,
+            currency: None,
+            prices: model::pricing::Prices::default(),
+            off_peak: model::pricing::Prices::default(),
+        }
+        .check()
+        .unwrap();
+        let id = model::create(&ctx.db, &fields, "", 0).await.unwrap();
+        assert!(model::agree(&ctx.db, id, &fields.source).await.unwrap());
+
+        // Before it knows which model the task writes with, the UI can already withdraw it.
+        let mut held = Vec::new();
+        for _ in 0..ctx.db.options().get_max_connections() {
+            held.push(ctx.db.acquire().await.unwrap());
+        }
+        let mut writing = std::pin::pin!(call(
+            &ctx,
+            "writeTaskDraft",
+            serde_json::json!({
+                "taskId": task, "id": draft, "subject": "", "bodyMd": "", "attachments": [],
+                "request": "t"
+            }),
+        ));
+        poll_fn(|cx| {
+            assert!(writing.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+        call(&ctx, "cancelWriting", serde_json::json!({ "request": "t" }))
+            .await
+            .unwrap();
+        drop(held);
+        assert!(writing.await.is_err());
+        assert!(received.lock().unwrap().is_empty());
+    }
+
+    #[sqlx::test(migrator = "db::MIGRATOR")]
     async fn queued_letter_uses_the_model_address_saved_before_its_turn(db: SqlitePool) {
         let mentor = mentor::create(
             &db,
