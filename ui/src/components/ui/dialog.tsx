@@ -1,16 +1,16 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { cn } from "cn";
 import { XIcon } from "lucide-react";
-import { createContext, use, useRef, useState } from "react";
+import { createContext, use, useRef } from "react";
 import type * as React from "react";
-import { useLayerStep } from "@/back";
+import { type Asking, useLayerStep } from "@/back";
 import { Button } from "@/components/ui/button";
 
 // docs/ui.md#尺寸 and #动效: a 20px-cornered card that grows in from 96%; on a phone it fills the screen
 // and slides up from the bottom.
 
 /** Set while asking whether to throw away what was typed, once going back would close the dialog. */
-const Leaving = createContext<{ stay: () => void; leave: () => void } | null>(null);
+const Leaving = createContext<Asking | null>(null);
 
 /**
  * docs/ui.md#交互: an open dialog is a step in the history, and going back closes it as its close
@@ -18,22 +18,9 @@ const Leaving = createContext<{ stay: () => void; leave: () => void } | null>(nu
  */
 function Dialog({ unsaved = false, ...props }: DialogPrimitive.Root.Props & { unsaved?: boolean }) {
   const actions = useRef<DialogPrimitive.Root.Actions>(null);
-  const [asking, setAsking] = useState(false);
-  useLayerStep(props.open === true, () => (unsaved ? setAsking(true) : actions.current?.close()));
+  const asking = useLayerStep(props.open === true, () => actions.current?.close(), unsaved);
   return (
-    <Leaving
-      value={
-        asking
-          ? {
-              stay: () => setAsking(false),
-              leave: () => {
-                setAsking(false);
-                actions.current?.close();
-              },
-            }
-          : null
-      }
-    >
+    <Leaving value={asking}>
       <DialogPrimitive.Root data-slot="dialog" actionsRef={actions} {...props} />
     </Leaving>
   );

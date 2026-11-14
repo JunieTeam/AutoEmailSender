@@ -2,31 +2,57 @@
 import {
   Outlet,
   RouterProvider,
-  createMemoryHistory,
+  createHashHistory,
   createRootRoute,
   createRoute,
   createRouter,
+  useBlocker,
   useRouter,
 } from "@tanstack/react-router";
-import { act, useState } from "react";
+import { StrictMode, act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it } from "vitest";
 import { formClose } from "@/components/form";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { LayerSteps, openSection, useLayerStep } from "./back";
 
-/** A page with a dialog, which `改动` gives unsaved input, and a panel to choose a school in. */
+declare global {
+  interface Window {
+    happyDOM: { waitUntilComplete: () => Promise<void> };
+  }
+}
+
+/** While set, leaving the page waits for it, as the task review page waits for a save. */
+let saving: Promise<void> | undefined;
+const waitForSave = async () => {
+  await saving;
+  return false;
+};
+
+/**
+ * A page with a dialog, which `改动` gives unsaved input, and a panel to choose a school in, which
+ * `两个都打开` opens together with the dialog.
+ */
 function Page() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [picking, setPicking] = useState(false);
   useLayerStep(picking, () => setPicking(false));
+  useBlocker({ shouldBlockFn: waitForSave, enableBeforeUnload: false });
   return (
     <>
       <p>导师详情</p>
       <button onClick={() => setOpen(true)}>打开弹窗</button>
       <button onClick={() => setPicking(true)}>选学校</button>
+      <button
+        onClick={() => {
+          setPicking(true);
+          setOpen(true);
+        }}
+      >
+        两个都打开
+      </button>
       {picking && (
         <button
           onClick={() => {
@@ -73,26 +99,57 @@ const routeTree = root.addChildren([
 
 const button = (name: string) => [...document.querySelectorAll("button")].find((b) => b.textContent === name);
 
+// A browser goes back and forward in a later task, which is when the app's own navigations, held for
+// the router's checks, can come first; happy-dom does it at once.
+const { history } = window;
+const at = { go: history.go.bind(history), back: history.back.bind(history), forward: history.forward.bind(history) };
+history.go = (delta) => void setTimeout(() => at.go(delta));
+history.back = () => void setTimeout(at.back);
+history.forward = () => void setTimeout(at.forward);
+
+/** Lets the browser and the app finish what follows from `act`, as going back or forward does. */
+async function settle(act_: () => void) {
+  await act(async () => {
+    act_();
+    await window.happyDOM.waitUntilComplete();
+  });
+  await act(() => window.happyDOM.waitUntilComplete());
+}
+
 let unmount = () => {};
 afterEach(() => unmount());
 
-/** The app on a mentor's page, opened from the list of mentors. */
+/** The app in the browser on a mentor's page, opened from the list of mentors. */
 async function render() {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: ["/mentors"] }) });
+  // The router numbers its entries from the one it starts on; going back past it shows another site.
+  window.history.replaceState(null, "", "#/elsewhere");
+  window.history.pushState(null, "", "#/mentors");
+  const router = createRouter({ routeTree, history: createHashHistory() });
   const container = document.createElement("div");
   document.body.append(container);
   const view = createRoot(container);
-  await act(async () => view.render(<RouterProvider router={router} />));
+  // As in main.tsx, which runs each effect twice as it mounts.
+  await act(async () =>
+    view.render(
+      <StrictMode>
+        <RouterProvider router={router} />
+      </StrictMode>,
+    ),
+  );
   unmount = () => {
     act(() => view.unmount());
+    router.history.destroy();
     container.remove();
+    saving = undefined;
   };
-  await act(() => router.navigate({ href: "/mentors/1" }));
+  await settle(() => void router.navigate({ href: "/mentors/1" }));
   return {
     router,
     button,
-    click: (name: string) => act(async () => button(name)?.click()),
-    back: () => act(async () => router.history.back()),
+    click: (name: string) => settle(() => button(name)?.click()),
+    // As the phone's swipe or a long press on the browser's back button does.
+    back: (steps = 1) => settle(() => window.history.go(-steps)),
+    forward: () => settle(() => window.history.forward()),
     shows: (text: string) => document.body.textContent?.includes(text) ?? false,
     page: () => container.textContent,
   };
@@ -102,7 +159,7 @@ it("opens a section in place of the pages opened before, so that going back stop
   const app = await render();
   expect(app.router.history.canGoBack()).toBe(true);
 
-  await act(() => openSection(app.router, "/tasks"));
+  await settle(() => void openSection(app.router, "/tasks"));
   expect(app.page()).toBe("任务");
   expect(app.router.history.canGoBack()).toBe(false);
 });
@@ -139,12 +196,31 @@ it("asks before throwing away unsaved input on going back", async () => {
   expect(app.page()).toBe("导师");
 });
 
+it("asks before leaving the page with unsaved input, going back several steps at once", async () => {
+  const app = await render();
+  await app.click("打开弹窗");
+  await app.click("改动");
+
+  await app.back(2);
+  expect(app.shows("放弃未保存的内容？")).toBe(true);
+  await app.click("继续编辑");
+  expect(app.shows("编辑导师")).toBe(true);
+  expect(app.page()).toContain("导师详情");
+
+  await app.back(2);
+  await app.click("放弃");
+  expect(app.page()).toBe("导师");
+});
+
 it("takes the step of a dialog closed by its own button back with it", async () => {
   const app = await render();
   await app.click("打开弹窗");
-  await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="关闭"]')?.click());
+  await settle(() => document.querySelector<HTMLButtonElement>('button[aria-label="关闭"]')?.click());
   expect(app.shows("编辑导师")).toBe(false);
 
+  // Forward does not open it again, nor leave an empty step to go back over.
+  await app.forward();
+  expect(app.shows("编辑导师")).toBe(false);
   await app.back();
   expect(app.page()).toBe("导师");
 });
@@ -160,7 +236,7 @@ it("keeps what was chosen in a panel with the page it closes back to", async () 
   expect(app.page()).toBe("导师");
 });
 
-it("passes over the step of a dialog that opened another page", async () => {
+it("passes over the step of a dialog that opened another page, both ways", async () => {
   const app = await render();
   await app.click("打开弹窗");
   await app.click("去任务");
@@ -169,6 +245,41 @@ it("passes over the step of a dialog that opened another page", async () => {
   await app.back();
   expect(app.page()).toContain("导师详情");
   expect(app.shows("编辑导师")).toBe(false);
+  await app.forward();
+  expect(app.page()).toBe("任务");
+  await app.back();
+  await app.back();
+  expect(app.page()).toBe("导师");
+});
+
+it("gives each of the layers opened together a step of its own", async () => {
+  const app = await render();
+  const open = () => [app.shows("编辑导师"), app.button("示例大学") !== undefined].filter(Boolean).length;
+  await app.click("两个都打开");
+  expect(open()).toBe(2);
+
+  await app.back();
+  expect(open()).toBe(1);
+  await app.back();
+  expect(open()).toBe(0);
+  expect(app.page()).toContain("导师详情");
+  await app.back();
+  expect(app.page()).toBe("导师");
+});
+
+it("goes back no further for a dialog closed while going back waits for a save", async () => {
+  const app = await render();
+  await app.click("打开弹窗");
+  let saved: (() => void) | undefined;
+  saving = new Promise((resolve) => (saved = resolve));
+
+  await app.back();
+  await settle(() => document.querySelector<HTMLButtonElement>('button[aria-label="关闭"]')?.click());
+  await settle(() => saved?.());
+  expect(app.page()).toContain("导师详情");
+  expect(app.shows("编辑导师")).toBe(false);
+  expect(app.router.history.canGoBack()).toBe(true);
+  saving = undefined;
   await app.back();
   expect(app.page()).toBe("导师");
 });
