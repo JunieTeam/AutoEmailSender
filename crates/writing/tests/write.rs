@@ -836,6 +836,42 @@ async fn invalid_fact_check_is_corrected_once_and_records_both_calls(db: SqliteP
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_check_no_longer_wanted_when_its_first_request_would_go_out_is_not_sent(db: SqlitePool) {
+    let (mentor, _) = setup(&db).await;
+    let (address, received) = provider(vec![("[]", "stop")]).await.unwrap();
+    model(&db, &address, true).await;
+    let letter = Letter {
+        subject: "申请".into(),
+        body_md: "正文".into(),
+    };
+    let email = email::save_first_draft(&db, mentor, &letter.subject, &letter.body_md, &[], T)
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
+    let chosen = model::chosen(&db, model::Feature::Writing)
+        .await
+        .unwrap()
+        .unwrap();
+    // Turned off, say, while it waited for its turn at the model.
+    let findings = writing::fact_check::check(
+        &db,
+        &Net::new(vec![]).unwrap(),
+        &turn(&chosen).await,
+        email,
+        &letter,
+        &chosen,
+        &[],
+        || async { Ok(false) },
+        |_, _| async { Ok(()) },
+    )
+    .await
+    .unwrap();
+    assert!(findings.is_none());
+    assert!(received.lock().unwrap().is_empty());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn incomplete_fact_check_is_an_error_and_still_records_usage(db: SqlitePool) {
     let (mentor, _) = setup(&db).await;
     let (address, _) = provider(vec![

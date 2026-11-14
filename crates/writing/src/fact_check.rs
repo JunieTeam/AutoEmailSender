@@ -73,8 +73,8 @@ pub fn estimate(
 }
 
 /// Checks in `turn` at the model of `chosen`. The caller controls usage persistence so background
-/// retries keep each answer in memory. `go_on` says whether the check is still wanted before asking
-/// again for a well-formed answer; None when it no longer is.
+/// retries keep each answer in memory. `go_on` says right before each request whether the check
+/// is still wanted, as it may not be after waiting for the turn or an answer; None when it is not.
 #[expect(
     clippy::too_many_arguments,
     reason = "the callers' checks and usage records differ; a one-use context would only wrap them"
@@ -102,6 +102,9 @@ where
     let mut system = SYSTEM.to_owned();
     let mut retried = false;
     loop {
+        if !go_on().await? {
+            return Ok(None);
+        }
         // JSON mode only produces objects; fact checks return a top-level array.
         let answer = model::ask(net, turn, &system, &message, false)
             .await
@@ -122,7 +125,6 @@ where
         }
         match parse(&answer.text, letter) {
             Ok(findings) => return Ok(Some(findings)),
-            Err(_) if !retried && !go_on().await? => return Ok(None),
             Err(error) if !retried => {
                 retried = true;
                 system = format!(

@@ -208,7 +208,6 @@ async fn generate(
                         if !emails::valid(db, claim).await? {
                             return Ok(Outcome::Requeue);
                         }
-                        note_sent();
                         let result = writing::fact_check::check(
                             db,
                             net,
@@ -248,6 +247,7 @@ async fn generate(
                             Ok(None) if !emails::valid(db, claim).await? => {
                                 return Ok(Outcome::Requeue);
                             }
+                            // None: checks were turned off meanwhile, so the letter goes unchecked.
                             Ok(findings) => findings.map(|findings| {
                                 email::fact_check::FactCheck::Completed { findings }
                             }),
