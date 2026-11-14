@@ -292,6 +292,9 @@ struct Page {
     own: bool,
     /// The school and college the page says it belongs to.
     unit: Option<Affiliation>,
+    /// The school and college its people's units were filled in at, which the user may have
+    /// changed while it was being read.
+    filled: Option<Affiliation>,
 }
 impl Page {
     fn nothing(material: Material, kind: PageKind) -> Self {
@@ -302,6 +305,7 @@ impl Page {
             next: vec![],
             own: false,
             unit: None,
+            filled: None,
         }
     }
     /// Gives no one and leads nowhere.
@@ -603,7 +607,9 @@ async fn read(
             if targeted { c.kind } else { PageKind::Entry },
         ));
     }
-    let unit = crawl_unit(db, c.crawl).await?;
+    let unit = crawl_unit(db, c.crawl)
+        .await
+        .map_err(database("read crawl unit", READ_FAILED))?;
     if targeted {
         return read_for_candidate(&reader, fetcher, &scope, m, unit.as_ref()).await;
     }
@@ -620,14 +626,16 @@ async fn read(
 }
 
 /// The school and college a crawl from a website found its pages to belong to.
-async fn crawl_unit(db: &SqlitePool, crawl: i64) -> Result<Option<Affiliation>, ReadError> {
+async fn crawl_unit(
+    db: impl sqlx::SqliteExecutor<'_>,
+    crawl: i64,
+) -> Result<Option<Affiliation>, sqlx::Error> {
     let row = sqlx::query!(
         r#"SELECT university, school FROM crawl WHERE id = ? AND kind = 'site'"#,
         crawl
     )
     .fetch_optional(db)
-    .await
-    .map_err(database("read crawl unit", READ_FAILED))?;
+    .await?;
     Ok(row.and_then(|r| {
         Some(Affiliation {
             university: Some(r.university?),
@@ -712,6 +720,7 @@ async fn interpret(
         people,
         next,
         own: kind == PageKind::Profile,
+        filled: unit.cloned(),
         unit: found,
     })
 }
@@ -901,6 +910,7 @@ async fn read_for_candidate(
         next,
         own,
         unit: None,
+        filled: unit.cloned(),
     })
 }
 /// Whom a list's profile page is read for, or whom they have merged into since; none when it is
@@ -961,6 +971,16 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                 .execute(&mut *tx)
                 .await?;
             }
+            // The user may have written the school and college otherwise while the page was read.
+            let mut people = p.people.clone();
+            if let Some(current) = crawl_unit(&mut *tx, c.crawl).await?
+                && p.filled.as_ref() != Some(&current)
+            {
+                let filled = p.filled.clone().unwrap_or_default();
+                for person in &mut people {
+                    extract::relocate(&mut person.fields.affiliations, &filled, &current);
+                }
+            }
             if let Some(id) = c.candidate_id {
                 if c.kind == PageKind::EnrichProfile
                     && !sqlx::query_scalar!(
@@ -983,7 +1003,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                     let urls = [c.url.as_str(), p.material.url.as_str()];
                     review::matched(&mut tx, id, &urls).await?;
                 }
-                for person in &p.people {
+                for person in &people {
                     enrich::apply(&mut tx, id, p.material.url.as_str(), person).await?;
                 }
             } else {
@@ -1060,7 +1080,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                     _ => None,
                 };
                 // The transaction serializes duplicate detection with all candidate writes.
-                for person in &p.people {
+                for person in people {
                     review::save(
                         &mut tx,
                         c.crawl,
@@ -1074,12 +1094,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                             }
                         },
                         p.material.url.as_str(),
-                        Person {
-                            fields: person.fields.clone(),
-                            papers: person.papers.clone(),
-                            profile: person.profile.clone(),
-                            recognized: person.recognized.clone(),
-                        },
+                        person,
                     )
                     .await?;
                 }

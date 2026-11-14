@@ -4036,6 +4036,64 @@ async fn a_crawl_s_pages_name_its_school_and_its_candidates_follow_the_user_s_ch
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_page_read_while_the_user_changes_the_school_is_saved_at_the_new_one(db: SqlitePool) {
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>示例大学计算机学院 师资队伍</title><p><a href='/zhang'>张三</a> 教授</p>",
+    );
+    site.page("/zhang", "<title>张三</title><p>张三 教授 软件工程系</p>");
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let changed = Affiliation {
+        university: Some("示例理工大学".into()),
+        school: Some("软件学院".into()),
+        ..Default::default()
+    };
+    let server = tokio::spawn({
+        let (db, changed) = (db.clone(), changed.clone());
+        async move {
+            while let Some(r) = provider.requests.recv().await {
+                let system = r.body["messages"][0]["content"].as_str().unwrap();
+                let answer = if system.starts_with("你整理学院") {
+                    json!({"kind":"list","next":[],"university":"示例大学","school":"计算机学院"})
+                } else if system.starts_with("你从教师") {
+                    json!({"people":[listed("张三", Some(1), vec![])]})
+                } else {
+                    // The user writes the school and college as they should be while the
+                    // teacher's page is being read.
+                    let crawl = sqlx::query_scalar::<_, i64>("SELECT id FROM crawl")
+                        .fetch_one(&db)
+                        .await
+                        .unwrap();
+                    review::set_unit(&db, crawl, &changed).await.unwrap();
+                    let mut answer = targeted("zhang@school.example.edu");
+                    answer["affiliations"] = json!([
+                        {"university":null,"school":null,"department":"软件工程系","title":"教授"}
+                    ]);
+                    answer
+                };
+                r.respond.send(Response::answer(&answer.to_string())).ok();
+            }
+        }
+    });
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    while let Some(claim) = queue::next(&db).await.unwrap() {
+        process_claim(&db, &site, &claim).await;
+    }
+    let zhang = vec![Affiliation {
+        department: Some("软件工程系".into()),
+        title: Some("教授".into()),
+        ..changed
+    }];
+    assert_eq!(
+        units(&db, "张三").await,
+        (zhang.clone(), zhang, vec!["示例理工大学".into()])
+    );
+    server.abort();
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_crawl_that_finds_no_teacher_fails_and_says_what_to_try(db: SqlitePool) {
     let site = Site::new().await;
     site.page("/", "<title>学院概况</title><p>本院成立于 1990 年。</p>");

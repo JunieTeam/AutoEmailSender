@@ -184,7 +184,7 @@ pub struct Targeted {
     pub names: Vec<String>,
     pub next: Vec<usize>,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Person {
     pub fields: MentorFields,
     pub papers: Vec<String>,
