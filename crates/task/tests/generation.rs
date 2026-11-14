@@ -29,7 +29,7 @@ impl Drop for Runner {
     }
 }
 impl Runner {
-    fn start(db: &SqlitePool, limit: model::background::Limit) -> Self {
+    fn start(db: &SqlitePool, turns: model::background::Turns) -> Self {
         let handle = Generator::default();
         let (tx, changes) = mpsc::unbounded_channel();
         let (done_tx, done) = mpsc::unbounded_channel();
@@ -39,7 +39,7 @@ impl Runner {
             writes.clone(),
             net::Net::new(vec![]).unwrap(),
             handle.clone(),
-            limit,
+            turns,
             move || {
                 let _ = tx.send(());
             },
@@ -572,15 +572,15 @@ async fn matching_and_writing_share_three_actual_model_calls(db: SqlitePool) {
     mentor::matching::enqueue(&db, &ids, false, true, 0)
         .await
         .unwrap();
-    let limit = model::background::Limit::default();
-    let _drafts = Runner::start(&db, limit.clone());
+    let turns = model::background::Turns::default();
+    let _drafts = Runner::start(&db, turns.clone());
     let matcher = matching::Matcher::default();
     let match_worker = tokio::spawn(matching::run(
         db.clone(),
         db::Writes::default(),
         net::Net::new(vec![]).unwrap(),
         matcher,
-        limit,
+        turns,
         || {},
         |_| {},
     ));

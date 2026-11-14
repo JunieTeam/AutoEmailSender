@@ -76,13 +76,17 @@ pub async fn write_task_draft(
     ctx: &Context,
     Writing { request, edit }: Writing<task::DraftEdit>,
 ) -> Result<writing::Letter, CallError> {
-    let turn = ctx.writing_turn(request).await?;
     let t = sqlx::query!(
         "SELECT kind,model_config_id FROM task WHERE id = ?",
         edit.task_id
     )
     .fetch_one(&ctx.db)
     .await?;
+    let (turn, chosen) = ctx
+        .writing_turn(request, || {
+            model::selected(&ctx.db, t.model_config_id, model::Feature::Writing)
+        })
+        .await?;
     let d = get_task_draft(
         ctx,
         task::TaskEmail {
@@ -91,9 +95,6 @@ pub async fn write_task_draft(
         },
     )
     .await?;
-    let chosen = model::selected(&ctx.db, t.model_config_id, model::Feature::Writing)
-        .await?
-        .ok_or(writing::Error::NoModel)?;
     let ids = sqlx::query_scalar!(
         "SELECT material_id FROM task_material WHERE task_id = ? AND role = 'reference'",
         edit.task_id
@@ -119,9 +120,10 @@ pub async fn write_task_draft(
         },
     )
     .await?;
-    turn.send()?;
+    let model = turn.send()?;
     let mut letter = writing::write(
         &ctx.net,
+        model,
         &prepared,
         &writing::Letter {
             subject: edit.subject,

@@ -5,12 +5,20 @@
 
 use email::fact_check::Finding;
 use mentor::{Affiliation, MentorForm};
+use model::background::{Priority, Turn, Turns};
 use model::{ModelError, ModelForm};
 use net::Net;
 use serde_json::Value;
 use sqlx::SqlitePool;
 use test_fixtures::provider::{self, scripted as provider};
 use writing::{Error, Letter};
+
+/// A turn of its own at `chosen`'s model: these calls do not wait for one another.
+async fn turn(chosen: &model::Chosen) -> Turn {
+    Turns::default()
+        .take(&chosen.access, &chosen.model, Priority::Background)
+        .await
+}
 const T: i64 = 1_800_000_000_000;
 
 /// A user with a profile and two materials, one of them for writing, and a mentor with a note;
@@ -122,6 +130,7 @@ async fn follow_up_uses_prior_letters_without_private_mentor_fields(db: SqlitePo
     .unwrap();
     let letter = writing::write(
         &Net::new(Vec::new()).unwrap(),
+        &turn(&chosen).await,
         &prepared,
         &blank(),
         |purpose, usage, _| model::usage::record_for_email(&db, &chosen, purpose, None, usage, T),
@@ -381,9 +390,13 @@ async fn current_write(
         },
     )
     .await?;
-    writing::write(net, &prepared, current, |purpose, usage, _| {
-        model::usage::record_for_email(db, &chosen, purpose, None, usage, now)
-    })
+    writing::write(
+        net,
+        &turn(&chosen).await,
+        &prepared,
+        current,
+        |purpose, usage, _| model::usage::record_for_email(db, &chosen, purpose, None, usage, now),
+    )
     .await
 }
 
@@ -398,6 +411,7 @@ async fn check(
     let findings = writing::fact_check::check(
         db,
         net,
+        &turn(chosen).await,
         email,
         letter,
         chosen,
@@ -537,9 +551,15 @@ async fn reply_drafts_and_rewrites_use_the_fixed_target_and_record_their_purpose
         )
         .await
         .unwrap();
-        let answer = writing::write(&net, &prepared, letter, |purpose, usage, _| {
-            model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
-        })
+        let answer = writing::write(
+            &net,
+            &turn(&chosen).await,
+            &prepared,
+            letter,
+            |purpose, usage, _| {
+                model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
+            },
+        )
         .await
         .unwrap();
         assert!(answer.subject.is_empty());
@@ -626,9 +646,15 @@ async fn reply_context_stops_at_twenty_letters_and_ten_thousand_characters(db: S
         )
         .await
         .unwrap();
-        writing::write(&net, &prepared, &blank(), |purpose, usage, _| {
-            model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
-        })
+        writing::write(
+            &net,
+            &turn(&chosen).await,
+            &prepared,
+            &blank(),
+            |purpose, usage, _| {
+                model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
+            },
+        )
         .await
         .unwrap();
     }

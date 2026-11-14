@@ -2,10 +2,13 @@
 //! out (docs/design.md#联系).
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Mutex;
 
+use model::Chosen;
+use model::background::Priority;
 use serde::Deserialize;
-use tokio::sync::{OwnedSemaphorePermit, oneshot};
+use tokio::sync::oneshot;
 use ts_rs::TS;
 
 use crate::{CallError, Context};
@@ -54,19 +57,19 @@ impl Drop for Listed<'_> {
 /// A turn at the model; until `send`, the UI can still withdraw the call. It keeps the request
 /// taken until the call ends.
 pub(crate) struct Turn<'a> {
-    _permit: OwnedSemaphorePermit,
+    model: model::background::Turn,
     listed: Option<Listed<'a>>,
 }
 impl Turn<'_> {
     /// Right before the call goes to the model: withdrawn by now, it does not go; from here on it
     /// goes whatever the UI does.
-    pub(crate) fn send(&self) -> Result<(), CallError> {
+    pub(crate) fn send(&self) -> Result<&model::background::Turn, CallError> {
         let Some(listed) = &self.listed else {
-            return Ok(());
+            return Ok(&self.model);
         };
         let mut calls = listed.writings.calls();
         match calls.get_mut(&listed.request).and_then(Option::take) {
-            Some(_) => Ok(()),
+            Some(_) => Ok(&self.model),
             None => Err(canceled()),
         }
     }
@@ -77,16 +80,31 @@ fn canceled() -> CallError {
 }
 
 impl Context {
-    /// A turn at the model, unless the UI cancels `request` first.
-    pub(crate) async fn writing_turn(
+    /// A turn at the model of the configuration `read` gives, as it is once the turn comes, unless
+    /// the UI cancels `request` first.
+    pub(crate) async fn writing_turn<F>(
         &self,
         request: Option<String>,
-    ) -> Result<Turn<'_>, CallError> {
+        read: impl Fn() -> F,
+    ) -> Result<(Turn<'_>, Chosen), CallError>
+    where
+        F: Future<Output = Result<Option<Chosen>, sqlx::Error>>,
+    {
+        let take = async {
+            self.turns
+                .take_current(Priority::Interactive, read)
+                .await?
+                .ok_or_else(|| CallError::from(writing::Error::NoModel))
+        };
         let Some(request) = request else {
-            return Ok(Turn {
-                _permit: self.model_limit.acquire().await,
-                listed: None,
-            });
+            let (model, chosen) = take.await?;
+            return Ok((
+                Turn {
+                    model,
+                    listed: None,
+                },
+                chosen,
+            ));
         };
         let (cancel, canceled_early) = oneshot::channel();
         {
@@ -101,10 +119,10 @@ impl Context {
             request,
         };
         tokio::select! {
-            permit = self.model_limit.acquire() => Ok(Turn {
-                _permit: permit,
-                listed: Some(listed),
-            }),
+            taken = take => {
+                let (model, chosen) = taken?;
+                Ok((Turn { model, listed: Some(listed) }, chosen))
+            }
             _ = canceled_early => Err(canceled()),
         }
     }

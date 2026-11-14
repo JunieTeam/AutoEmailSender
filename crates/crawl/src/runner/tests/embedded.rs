@@ -298,9 +298,9 @@ async fn a_pause_stops_the_pictures_still_to_be_read(db: SqlitePool) {
     let claim = queue::next(&db).await.unwrap().unwrap();
     let net = net::Net::new(vec![]).unwrap();
     let pages = Pages::local(site.port);
-    let limit = Limit::default();
+    let turns = Turns::default();
     let cooldown = Cooldown::new(Arc::default());
-    let read = process(&db, &net, &pages, &limit, &claim, &cooldown);
+    let read = process(&db, &net, &pages, &turns, &claim, &cooldown);
     let pause = async {
         tokio::time::timeout(GUARD_TIMEOUT, async {
             while visited(&site, "/1.png").is_empty() {

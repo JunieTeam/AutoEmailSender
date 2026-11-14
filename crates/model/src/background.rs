@@ -4,38 +4,228 @@ use crate::error::{Cause, NO_BALANCE};
 use crate::{Access, Chosen, ModelError};
 use failure::Failure;
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
+    future::Future,
     hash::Hash,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        Arc, Mutex, MutexGuard,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
-use tokio::{
-    sync::{Notify, OwnedSemaphorePermit, Semaphore},
-    time::Instant,
-};
+use tokio::{sync::Notify, time::Instant};
 
+/// The calls to one model of an account running at once, and the items of each background queue.
 pub const CONCURRENCY: usize = 3;
 
 /// Rate limits or network failures lasting longer than this with nothing getting through are
 /// taken as ones that will not lift by themselves, such as a used-up plan, and pause the work.
 pub const LASTING: Duration = Duration::from_secs(10 * 60);
 
-#[derive(Clone)]
-pub struct Limit(Arc<Semaphore>);
-impl Default for Limit {
+/// Which waiting call goes first: the user's, waited for on the screen, before background work's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Priority {
+    Interactive,
+    Background,
+}
+
+/// After a rate limit, a group gets back one more call at once for each this many answers without
+/// another.
+const STEADY: usize = 5;
+
+/// The calls to models running at once (docs/development.md#异步和后台任务), apart by the address,
+/// API key and model they go to, as providers limit an account's calls to a model. One for the app.
+#[derive(Clone, Default)]
+pub struct Turns(Arc<Lines>);
+
+#[derive(Default)]
+struct Lines {
+    lines: Mutex<HashMap<Group, Line>>,
+    /// A turn may have come free for someone waiting.
+    freed: Notify,
+    tickets: AtomicU64,
+}
+
+/// The address, API key and model.
+type Group = (String, Option<String>, String);
+
+fn group(access: &Access, model: &str) -> Group {
+    (
+        access.base_url.clone(),
+        access.api_key.clone(),
+        model.to_owned(),
+    )
+}
+
+struct Line {
+    /// How many calls may run at once.
+    allowed: usize,
+    running: usize,
+    /// Answers since the last rate limit or the last call added back.
+    answered: usize,
+    /// The calls waiting, in the order they go.
+    waiting: BTreeSet<(Priority, u64)>,
+}
+impl Default for Line {
     fn default() -> Self {
-        Self(Arc::new(Semaphore::new(CONCURRENCY)))
+        Self {
+            allowed: CONCURRENCY,
+            running: 0,
+            answered: 0,
+            waiting: BTreeSet::new(),
+        }
     }
 }
-impl Limit {
-    /// A turn among the calls running at once. Take it before reading the model configuration, so
-    /// a call that waited in line uses the configuration as it is when its turn comes.
-    pub async fn acquire(&self) -> OwnedSemaphorePermit {
+
+impl Turns {
+    /// A turn to call `model` through `access`, once fewer calls than its group allows are running
+    /// and none waits before it.
+    pub async fn take(&self, access: &Access, model: &str, priority: Priority) -> Turn {
+        let group = group(access, model);
+        let ticket = (priority, self.0.tickets.fetch_add(1, Ordering::Relaxed));
+        self.lines()
+            .entry(group.clone())
+            .or_default()
+            .waiting
+            .insert(ticket);
+        let queued = Queued {
+            turns: self,
+            group: &group,
+            ticket,
+        };
+        loop {
+            // Made before looking, so that it hears a turn coming free in between.
+            let freed = self.0.freed.notified();
+            {
+                let mut lines = self.lines();
+                let line = line(&mut lines, &group);
+                if line.running < line.allowed && line.waiting.first() == Some(&ticket) {
+                    line.waiting.pop_first();
+                    line.running += 1;
+                    self.wake(line);
+                    break;
+                }
+            }
+            freed.await;
+        }
+        drop(queued);
+        Turn {
+            turns: self.clone(),
+            access: access.clone(),
+            model: model.to_owned(),
+        }
+    }
+
+    /// A turn at the configuration `read` gives, as it is once the turn comes: one changed to
+    /// another group meanwhile waits again there. None without a configuration.
+    pub async fn take_current<E, F>(
+        &self,
+        priority: Priority,
+        read: impl Fn() -> F,
+    ) -> Result<Option<(Turn, Chosen)>, E>
+    where
+        F: Future<Output = Result<Option<Chosen>, E>>,
+    {
+        let Some(mut chosen) = read().await? else {
+            return Ok(None);
+        };
+        loop {
+            let turn = self.take(&chosen.access, &chosen.model, priority).await;
+            match read().await? {
+                Some(current) if turn.serves(&current) => return Ok(Some((turn, current))),
+                Some(current) => chosen = current,
+                None => return Ok(None),
+            }
+        }
+    }
+
+    /// Lets the calls waiting look again when one of them can go.
+    fn wake(&self, line: &Line) {
+        if line.running < line.allowed && !line.waiting.is_empty() {
+            self.0.freed.notify_waiters();
+        }
+    }
+
+    fn lines(&self) -> MutexGuard<'_, HashMap<Group, Line>> {
         self.0
-            .clone()
-            .acquire_owned()
-            .await
-            .unwrap_or_else(|_| unreachable!("capacity is never closed"))
+            .lines
+            .lock()
+            .unwrap_or_else(|_| unreachable!("nothing panics while holding the lock"))
+    }
+}
+
+fn line<'a>(lines: &'a mut HashMap<Group, Line>, group: &Group) -> &'a mut Line {
+    lines
+        .get_mut(group)
+        .unwrap_or_else(|| unreachable!("a group's line stays once added"))
+}
+
+/// A call's place in line until it gets its turn or stops waiting.
+struct Queued<'a> {
+    turns: &'a Turns,
+    group: &'a Group,
+    ticket: (Priority, u64),
+}
+impl Drop for Queued<'_> {
+    fn drop(&mut self) {
+        let mut lines = self.turns.lines();
+        let line = line(&mut lines, self.group);
+        if line.waiting.remove(&self.ticket) {
+            self.turns.wake(line);
+        }
+    }
+}
+
+/// One of the calls a group may run at once, until dropped.
+pub struct Turn {
+    turns: Turns,
+    access: Access,
+    model: String,
+}
+impl Turn {
+    pub fn access(&self) -> &Access {
+        &self.access
+    }
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+    /// Whether `chosen` calls the group this is a turn of.
+    pub fn serves(&self, chosen: &Chosen) -> bool {
+        chosen.model == self.model
+            && chosen.access.base_url == self.access.base_url
+            && chosen.access.api_key == self.access.api_key
+    }
+    /// Notes how a call in this turn went: a rate limit takes the group down to one call at once,
+    /// and answers without another bring it back up.
+    pub(crate) fn note<T>(&self, result: &Result<T, ModelError>) {
+        let limited = match result {
+            Ok(_) => false,
+            // A network that fails says nothing of the provider's limits.
+            Err(ModelError::Unreachable { .. } | ModelError::TimedOut { .. }) => return,
+            Err(error) if matches!(classify(error, &self.access), Effect::RateLimit(_)) => true,
+            Err(_) => return,
+        };
+        let mut lines = self.turns.lines();
+        let line = line(&mut lines, &group(&self.access, &self.model));
+        if limited {
+            line.allowed = 1;
+            line.answered = 0;
+        } else if line.allowed < CONCURRENCY {
+            line.answered += 1;
+            if line.answered == STEADY {
+                line.allowed += 1;
+                line.answered = 0;
+                self.turns.wake(line);
+            }
+        }
+    }
+}
+impl Drop for Turn {
+    fn drop(&mut self) {
+        let mut lines = self.turns.lines();
+        let line = line(&mut lines, &group(&self.access, &self.model));
+        line.running -= 1;
+        self.turns.wake(line);
     }
 }
 
@@ -129,8 +319,8 @@ impl<K: Eq + Hash> Cooldown<K> {
             (round, at)
         };
     }
-    /// A turn among the calls running at once, once no limit holds back.
-    pub async fn acquire(&self, limit: &Limit) -> OwnedSemaphorePermit {
+    /// A turn at `chosen`'s model, once no limit holds back.
+    pub async fn acquire(&self, turns: &Turns, chosen: &Chosen) -> Turn {
         loop {
             // Made before looking, so that it hears a round that begins in between.
             let began = self.rounds.began.notified();
@@ -141,9 +331,11 @@ impl<K: Eq + Hash> Cooldown<K> {
                 }
                 continue;
             }
-            let permit = limit.acquire().await;
+            let turn = turns
+                .take(&chosen.access, &chosen.model, Priority::Background)
+                .await;
             if self.until().is_none() {
-                return permit;
+                return turn;
             }
         }
     }
@@ -203,9 +395,9 @@ impl Limited {
 }
 
 /// How background work goes on after `error` from calling through `access`.
-pub fn classify(error: ModelError, access: &Access) -> Effect {
+pub fn classify(error: &ModelError, access: &Access) -> Effect {
     let failure = error.failure();
-    let (cause, status, retry_after, words) = match &error {
+    let (cause, status, retry_after, words) = match error {
         ModelError::MissingKey => return Effect::Pause(failure),
         ModelError::Unreachable { source, .. } if net::untrusted(source) => {
             return Effect::Pause(failure);
@@ -278,6 +470,131 @@ pub fn tokens(text: &str) -> i64 {
 mod tests {
     use super::*;
     use crate::Source;
+
+    fn chosen(key: &str, model: &str) -> Chosen {
+        Chosen {
+            id: 1,
+            provider: "glm".into(),
+            model: model.into(),
+            agreed: true,
+            access: Source::check("glm", None, "https://relay.example.com/v1")
+                .unwrap()
+                .access(Some(key.into())),
+        }
+    }
+
+    /// What `take` gives without waiting.
+    async fn at_once<T>(take: impl Future<Output = T>) -> Option<T> {
+        tokio::select! {
+            biased;
+            taken = take => Some(taken),
+            () = std::future::ready(()) => None,
+        }
+    }
+
+    #[tokio::test]
+    async fn each_model_of_an_account_runs_its_calls_apart_from_the_others() {
+        let turns = Turns::default();
+        let (a, b) = (chosen("a", "m").access, chosen("b", "m").access);
+        let mut running = Vec::new();
+        for _ in 0..CONCURRENCY {
+            running.push(turns.take(&a, "m", Priority::Background).await);
+        }
+        assert!(
+            at_once(turns.take(&a, "m", Priority::Background))
+                .await
+                .is_none()
+        );
+        assert!(
+            at_once(turns.take(&a, "n", Priority::Background))
+                .await
+                .is_some()
+        );
+        assert!(
+            at_once(turns.take(&b, "m", Priority::Background))
+                .await
+                .is_some()
+        );
+        running.pop();
+        assert!(
+            at_once(turns.take(&a, "m", Priority::Background))
+                .await
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_call_the_user_waits_for_goes_before_background_work_waiting_longer() {
+        let turns = Turns::default();
+        let a = chosen("a", "m").access;
+        let mut running = Vec::new();
+        for _ in 0..CONCURRENCY {
+            running.push(turns.take(&a, "m", Priority::Background).await);
+        }
+        let waiting = |priority| {
+            let (turns, a) = (turns.clone(), a.clone());
+            tokio::spawn(async move { turns.take(&a, "m", priority).await })
+        };
+        let background = waiting(Priority::Background);
+        tokio::task::yield_now().await;
+        let user = waiting(Priority::Interactive);
+        tokio::task::yield_now().await;
+        running.pop();
+        let taken = user.await.unwrap();
+        assert!(!background.is_finished());
+        drop(taken);
+        background.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_rate_limit_leaves_one_call_at_once_until_answers_without_another_bring_more_back() {
+        let turns = Turns::default();
+        let a = chosen("a", "m").access;
+        let take = || turns.take(&a, "m", Priority::Background);
+        let limited: Result<(), ModelError> =
+            Err(refused(429, "1302", "您当前使用该API的并发数过高"));
+        take().await.note(&limited);
+        let only = take().await;
+        assert!(at_once(take()).await.is_none());
+        drop(only);
+        // A network failing in between neither limits nor counts.
+        take().await.note(&Err::<(), _>(ModelError::TimedOut {
+            address: "https://relay.example.com/v1".into(),
+        }));
+        for _ in 0..STEADY {
+            take().await.note(&Ok(()));
+        }
+        let two = [take().await, take().await];
+        assert!(at_once(take()).await.is_none());
+        drop(two);
+    }
+
+    #[tokio::test]
+    async fn a_call_whose_configuration_changes_while_waiting_waits_again_at_the_new_model() {
+        let turns = Turns::default();
+        let current = Mutex::new(chosen("a", "m"));
+        let read = || async { Ok::<_, ()>(Some(current.lock().unwrap().clone())) };
+        let mut running = Vec::new();
+        for _ in 0..CONCURRENCY {
+            running.push(
+                turns
+                    .take(&chosen("a", "m").access, "m", Priority::Background)
+                    .await,
+            );
+        }
+        let mut waiting = std::pin::pin!(turns.take_current(Priority::Background, read));
+        assert!(at_once(&mut waiting).await.is_none());
+        *current.lock().unwrap() = chosen("a", "n");
+        running.pop();
+        let (turn, taken) = waiting.await.unwrap().unwrap();
+        assert_eq!((turn.model(), taken.model.as_str()), ("n", "n"));
+        // It did not keep the turn it no longer needed there.
+        assert!(
+            at_once(turns.take(&chosen("a", "m").access, "m", Priority::Background))
+                .await
+                .is_some()
+        );
+    }
 
     fn refused(status: u16, code: &str, reply: &str) -> ModelError {
         ModelError::Refused {
@@ -364,7 +681,7 @@ mod tests {
         let waiting = tokio::spawn({
             let cooldown = cooldown.clone();
             async move {
-                let _permit = cooldown.acquire(&Limit::default()).await;
+                let _turn = cooldown.acquire(&Turns::default(), &chosen("k", "m")).await;
                 Instant::now()
             }
         });
@@ -471,7 +788,7 @@ mod tests {
                 "wait",
             ),
         ] {
-            let got = match classify(error, &access(provider)) {
+            let got = match classify(&error, &access(provider)) {
                 Effect::Pause(_) => "pause",
                 Effect::RateLimit(_) => "wait",
                 Effect::Failed(_) => "fail",

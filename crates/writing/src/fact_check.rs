@@ -72,9 +72,9 @@ pub fn estimate(
     )
 }
 
-/// The caller controls usage persistence so background retries keep each answer in memory.
-/// `go_on` says whether the check is still wanted before asking again for a well-formed answer;
-/// None when it no longer is.
+/// Checks in `turn` at the model of `chosen`. The caller controls usage persistence so background
+/// retries keep each answer in memory. `go_on` says whether the check is still wanted before asking
+/// again for a well-formed answer; None when it no longer is.
 #[expect(
     clippy::too_many_arguments,
     reason = "the callers' checks and usage records differ; a one-use context would only wrap them"
@@ -82,6 +82,7 @@ pub fn estimate(
 pub async fn check<G, F>(
     db: &SqlitePool,
     net: &net::Net,
+    turn: &model::background::Turn,
     email_id: i64,
     letter: &Letter,
     chosen: &model::Chosen,
@@ -102,7 +103,7 @@ where
     let mut retried = false;
     loop {
         // JSON mode only produces objects; fact checks return a top-level array.
-        let answer = model::ask(net, &chosen.access, &chosen.model, &system, &message, false)
+        let answer = model::ask(net, turn, &system, &message, false)
             .await
             .map_err(Error::Model)?;
         tracing::info!(

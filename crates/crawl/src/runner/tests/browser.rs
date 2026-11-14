@@ -114,14 +114,14 @@ async fn browser_extracts_people_and_replays_each_list_page(db: SqlitePool) {
         recognize: super::recognize,
     };
     let net = net::Net::new(vec![]).unwrap();
-    let limit = Limit::default();
+    let turns = Turns::default();
     for _ in 0..3 {
         let claim = queue::next(&db).await.unwrap().unwrap();
         let outcome = process(
             &db,
             &net,
             &pages,
-            &limit,
+            &turns,
             &claim,
             &Cooldown::new(Arc::default()),
         )
@@ -359,7 +359,7 @@ async fn page_failures_and_browser_takeover_log_the_crawl_without_private_conten
         recognize: super::recognize,
     };
     let net = net::Net::new(vec![]).unwrap();
-    let limit = Limit::default();
+    let turns = Turns::default();
     for challenge in [false, true] {
         if challenge {
             site.pages.lock().unwrap().insert(
@@ -377,7 +377,7 @@ async fn page_failures_and_browser_takeover_log_the_crawl_without_private_conten
             &db,
             &net,
             &pages,
-            &limit,
+            &turns,
             &claim,
             &Cooldown::new(Arc::default()),
         )
@@ -428,9 +428,9 @@ async fn a_profile_the_browser_shows_as_only_a_picture_is_read(db: SqlitePool) {
         recognize: super::recognize,
     };
     let net = net::Net::new(vec![]).unwrap();
-    let limit = Limit::default();
+    let turns = Turns::default();
     let cooldown = Cooldown::new(Arc::default());
-    let read = process(&db, &net, &pages, &limit, &claim, &cooldown);
+    let read = process(&db, &net, &pages, &turns, &claim, &cooldown);
     tokio::pin!(read);
     let request = tokio::select! {
         request = provider.requests.recv() => request.unwrap(),
@@ -497,10 +497,10 @@ async fn a_list_that_shows_no_teacher_over_http_is_read_in_the_browser(db: Sqlit
         recognize: super::recognize,
     };
     let net = net::Net::new(vec![]).unwrap();
-    let limit = Limit::default();
+    let turns = Turns::default();
     while let Some(claim) = queue::next(&db).await.unwrap() {
         let cooldown = Cooldown::new(Arc::default());
-        let outcome = process(&db, &net, &pages, &limit, &claim, &cooldown)
+        let outcome = process(&db, &net, &pages, &turns, &claim, &cooldown)
             .await
             .unwrap();
         assert!(save(&db, &claim, &outcome).await.unwrap());

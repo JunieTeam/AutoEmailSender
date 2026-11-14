@@ -4,7 +4,7 @@ use email::outcome::{self as queue, ReplyOutcome};
 use failure::Failure;
 use model::{
     Chosen, Feature, ModelError,
-    background::{Cooldown, Limited, RateLimit, Rounds},
+    background::{Cooldown, Limited, Priority, RateLimit, Rounds, Turns},
 };
 use serde::Deserialize;
 use sqlx::SqlitePool;
@@ -93,9 +93,25 @@ async fn analyze(
     net: &net::Net,
     writes: &db::Writes,
     processor: &Processor,
+    turns: &Turns,
     claim: queue::Claim,
     cooldown: &Cooldown<()>,
 ) -> Result<Outcome, sqlx::Error> {
+    let Some((turn, chosen)) = turns
+        .take_current(Priority::Background, || model::chosen(db, Feature::Reply))
+        .await?
+    else {
+        return Ok(Outcome::Pause(Failure::new(NO_MODEL), Guard::Missing));
+    };
+    if !queue::running(db, claim).await? {
+        return Ok(Outcome::Gone);
+    }
+    if !chosen.agreed {
+        return Ok(Outcome::Pause(
+            Failure::new(NOT_AGREED),
+            Guard::Model(chosen),
+        ));
+    }
     let todos = claim.action == queue::Action::Todos;
     let Some((message, email_id, reply_date)) =
         super::reply_input::input(db, claim.id, todos).await?
@@ -108,29 +124,19 @@ async fn analyze(
         if cooldown.until().is_some() {
             return Ok(Outcome::Wait);
         }
-        let Some(chosen) = model::chosen(db, Feature::Reply).await? else {
-            return Ok(Outcome::Pause(Failure::new(NO_MODEL), Guard::Missing));
-        };
-        if !chosen.agreed {
-            return Ok(Outcome::Pause(
-                Failure::new(NOT_AGREED),
-                Guard::Model(chosen),
-            ));
-        }
         let round = processor.round();
-        let answer =
-            match model::ask(net, &chosen.access, &chosen.model, &system, &message, true).await {
-                Ok(answer) => answer,
-                Err(error) => {
-                    tracing::warn!(
-                        message_id = claim.id,
-                        model = chosen.model,
-                        diagnostic = error.diagnostic(),
-                        "reply processing model failed: {error}"
-                    );
-                    return Ok(classify(error, chosen, round));
-                }
-            };
+        let answer = match model::ask(net, &turn, &system, &message, true).await {
+            Ok(answer) => answer,
+            Err(error) => {
+                tracing::warn!(
+                    message_id = claim.id,
+                    model = chosen.model,
+                    diagnostic = error.diagnostic(),
+                    "reply processing model failed: {error}"
+                );
+                return Ok(classify(&error, chosen, round));
+            }
+        };
         tracing::info!(
             message_id = claim.id,
             action = ?claim.action,
@@ -187,7 +193,7 @@ async fn analyze(
     unreachable!("both attempts return")
 }
 
-fn classify(error: ModelError, chosen: Chosen, round: u64) -> Outcome {
+fn classify(error: &ModelError, chosen: Chosen, round: u64) -> Outcome {
     match model::background::classify(error, &chosen.access) {
         model::background::Effect::Pause(reason) => Outcome::Pause(reason, Guard::Model(chosen)),
         model::background::Effect::RateLimit(limit) => Outcome::RateLimit(limit, chosen, round),
@@ -238,7 +244,7 @@ pub async fn run(
     writes: db::Writes,
     net: net::Net,
     processor: Processor,
-    limit: model::background::Limit,
+    turns: Turns,
     changed: impl Fn() + Send + 'static,
 ) {
     writes
@@ -265,16 +271,12 @@ pub async fn run(
                 .retry("claim reply processing", || queue::next(&db))
                 .await
         {
-            let (db, net, limit) = (db.clone(), net.clone(), limit.clone());
+            let (db, net, turns) = (db.clone(), net.clone(), turns.clone());
             let cooldown = cooldown.clone();
             let (writes, processor) = (writes.clone(), processor.clone());
             let task = workers.spawn(async move {
-                let _permit = limit.acquire().await;
-                let result = match queue::running(&db, claim).await {
-                    Ok(true) => analyze(&db, &net, &writes, &processor, claim, &cooldown).await,
-                    Ok(false) => Ok(Outcome::Gone),
-                    Err(e) => Err(e),
-                };
+                let result =
+                    analyze(&db, &net, &writes, &processor, &turns, claim, &cooldown).await;
                 (claim, result)
             });
             claims.insert(task.id(), claim);

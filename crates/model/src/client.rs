@@ -13,6 +13,7 @@ use tokio::time::timeout;
 use ts_rs::TS;
 
 use crate::ModelError;
+use crate::background::Turn;
 use crate::pricing::Prices;
 use crate::providers::Provider;
 use crate::usage::Usage;
@@ -131,14 +132,16 @@ pub enum Finish {
 pub const CUT_OFF: &str = "模型的回答过长，已被截断。请重试，或换用能写更长回答的模型。";
 
 /// Asks the model for a one-word answer, which proves the address, the key and the model name.
-pub async fn test(net: &Net, access: &Access, model: &str) -> Result<(), ModelError> {
+pub async fn test(net: &Net, turn: &Turn) -> Result<(), ModelError> {
     let prompt = Prompt {
-        model,
+        model: turn.model(),
         system: None,
         user: "请只回复一个字：好",
         json: false,
     };
-    let answer = complete(net, access, &prompt).await?;
+    let answer = complete(net, turn.access(), &prompt).await;
+    turn.note(&answer);
+    let answer = answer?;
     if answer.text.trim().is_empty() {
         return Err(ModelError::NoAnswer {
             finish_reason: answer.finish_reason,
@@ -147,22 +150,23 @@ pub async fn test(net: &Net, access: &Access, model: &str) -> Result<(), ModelEr
     Ok(())
 }
 
-/// Asks the model to do what `system` says with what `user` gives it.
+/// Asks the model of `turn` to do what `system` says with what `user` gives it.
 pub async fn ask(
     net: &Net,
-    access: &Access,
-    model: &str,
+    turn: &Turn,
     system: &str,
     user: &str,
     json: bool,
 ) -> Result<Answer, ModelError> {
     let prompt = Prompt {
-        model,
+        model: turn.model(),
         system: Some(system),
         user,
         json,
     };
-    complete(net, access, &prompt).await
+    let answer = complete(net, turn.access(), &prompt).await;
+    turn.note(&answer);
+    answer
 }
 
 struct Prompt<'a> {

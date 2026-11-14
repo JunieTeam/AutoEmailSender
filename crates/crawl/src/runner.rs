@@ -14,7 +14,7 @@ use failure::Failure;
 use mentor::Affiliation;
 use model::{
     Chosen,
-    background::{CONCURRENCY, Effect, LASTING, Limit, Limited, RateLimit, Rounds},
+    background::{CONCURRENCY, Effect, LASTING, Limited, RateLimit, Rounds, Turns},
 };
 use serde::Serialize;
 use sqlx::{SqliteConnection, SqlitePool, types::Json};
@@ -390,7 +390,7 @@ struct Reader<'a> {
     writes: &'a db::Writes,
     db: &'a SqlitePool,
     net: &'a net::Net,
-    limit: &'a Limit,
+    turns: &'a Turns,
     claim: &'a Claim,
     chosen: &'a Chosen,
     cooldown: &'a Cooldown,
@@ -407,10 +407,10 @@ impl Reader<'_> {
     ) -> Result<T, ReadError> {
         let mut rules = system.to_owned();
         for attempt in 0..2 {
-            let _permit = loop {
+            let turn = loop {
                 let mut failed = self.failed.subscribe();
-                let permit = tokio::select! {
-                    permit = self.cooldown.acquire(self.limit) => permit,
+                let turn = tokio::select! {
+                    turn = self.cooldown.acquire(self.turns, self.chosen) => turn,
                     _ = failed.wait_for(|&failed| failed) => return Err(ReadError::Wait),
                 };
                 let mut conn = self
@@ -440,63 +440,56 @@ impl Reader<'_> {
                     return Err(ReadError::Wait);
                 }
                 if self.cooldown.until().is_none() {
-                    break permit;
+                    break turn;
                 }
             };
             let round = self.cooldown.round(&self.claim.crawl);
             let started = Instant::now();
-            let answer = model::ask(
-                self.net,
-                &self.chosen.access,
-                &self.chosen.model,
-                &rules,
-                &data.to_string(),
-                true,
-            )
-            .await
-            .map_err(|e| {
-                let category = match &e {
-                    model::ModelError::MissingKey => "missing_key",
-                    model::ModelError::Unreachable { .. } => "unreachable",
-                    model::ModelError::TimedOut { .. } => "timeout",
-                    model::ModelError::Refused { .. } => "refused",
-                    model::ModelError::Failed(_) => "stream_failed",
-                    model::ModelError::NoAnswer { .. } => "no_answer",
-                    model::ModelError::Broken(_) => "invalid_response",
-                };
-                let status = match &e {
-                    model::ModelError::Refused { status, .. } => Some(*status),
-                    _ => None,
-                };
-                let (error, diagnostic) = (e.to_string(), e.diagnostic());
-                let failure = model::background::classify(e, &self.chosen.access);
-                let action = match &failure {
-                    Effect::Pause(_) => "pause",
-                    Effect::RateLimit(_) => "cooldown",
-                    Effect::Failed(_) => "fail_page",
-                };
-                tracing::info!(
-                    url = self.claim.url.as_str(),
-                    step,
-                    attempt,
-                    category,
-                    status,
-                    %error,
-                    diagnostic,
-                    action,
-                    elapsed_ms = started.elapsed().as_millis(),
-                    "model call failed"
-                );
-                match failure {
-                    Effect::Pause(r) => ReadError::Pause(r),
-                    Effect::RateLimit(limit) => {
-                        tracing::info!(wait_ms = limit.wait.as_millis(), "model cooldown");
-                        hold_back(self.cooldown, self.claim.crawl, round, limit.wait);
-                        ReadError::RateLimit(limit, round)
+            let answer = model::ask(self.net, &turn, &rules, &data.to_string(), true)
+                .await
+                .map_err(|e| {
+                    let category = match &e {
+                        model::ModelError::MissingKey => "missing_key",
+                        model::ModelError::Unreachable { .. } => "unreachable",
+                        model::ModelError::TimedOut { .. } => "timeout",
+                        model::ModelError::Refused { .. } => "refused",
+                        model::ModelError::Failed(_) => "stream_failed",
+                        model::ModelError::NoAnswer { .. } => "no_answer",
+                        model::ModelError::Broken(_) => "invalid_response",
+                    };
+                    let status = match &e {
+                        model::ModelError::Refused { status, .. } => Some(*status),
+                        _ => None,
+                    };
+                    let (error, diagnostic) = (e.to_string(), e.diagnostic());
+                    let failure = model::background::classify(&e, &self.chosen.access);
+                    let action = match &failure {
+                        Effect::Pause(_) => "pause",
+                        Effect::RateLimit(_) => "cooldown",
+                        Effect::Failed(_) => "fail_page",
+                    };
+                    tracing::info!(
+                        url = self.claim.url.as_str(),
+                        step,
+                        attempt,
+                        category,
+                        status,
+                        %error,
+                        diagnostic,
+                        action,
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "model call failed"
+                    );
+                    match failure {
+                        Effect::Pause(r) => ReadError::Pause(r),
+                        Effect::RateLimit(limit) => {
+                            tracing::info!(wait_ms = limit.wait.as_millis(), "model cooldown");
+                            hold_back(self.cooldown, self.claim.crawl, round, limit.wait);
+                            ReadError::RateLimit(limit, round)
+                        }
+                        Effect::Failed(r) => ReadError::Failed(r),
                     }
-                    Effect::Failed(r) => ReadError::Failed(r),
-                }
-            })?;
+                })?;
             tracing::info!(
                 url = self.claim.url.as_str(),
                 step,
@@ -548,7 +541,7 @@ async fn process(
     db: &SqlitePool,
     net: &net::Net,
     fetcher: &Pages,
-    limit: &Limit,
+    turns: &Turns,
     c: &Claim,
     cooldown: &Cooldown,
 ) -> Result<Outcome, sqlx::Error> {
@@ -572,7 +565,7 @@ async fn process(
         ));
     }
     Ok(
-        match read(db, net, fetcher, limit, c, &chosen, cooldown).await {
+        match read(db, net, fetcher, turns, c, &chosen, cooldown).await {
             Ok(page) => Outcome::Done(Box::new(page)),
             Err(ReadError::Pause(reason)) => Outcome::Pause(reason, Some(chosen)),
             Err(ReadError::Database {
@@ -603,7 +596,7 @@ async fn read(
     db: &SqlitePool,
     net: &net::Net,
     fetcher: &Pages,
-    limit: &Limit,
+    turns: &Turns,
     c: &Claim,
     chosen: &Chosen,
     cooldown: &Cooldown,
@@ -622,7 +615,7 @@ async fn read(
         writes: &fetcher.writes,
         db,
         net,
-        limit,
+        turns,
         claim: c,
         chosen,
         cooldown,
@@ -1365,7 +1358,7 @@ pub async fn run(
     db: SqlitePool,
     net: net::Net,
     crawler: Crawler,
-    limit: Limit,
+    turns: Turns,
     browser: Option<Arc<dyn Browser>>,
     changed: impl Fn() + Send + 'static,
     finished: impl Fn(CrawlFinished) + Send + 'static,
@@ -1386,14 +1379,14 @@ pub async fn run(
             }
         }
     };
-    run_with_pages(db, net, fetcher, crawler, limit, changed, finished).await;
+    run_with_pages(db, net, fetcher, crawler, turns, changed, finished).await;
 }
 async fn run_with_pages(
     db: SqlitePool,
     net: net::Net,
     fetcher: Arc<Pages>,
     crawler: Crawler,
-    limit: Limit,
+    turns: Turns,
     changed: impl Fn() + Send + 'static,
     finished: impl Fn(CrawlFinished) + Send + 'static,
 ) {
@@ -1420,12 +1413,12 @@ async fn run_with_pages(
             && workers.len() < CONCURRENCY
             && let Some(c) = writes.retry("claim crawl", || queue::next(&db)).await
         {
-            let (db, net, limit, fetcher) =
-                (db.clone(), net.clone(), limit.clone(), fetcher.clone());
+            let (db, net, turns, fetcher) =
+                (db.clone(), net.clone(), turns.clone(), fetcher.clone());
             let claim = c.clone();
             let cooldown = cooldown.clone();
             let task = workers.spawn(async move {
-                let result = process(&db, &net, &fetcher, &limit, &claim, &cooldown).await;
+                let result = process(&db, &net, &fetcher, &turns, &claim, &cooldown).await;
                 (claim, result)
             });
             claims.insert(task.id(), c);

@@ -31,7 +31,7 @@ impl Drop for Runner {
     }
 }
 impl Runner {
-    fn start(db: &SqlitePool, limit: model::background::Limit) -> Self {
+    fn start(db: &SqlitePool, turns: model::background::Turns) -> Self {
         let processor = Processor::default();
         let (tx, changes) = mpsc::unbounded_channel();
         let task = tokio::spawn(receive::outcome::run(
@@ -39,7 +39,7 @@ impl Runner {
             db::Writes::default(),
             net::Net::new(vec![]).unwrap(),
             processor.clone(),
-            limit,
+            turns,
             move || {
                 let _ = tx.send(());
             },
@@ -630,13 +630,24 @@ async fn waiting_for_shared_capacity_reads_latest_model_and_consent(db: SqlitePo
     let mut old = Provider::start().await.unwrap();
     config(&db, &old.address).await;
     queue::set_enabled(&db, true).await.unwrap();
-    let limit = model::background::Limit::default();
-    let permits = [
-        limit.acquire().await,
-        limit.acquire().await,
-        limit.acquire().await,
-    ];
-    let mut runner = Runner::start(&db, limit);
+    let turns = model::background::Turns::default();
+    let old_config = model::chosen(&db, model::Feature::Reply)
+        .await
+        .unwrap()
+        .unwrap();
+    let mut permits = Vec::new();
+    for _ in 0..model::background::CONCURRENCY {
+        permits.push(
+            turns
+                .take(
+                    &old_config.access,
+                    &old_config.model,
+                    model::background::Priority::Background,
+                )
+                .await,
+        );
+    }
+    let mut runner = Runner::start(&db, turns);
     runner.changes.recv().await.unwrap();
     let mut new = Provider::start().await.unwrap();
     let c = config(&db, &new.address).await;
@@ -745,14 +756,14 @@ async fn turning_processing_off_and_on_counts_limits_afresh_despite_an_old_call(
     tokio::time::advance(Duration::from_secs(591)).await;
     tokio::time::resume();
     clock_guard.abort();
-    let (old, _other) = (request(&mut p).await, request(&mut p).await);
+    // Limited, the model takes one call at once: the other reply's waits for this one.
+    let old = request(&mut p).await;
     queue::set_enabled(&db, false).await.unwrap();
     queue::set_enabled(&db, true).await.unwrap();
     runner.processor.restart();
-    let again = request(&mut p).await;
-    // The old round's call, limited now, makes way for the new round's other one.
+    // The old round's call, limited now, makes way for the new round's.
     refuse(old, 1);
-    let _again_too = request(&mut p).await;
+    let again = request(&mut p).await;
     while runner.changes.try_recv().is_ok() {}
     refuse(again, 20);
     runner.changes.recv().await.unwrap();

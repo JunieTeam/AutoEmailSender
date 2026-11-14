@@ -5,6 +5,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use model::background::{Priority, Turn, Turns};
 use model::pricing::Prices;
 use model::usage::Usage;
 use model::{Access, ModelError};
@@ -49,6 +50,13 @@ async fn provider(status: u16, reply: &'static str) -> (String, Received) {
 }
 
 /// Calls to `base_url` as to the provider with this id, or else as to an address the user filled in.
+/// A turn of its own: these calls do not wait for one another.
+async fn turn(access: &Access, model: &str) -> Turn {
+    Turns::default()
+        .take(access, model, Priority::Background)
+        .await
+}
+
 fn access(base_url: String, provider: Option<&str>) -> Access {
     Access {
         base_url,
@@ -78,7 +86,9 @@ async fn a_test_asks_the_model_not_to_think() {
     .await;
     let net = Net::new(Vec::new()).unwrap();
     let access = access(address, Some("deepseek"));
-    model::test(&net, &access, "deepseek-chat").await.unwrap();
+    model::test(&net, &turn(&access, "deepseek-chat").await)
+        .await
+        .unwrap();
 
     let received = received.lock().unwrap();
     assert_eq!(received[0].line, "POST /v1/chat/completions HTTP/1.1\r\n");
@@ -114,9 +124,15 @@ async fn a_known_model_is_asked_not_to_think_as_its_documentation_says() {
         (None, "deepseek-flash", json!({})),
     ] {
         let (address, received) = provider(200, ANSWER).await;
-        model::ask(&net, &access(address, id), model, "规则", "资料", false)
-            .await
-            .unwrap();
+        model::ask(
+            &net,
+            &turn(&access(address, id), model).await,
+            "规则",
+            "资料",
+            false,
+        )
+        .await
+        .unwrap();
         let received = received.lock().unwrap();
         let body = &received[0].body;
         let sent: serde_json::Map<String, Value> =
@@ -143,11 +159,19 @@ async fn json_mode_is_only_sent_for_objects_to_models_documented_to_take_it() {
         let (address, received) = provider(200, ANSWER).await;
         let access = access(address, id);
         for json in [true, false] {
-            model::ask(&net, &access, model, "只输出 JSON", "资料", json)
-                .await
-                .unwrap();
+            model::ask(
+                &net,
+                &turn(&access, model).await,
+                "只输出 JSON",
+                "资料",
+                json,
+            )
+            .await
+            .unwrap();
         }
-        model::test(&net, &access, model).await.unwrap();
+        model::test(&net, &turn(&access, model).await)
+            .await
+            .unwrap();
         let received = received.lock().unwrap();
         let formats: Vec<_> = received
             .iter()
@@ -166,7 +190,7 @@ async fn a_refusal_says_what_the_provider_said() {
     )
     .await;
     let net = Net::new(Vec::new()).unwrap();
-    let result = model::test(&net, &access(address, None), "deepseek-chat").await;
+    let result = model::test(&net, &turn(&access(address, None), "deepseek-chat").await).await;
     assert!(
         matches!(
             result,
@@ -189,7 +213,7 @@ async fn a_key_quoted_back_is_not_shown() {
     )
     .await;
     let net = Net::new(Vec::new()).unwrap();
-    let error = model::test(&net, &access(address, None), "gpt")
+    let error = model::test(&net, &turn(&access(address, None), "gpt").await)
         .await
         .unwrap_err();
     assert_eq!(
@@ -212,9 +236,15 @@ async fn a_refusal_quoting_the_request_keeps_it_out_of_the_log() {
     )
     .await;
     let net = Net::new(Vec::new()).unwrap();
-    let error = model::ask(&net, &access(address, None), "m", "规则", "资料", false)
-        .await
-        .unwrap_err();
+    let error = model::ask(
+        &net,
+        &turn(&access(address, None), "m").await,
+        "规则",
+        "资料",
+        false,
+    )
+    .await
+    .unwrap_err();
     assert_eq!(error.to_string(), "refused with 400");
     // The user still reads what the provider said, under the message.
     let failure = error.failure();
@@ -236,7 +266,7 @@ async fn a_cause_past_what_is_shown_is_still_found() {
     );
     let (address, _) = provider(400, reply.leak()).await;
     let net = Net::new(Vec::new()).unwrap();
-    let error = model::test(&net, &access(address, None), "gpt")
+    let error = model::test(&net, &turn(&access(address, None), "gpt").await)
         .await
         .unwrap_err();
     let failure = error.failure();
@@ -252,7 +282,7 @@ async fn a_reply_without_a_whole_answer_is_not_a_pass() {
     let net = Net::new(Vec::new()).unwrap();
     // As when a custom address is a website rather than its API.
     let (website, _) = provider(200, "<!doctype html><title>Home</title>").await;
-    let result = model::test(&net, &access(website, None), "gpt").await;
+    let result = model::test(&net, &turn(&access(website, None), "gpt").await).await;
     assert!(matches!(result, Err(ModelError::Broken(_))), "{result:?}");
     // As when a model spends all it may write on thinking.
     let (thinker, _) = provider(
@@ -265,7 +295,7 @@ async fn a_reply_without_a_whole_answer_is_not_a_pass() {
         ),
     )
     .await;
-    let result = model::test(&net, &access(thinker, None), "r1").await;
+    let result = model::test(&net, &turn(&access(thinker, None), "r1").await).await;
     assert!(
         matches!(
             result,
@@ -286,7 +316,7 @@ async fn a_reply_without_a_whole_answer_is_not_a_pass() {
         ),
     )
     .await;
-    let result = model::test(&net, &access(failing, None), "gpt").await;
+    let result = model::test(&net, &turn(&access(failing, None), "gpt").await).await;
     assert!(
         matches!(result, Err(ModelError::Failed(ref reply)) if reply == "Provider disconnected"),
         "{result:?}"
@@ -298,9 +328,15 @@ async fn an_answer_says_what_it_cost_however_the_provider_counts() {
     let net = Net::new(Vec::new()).unwrap();
     let ask = async |reply: &'static str| {
         let (address, received) = provider(200, reply).await;
-        let answer = model::ask(&net, &access(address, None), "m", "规则", "资料", false)
-            .await
-            .unwrap();
+        let answer = model::ask(
+            &net,
+            &turn(&access(address, None), "m").await,
+            "规则",
+            "资料",
+            false,
+        )
+        .await
+        .unwrap();
         let body = received.lock().unwrap()[0].body.clone();
         assert_eq!(
             body["messages"],
@@ -355,17 +391,29 @@ async fn what_the_model_wrote_stays_out_of_errors() {
     )
     .await;
     let net = Net::new(Vec::new()).unwrap();
-    let error = model::ask(&net, &access(address, None), "m", "规则", "资料", false)
-        .await
-        .unwrap_err();
+    let error = model::ask(
+        &net,
+        &turn(&access(address, None), "m").await,
+        "规则",
+        "资料",
+        false,
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(error, ModelError::Broken(_)), "{error:?}");
     assert!(!error.to_string().contains("3.8"), "{error}");
     assert!(!format!("{:?}", error.failure()).contains("3.8"), "{error}");
     // As a gateway that answers in plain text.
     let (address, _) = provider(200, "我的绩点是 3.8").await;
-    let error = model::ask(&net, &access(address, None), "m", "规则", "资料", false)
-        .await
-        .unwrap_err();
+    let error = model::ask(
+        &net,
+        &turn(&access(address, None), "m").await,
+        "规则",
+        "资料",
+        false,
+    )
+    .await
+    .unwrap_err();
     assert!(!error.to_string().contains("3.8"), "{error}");
 }
 
@@ -380,9 +428,15 @@ async fn an_answer_ends_where_the_stream_says_it_is_done() {
     )
     .await;
     let net = Net::new(Vec::new()).unwrap();
-    let answer = model::ask(&net, &access(address, None), "m", "规则", "资料", false)
-        .await
-        .unwrap();
+    let answer = model::ask(
+        &net,
+        &turn(&access(address, None), "m").await,
+        "规则",
+        "资料",
+        false,
+    )
+    .await
+    .unwrap();
     assert_eq!(answer.text, "好的");
     // Without it, the stream ends with the connection, however its last line ends.
     let (address, _) = provider(
@@ -394,7 +448,14 @@ async fn an_answer_ends_where_the_stream_says_it_is_done() {
         ),
     )
     .await;
-    let result = model::ask(&net, &access(address, None), "m", "规则", "资料", false).await;
+    let result = model::ask(
+        &net,
+        &turn(&access(address, None), "m").await,
+        "规则",
+        "资料",
+        false,
+    )
+    .await;
     assert!(matches!(result, Err(ModelError::Broken(_))), "{result:?}");
 }
 
@@ -474,7 +535,7 @@ async fn a_finish_reason_of_the_providers_own_is_not_quoted() {
     )
     .await;
     let net = Net::new(Vec::new()).unwrap();
-    let error = model::test(&net, &access(address, None), "m")
+    let error = model::test(&net, &turn(&access(address, None), "m").await)
         .await
         .unwrap_err();
     assert!(
@@ -548,9 +609,15 @@ async fn a_model_only_on_the_responses_api_is_asked_there_from_then_on() {
     let net = Net::new(Vec::new()).unwrap();
     let access = access(address, None);
     for _ in 0..2 {
-        let answer = model::ask(&net, &access, "gpt-5-pro", "规则", "资料", false)
-            .await
-            .unwrap();
+        let answer = model::ask(
+            &net,
+            &turn(&access, "gpt-5-pro").await,
+            "规则",
+            "资料",
+            false,
+        )
+        .await
+        .unwrap();
         assert_eq!(answer.text, "好");
         assert_eq!(answer.finish_reason, Some(model::Finish::Stop));
         assert_eq!(
@@ -587,9 +654,15 @@ async fn with_neither_api_the_error_is_that_of_the_first() {
     )
     .await;
     let net = Net::new(Vec::new()).unwrap();
-    let error = model::ask(&net, &access(address, None), "gpt-x", "规则", "资料", false)
-        .await
-        .unwrap_err();
+    let error = model::ask(
+        &net,
+        &turn(&access(address, None), "gpt-x").await,
+        "规则",
+        "资料",
+        false,
+    )
+    .await
+    .unwrap_err();
     assert!(
         matches!(&error, ModelError::Refused { status: 404, reply, .. } if reply == "model gpt-x does not exist"),
         "{error:?}"
@@ -603,8 +676,7 @@ async fn ask_on_responses(events: &'static str) -> Result<model::Answer, ModelEr
     let net = Net::new(Vec::new()).unwrap();
     model::ask(
         &net,
-        &access(address, None),
-        "gpt-5-pro",
+        &turn(&access(address, None), "gpt-5-pro").await,
         "规则",
         "资料",
         false,
@@ -674,9 +746,15 @@ async fn a_chat_answer_the_providers_review_stopped_is_no_answer() {
     )
     .await;
     let net = Net::new(Vec::new()).unwrap();
-    let error = model::ask(&net, &access(address, None), "gpt-x", "规则", "资料", false)
-        .await
-        .unwrap_err();
+    let error = model::ask(
+        &net,
+        &turn(&access(address, None), "gpt-x").await,
+        "规则",
+        "资料",
+        false,
+    )
+    .await
+    .unwrap_err();
     assert!(
         matches!(
             error,

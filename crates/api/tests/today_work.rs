@@ -51,7 +51,7 @@ async fn today_work_counts_generated_drafts_retained_matches_and_confirmed_sends
         ctx.writes.clone(),
         ctx.net.clone(),
         ctx.generator.clone(),
-        ctx.model_limit.clone(),
+        ctx.turns.clone(),
         || {},
         move |result| {
             done.send(result).unwrap();

@@ -1,9 +1,12 @@
-//! The background draft queue shares model capacity and failure policy with matching.
+//! The background draft queue: it takes model turns as every caller does and pauses, waits out
+//! and fails as matching does.
 use super::*;
 use failure::Failure;
 use model::{
     Chosen, Feature,
-    background::{CONCURRENCY, Cooldown, Effect, LASTING, Limit, Limited, RateLimit, Rounds},
+    background::{
+        CONCURRENCY, Cooldown, Effect, LASTING, Limited, Priority, RateLimit, Rounds, Turns,
+    },
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -60,15 +63,33 @@ async fn generate(
     net: &net::Net,
     writes: &db::Writes,
     generator: &Generator,
+    turns: &Turns,
     claim: emails::Claim,
 ) -> std::result::Result<Outcome, sqlx::Error> {
+    let Some(config) =
+        sqlx::query_scalar!("SELECT model_config_id FROM task WHERE id = ?", claim.task)
+            .fetch_optional(db)
+            .await?
+    else {
+        return Ok(Outcome::Requeue);
+    };
+    let Some((turn, chosen)) = turns
+        .take_current(Priority::Background, || {
+            model::selected(db, config, Feature::Writing)
+        })
+        .await?
+    else {
+        return Ok(Outcome::Pause(
+            Failure::new("尚未添加模型，请在设置中添加后继续"),
+            None,
+        ));
+    };
     if !emails::valid(db, claim).await? {
         return Ok(Outcome::Requeue);
     }
     let mut tx = db.begin().await?;
     let Some(t) = sqlx::query!(
-        r#"SELECT kind AS "kind: Kind", model_config_id, template_subject,
-            template_body_md
+        r#"SELECT kind AS "kind: Kind", template_subject, template_body_md
         FROM task
         WHERE id = ?"#,
         claim.task
@@ -77,12 +98,6 @@ async fn generate(
     .await?
     else {
         return Ok(Outcome::Requeue);
-    };
-    let Some(chosen) = model::selected(&mut *tx, t.model_config_id, Feature::Writing).await? else {
-        return Ok(Outcome::Pause(
-            Failure::new("尚未添加模型，请在设置中添加后继续"),
-            None,
-        ));
     };
     if !chosen.agreed {
         return Ok(Outcome::Pause(
@@ -153,7 +168,7 @@ async fn generate(
             },
         };
         note_sent();
-        writing::write(net, &input, &current, |purpose, usage, at| {
+        writing::write(net, &turn, &input, &current, |purpose, usage, at| {
             let chosen = &chosen;
             async move {
                 writes
@@ -174,6 +189,9 @@ async fn generate(
         .await
     }
     .await;
+    // Let go before waiting at the checking model, which can be the same: letters holding all of
+    // its turns while waiting there would wait for one another.
+    drop(turn);
     Ok(match answer {
         Ok(mut l) => {
             if let Some(subject) = subject {
@@ -182,15 +200,19 @@ async fn generate(
             // The settings, configuration or consent may have changed while writing the letter.
             let mut failure = None;
             let fact_check = if profile::ai_fact_check(db).await? {
-                if !emails::valid(db, claim).await? {
-                    return Ok(Outcome::Requeue);
-                }
-                match model::chosen(db, Feature::Check).await? {
-                    Some(check_config) => {
+                match turns
+                    .take_current(Priority::Background, || model::chosen(db, Feature::Check))
+                    .await?
+                {
+                    Some((check_turn, check_config)) => {
+                        if !emails::valid(db, claim).await? {
+                            return Ok(Outcome::Requeue);
+                        }
                         note_sent();
                         let result = writing::fact_check::check(
                             db,
                             net,
+                            &check_turn,
                             claim.id,
                             &l,
                             &check_config,
@@ -239,7 +261,7 @@ async fn generate(
                                 );
                                 let message = error.failure();
                                 let classified =
-                                    model::background::classify(error, &check_config.access);
+                                    model::background::classify(&error, &check_config.access);
                                 let reason = match &classified {
                                     Effect::Pause(reason) | Effect::Failed(reason) => {
                                         reason.clone()
@@ -276,7 +298,7 @@ async fn generate(
                 diagnostic = error.diagnostic(),
                 "draft model failed: {error}"
             );
-            match model::background::classify(error, &chosen.access) {
+            match model::background::classify(&error, &chosen.access) {
                 Effect::Pause(reason) => Outcome::Pause(reason, Some((chosen, Feature::Writing))),
                 Effect::RateLimit(limit) => {
                     Outcome::RateLimit(limit, chosen, sent.load(Ordering::Relaxed))
@@ -404,7 +426,7 @@ pub async fn run(
     writes: db::Writes,
     net: net::Net,
     generator: Generator,
-    limit: Limit,
+    turns: Turns,
     changed: impl Fn() + Send + 'static,
     finished: impl Fn(DraftsFinished) + Send + 'static,
 ) {
@@ -488,11 +510,13 @@ pub async fn run(
             && let Some(claim) = writes.retry("claim draft", || emails::next(&db)).await
         {
             active.insert(claim.task);
-            let (db, net, writes, limit) = (db.clone(), net.clone(), writes.clone(), limit.clone());
+            let (db, net, writes, turns) = (db.clone(), net.clone(), writes.clone(), turns.clone());
             let generator = generator.clone();
             let task = workers.spawn(async move {
-                let _permit = limit.acquire().await;
-                (claim, generate(&db, &net, &writes, &generator, claim).await)
+                (
+                    claim,
+                    generate(&db, &net, &writes, &generator, &turns, claim).await,
+                )
             });
             claims.insert(task.id(), claim);
             changed();

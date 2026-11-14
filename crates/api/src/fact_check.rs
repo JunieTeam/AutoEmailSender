@@ -12,8 +12,16 @@ pub async fn fact_check_email(
     ctx: &Context,
     input: EmailId,
 ) -> Result<Option<FactCheck>, CallError> {
-    // Settings, configuration and consent can change while waiting for shared model capacity.
-    let _permit = ctx.model_limit.acquire().await;
+    if !profile::ai_fact_check(&ctx.db).await? {
+        return Ok(None);
+    }
+    // Settings, configuration and consent can change while waiting for a turn at the model.
+    let taken = ctx
+        .turns
+        .take_current(model::background::Priority::Interactive, || {
+            model::chosen(&ctx.db, model::Feature::Check)
+        })
+        .await?;
     if !profile::ai_fact_check(&ctx.db).await? {
         return Ok(None);
     }
@@ -28,9 +36,7 @@ pub async fn fact_check_email(
     .ok_or_else(|| CallError::invalid("这封邮件已不在待审核状态，请刷新后重试".into()))?;
     let (id, claim) = (input.id, row.generation_claim);
     let result: Result<Option<FactCheck>, CallError> = async {
-        let chosen = model::chosen(&ctx.db, model::Feature::Check)
-            .await?
-            .ok_or(writing::Error::NoModel)?;
+        let (turn, chosen) = taken.ok_or(writing::Error::NoModel)?;
         let references = if let Some(task_id) = row.task_id {
             let ids = sqlx::query_scalar!(
                 "SELECT material_id FROM task_material WHERE task_id = ? AND role = 'reference'",
@@ -56,6 +62,7 @@ pub async fn fact_check_email(
         let findings = writing::fact_check::check(
             &ctx.db,
             &ctx.net,
+            &turn,
             input.id,
             &writing::Letter {
                 subject,

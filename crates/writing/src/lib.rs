@@ -108,11 +108,12 @@ pub async fn prepare<'a>(
 }
 
 /// Drafts a letter when `current` is blank, and otherwise rewrites it using the same inputs that
-/// filled its template.
+/// filled its template, in `turn` at the model of the configuration `input` was prepared for.
 /// The caller controls usage persistence so background retries keep the answer in memory; it is
 /// given the time the request was sent (`model::Answer::sent_at`).
 pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
     net: &net::Net,
+    turn: &model::background::Turn,
     input: &Prepared<'_>,
     current: &Letter,
     record_usage: impl Fn(Purpose, model::usage::Usage, i64) -> F,
@@ -122,7 +123,7 @@ pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
         me,
         attached,
         basis: Basis {
-            chosen,
+            chosen: _,
             references,
             kind,
         },
@@ -133,12 +134,12 @@ pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
     let current = (!blank).then_some(current);
     let system = system(me, kind);
     let message = message(me, references, attached, mentor, current, kind);
-    let answer = model::ask(net, &chosen.access, &chosen.model, &system, &message, false)
+    let answer = model::ask(net, turn, &system, &message, false)
         .await
         .map_err(Error::Model)?;
     tracing::info!(
         mentor_id = mentor.id,
-        model = chosen.model,
+        model = turn.model(),
         usage = ?answer.usage,
         finish_reason = ?answer.finish_reason,
         "the model answered"

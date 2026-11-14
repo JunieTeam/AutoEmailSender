@@ -6,6 +6,27 @@ use sqlx::SqlitePool;
 use test_fixtures::provider;
 const T: i64 = 1_800_000_000_000;
 
+/// All the turns at the checking model, as calls already under way hold them.
+async fn held(ctx: &Context) -> Vec<model::background::Turn> {
+    let chosen = model::chosen(&ctx.db, model::Feature::Check)
+        .await
+        .unwrap()
+        .unwrap();
+    let mut turns = Vec::new();
+    for _ in 0..model::background::CONCURRENCY {
+        turns.push(
+            ctx.turns
+                .take(
+                    &chosen.access,
+                    &chosen.model,
+                    model::background::Priority::Background,
+                )
+                .await,
+        );
+    }
+    turns
+}
+
 fn context(db: SqlitePool) -> Context {
     Context::new(db, net::Net::new(vec![]).unwrap(), std::path::Path::new(""))
 }
@@ -236,9 +257,7 @@ async fn waiting_for_capacity_rechecks_consent_before_reading_configuration(db: 
     let mut p = Provider::start().await.unwrap();
     config(&ctx.db, &p.address).await;
     let id = draft(&ctx.db).await;
-    let a = ctx.model_limit.acquire().await;
-    let _b = ctx.model_limit.acquire().await;
-    let _c = ctx.model_limit.acquire().await;
+    let mut turns = held(&ctx).await;
     let mut checking = std::pin::pin!(call(&ctx, "factCheckEmail", json!({"id":id})));
     std::future::poll_fn(|cx| {
         assert!(checking.as_mut().poll(cx).is_pending());
@@ -249,7 +268,7 @@ async fn waiting_for_capacity_rechecks_consent_before_reading_configuration(db: 
         .execute(&ctx.db)
         .await
         .unwrap();
-    drop(a);
+    drop(turns.pop());
     let error = checking.await.unwrap_err();
     assert!(matches!(error.code, ErrorCode::NeedsAgreement));
     assert_eq!(
@@ -287,9 +306,7 @@ async fn disabling_while_waiting_for_capacity_skips_the_check(db: SqlitePool) {
     let mut p = Provider::start().await.unwrap();
     config(&ctx.db, &p.address).await;
     let id = draft(&ctx.db).await;
-    let a = ctx.model_limit.acquire().await;
-    let _b = ctx.model_limit.acquire().await;
-    let _c = ctx.model_limit.acquire().await;
+    let mut turns = held(&ctx).await;
     let mut checking = std::pin::pin!(call(&ctx, "factCheckEmail", json!({"id":id})));
     std::future::poll_fn(|cx| {
         assert!(checking.as_mut().poll(cx).is_pending());
@@ -297,7 +314,7 @@ async fn disabling_while_waiting_for_capacity_skips_the_check(db: SqlitePool) {
     })
     .await;
     profile::set_ai_fact_check(&ctx.db, false).await.unwrap();
-    drop(a);
+    drop(turns.pop());
     let result = tokio::select! {
         result = &mut checking => result,
         request = p.requests.recv() => {

@@ -26,10 +26,10 @@ impl Drop for Runner {
 }
 impl Runner {
     fn start(db: &SqlitePool) -> Self {
-        Self::sharing(db, model::background::Limit::default())
+        Self::sharing(db, model::background::Turns::default())
     }
-    /// A runner taking turns at calling the model with whoever else holds `limit`.
-    fn sharing(db: &SqlitePool, limit: model::background::Limit) -> Self {
+    /// A runner taking turns at calling models with whoever else holds `turns`.
+    fn sharing(db: &SqlitePool, turns: model::background::Turns) -> Self {
         let matcher = Matcher::default();
         let (change_tx, changes) = mpsc::unbounded_channel();
         let (done_tx, done) = mpsc::unbounded_channel();
@@ -38,7 +38,7 @@ impl Runner {
             db::Writes::default(),
             Net::new(Vec::new()).unwrap(),
             matcher.clone(),
-            limit,
+            turns,
             move || {
                 let _ = change_tx.send(());
             },
@@ -472,7 +472,8 @@ async fn going_on_after_a_pause_counts_limits_afresh_despite_an_old_call(db: Sql
     tokio::time::advance(Duration::from_secs(591)).await;
     tokio::time::resume();
     clock_guard.abort();
-    let (old, _other) = (request(&mut p).await, request(&mut p).await);
+    // Limited, the model takes one call at once: the other mentor's waits for this one.
+    let old = request(&mut p).await;
     queue::pause(&db, 10, None).await.unwrap();
     queue::resume(&db).await.unwrap();
     runner.matcher.restart();
@@ -551,13 +552,25 @@ async fn a_limit_from_before_going_on_neither_pauses_nor_holds_the_new_round_bac
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_call_that_waited_for_its_turn_past_going_on_counts_in_the_new_round(db: SqlitePool) {
     let mut p = Provider::start().await.unwrap();
-    let limit = model::background::Limit::default();
+    setup(&db, &p.address, 1).await;
+    let shared = model::background::Turns::default();
+    let chosen = model::chosen(&db, model::Feature::Match)
+        .await
+        .unwrap()
+        .unwrap();
     let mut turns = Vec::new();
     for _ in 0..model::background::CONCURRENCY {
-        turns.push(limit.acquire().await);
+        turns.push(
+            shared
+                .take(
+                    &chosen.access,
+                    &chosen.model,
+                    model::background::Priority::Background,
+                )
+                .await,
+        );
     }
-    setup(&db, &p.address, 1).await;
-    let mut runner = Runner::sharing(&db, limit);
+    let mut runner = Runner::sharing(&db, shared);
     // Claimed, and waiting for a turn.
     runner.changes.recv().await.unwrap();
     queue::pause(&db, 10, None).await.unwrap();

@@ -205,7 +205,7 @@ async fn extraction_requests_a_json_object(db: SqlitePool) {
         writes: &db::Writes::default(),
         db: &db,
         net: &net::Net::new(vec![]).unwrap(),
-        limit: &Limit::default(),
+        turns: &Turns::default(),
         claim: &claim,
         chosen: &chosen,
         cooldown: &Cooldown::new(Arc::default()),
@@ -382,7 +382,7 @@ async fn home_categories_pagination_profiles_evidence_and_retry_end_to_end() {
         net::Net::new(vec![]).unwrap(),
         Arc::new(Pages::local(site.port)),
         runner.clone(),
-        Limit::default(),
+        Turns::default(),
         move || {
             tx.send(()).ok();
         },
@@ -532,7 +532,7 @@ async fn claims_pause_resume_cancel_restart_and_limits(db: SqlitePool) {
                 &db,
                 &net::Net::new(vec![]).unwrap(),
                 &Pages::local(port),
-                &Limit::default(),
+                &Turns::default(),
                 &c,
                 &Cooldown::new(Arc::default()),
             )
@@ -869,13 +869,13 @@ async fn crawling_matching_and_drafting_share_three_actual_calls() {
     .await
     .unwrap();
     let net = net::Net::new(vec![]).unwrap();
-    let limit = Limit::default();
+    let turns = Turns::default();
     let crawl = tokio::spawn(run_with_pages(
         db.clone(),
         net.clone(),
         Arc::new(Pages::local(site.port)),
         Crawler::default(),
-        limit.clone(),
+        turns.clone(),
         || {},
         |_| {},
     ));
@@ -884,7 +884,7 @@ async fn crawling_matching_and_drafting_share_three_actual_calls() {
         db::Writes::default(),
         net.clone(),
         matching::Matcher::default(),
-        limit.clone(),
+        turns.clone(),
         || {},
         |_| {},
     ));
@@ -893,7 +893,7 @@ async fn crawling_matching_and_drafting_share_three_actual_calls() {
         db::Writes::default(),
         net,
         task::generation::Generator::default(),
-        limit,
+        turns,
         || {},
         |_| {},
     ));
@@ -978,7 +978,7 @@ async fn going_on_after_a_lasting_limit_paused_the_crawl_asks_again_at_once(db: 
         net::Net::new(vec![]).unwrap(),
         Arc::new(Pages::local(site.port)),
         handle.clone(),
-        Limit::default(),
+        Turns::default(),
         move || {
             tx.send(()).ok();
         },
@@ -1022,7 +1022,7 @@ async fn late_results_restart_and_retry_after_preserve_work(db: SqlitePool) {
             net::Net::new(vec![]).unwrap(),
             Arc::new(Pages::local(site.port)),
             handle.clone(),
-            Limit::default(),
+            Turns::default(),
             move || {
                 tx.send(()).ok();
             },
@@ -1671,7 +1671,7 @@ async fn read_claim(db: &SqlitePool, site: &Site, claim: &Claim) -> Outcome {
         db,
         &net::Net::new(vec![]).unwrap(),
         &Pages::local(site.port),
-        &Limit::default(),
+        &Turns::default(),
         claim,
         &Cooldown::new(Arc::default()),
     )
@@ -2783,7 +2783,7 @@ async fn redirected_profiles(db: &SqlitePool, paths: &[&str], in_flight: bool) {
             db,
             &net::Net::new(vec![]).unwrap(),
             &Pages::local(site.port),
-            &Limit::default(),
+            &Turns::default(),
             &c,
             &Cooldown::new(Arc::default()),
         )
@@ -3195,7 +3195,7 @@ async fn regression_invalid_name_is_corrected_or_fails_with_page_reason(db: Sqli
                     &db,
                     &net::Net::new(vec![]).unwrap(),
                     &Pages::local(port),
-                    &Limit::default(),
+                    &Turns::default(),
                     &c,
                     &Cooldown::new(Arc::default()),
                 )
@@ -3291,11 +3291,29 @@ async fn regression_deleted_or_changed_config_requeues_and_requires_current_cons
             .await
             .unwrap()
             .unwrap();
-        let limit = Limit::default();
+        let turns = Turns::default();
         let permits = [
-            limit.acquire().await,
-            limit.acquire().await,
-            limit.acquire().await,
+            turns
+                .take(
+                    &chosen.access,
+                    &chosen.model,
+                    model::background::Priority::Background,
+                )
+                .await,
+            turns
+                .take(
+                    &chosen.access,
+                    &chosen.model,
+                    model::background::Priority::Background,
+                )
+                .await,
+            turns
+                .take(
+                    &chosen.access,
+                    &chosen.model,
+                    model::background::Priority::Background,
+                )
+                .await,
         ];
         let net = net::Net::new(vec![]).unwrap();
         let cooldown = Cooldown::new(Arc::default());
@@ -3303,7 +3321,7 @@ async fn regression_deleted_or_changed_config_requeues_and_requires_current_cons
             writes: &fetcher.writes,
             db: &db,
             net: &net,
-            limit: &limit,
+            turns: &turns,
             claim: &c,
             chosen: &chosen,
             cooldown: &cooldown,
@@ -3357,7 +3375,7 @@ async fn regression_deleted_or_changed_config_requeues_and_requires_current_cons
             .unwrap()
             .unwrap();
         assert_eq!(chosen.id, if deleted { fallback } else { old_id });
-        let outcome = process(&db, &net, &fetcher, &limit, &fresh, &cooldown)
+        let outcome = process(&db, &net, &fetcher, &turns, &fresh, &cooldown)
             .await
             .unwrap();
         assert!(matches!(outcome, Outcome::Pause(_, _)));
@@ -3373,7 +3391,7 @@ async fn regression_deleted_or_changed_config_requeues_and_requires_current_cons
         .unwrap();
         queue::control(&db, crawl, "resume", 2).await.unwrap();
         let fresh = queue::next(&db).await.unwrap().unwrap();
-        let read = process(&db, &net, &fetcher, &limit, &fresh, &cooldown);
+        let read = process(&db, &net, &fetcher, &turns, &fresh, &cooldown);
         let answer = async {
             new_provider
                 .requests
@@ -3474,7 +3492,7 @@ async fn a_website_asking_to_slow_down_holds_new_pages_and_keeps_the_page(db: Sq
             &db,
             &net::Net::new(vec![]).unwrap(),
             &Pages::local(site.port),
-            &Limit::default(),
+            &Turns::default(),
             &claim,
             &cooldown,
         )
@@ -3510,15 +3528,25 @@ async fn long_list(db: &SqlitePool, p: &Provider, parts: usize) -> (Site, Claim)
 async fn a_long_list_limited_in_one_part_holds_back_at_once_and_pays_for_the_rest(db: SqlitePool) {
     let mut p = Provider::start().await.unwrap();
     let (site, claim) = long_list(&db, &p, 3).await;
-    let limit = Limit::default();
+    let chosen = model::selected(&db, claim.model_id, model::Feature::Crawl)
+        .await
+        .unwrap()
+        .unwrap();
+    let turns = Turns::default();
     let cooldown = Cooldown::new(Arc::default());
     // A turn taken elsewhere: two parts go out, and the third waits for a turn.
-    let elsewhere = limit.acquire().await;
+    let elsewhere = turns
+        .take(
+            &chosen.access,
+            &chosen.model,
+            model::background::Priority::Background,
+        )
+        .await;
     let page = tokio::spawn({
-        let (db, limit, cooldown, port) = (db.clone(), limit.clone(), cooldown.clone(), site.port);
+        let (db, turns, cooldown, port) = (db.clone(), turns.clone(), cooldown.clone(), site.port);
         async move {
             let net = net::Net::new(vec![]).unwrap();
-            process(&db, &net, &Pages::local(port), &limit, &claim, &cooldown)
+            process(&db, &net, &Pages::local(port), &turns, &claim, &cooldown)
                 .await
                 .unwrap()
         }
@@ -3538,10 +3566,10 @@ async fn a_long_list_limited_in_one_part_holds_back_at_once_and_pays_for_the_res
             retry_after: Some(60),
         })
         .ok();
-    // Its turn handed back once the limit is met, which holds back at once, not once the page is
-    // done.
-    drop(limit.acquire().await);
-    assert!(cooldown.until().is_some());
+    // The limit holds back as soon as it is met, not once the page is done.
+    while cooldown.until().is_none() {
+        tokio::task::yield_now().await;
+    }
     second
         .respond
         .send(Response::answer(r#"{"people":[]}"#))
@@ -3571,7 +3599,7 @@ async fn a_long_list_limited_in_a_later_part_waits_out_the_limit(db: SqlitePool)
                 &db,
                 &net,
                 &Pages::local(port),
-                &Limit::default(),
+                &Turns::default(),
                 &claim,
                 &cooldown,
             )
@@ -3622,7 +3650,7 @@ async fn a_call_still_checking_its_claim_when_another_part_fails_is_not_sent(db:
         writes: &db::Writes::default(),
         db: &db,
         net: &net::Net::new(vec![]).unwrap(),
-        limit: &Limit::default(),
+        turns: &Turns::default(),
         claim: &claim,
         chosen: &chosen,
         cooldown: &Cooldown::new(Arc::default()),
@@ -3660,15 +3688,15 @@ async fn regression_retry_after_blocks_inflight_pages_next_request(db: SqlitePoo
         .await
         .unwrap();
     let cooldown = Cooldown::new(Arc::default());
-    let limit = Limit::default();
+    let turns = Turns::default();
     let start = |claim: Claim| {
-        let (db, cooldown, limit, port) = (db.clone(), cooldown.clone(), limit.clone(), site.port);
+        let (db, cooldown, turns, port) = (db.clone(), cooldown.clone(), turns.clone(), site.port);
         tokio::spawn(async move {
             process(
                 &db,
                 &net::Net::new(vec![]).unwrap(),
                 &Pages::local(port),
-                &limit,
+                &turns,
                 &claim,
                 &cooldown,
             )
@@ -3709,7 +3737,11 @@ async fn regression_retry_after_blocks_inflight_pages_next_request(db: SqlitePoo
         .respond
         .send(Response::answer(r#"{"kind":"list","next":[]}"#))
         .ok();
-    let permit = cooldown.acquire(&limit);
+    let chosen = model::selected(&db, Some(config), model::Feature::Crawl)
+        .await
+        .unwrap()
+        .unwrap();
+    let permit = cooldown.acquire(&turns, &chosen);
     tokio::pin!(permit);
     assert!(
         std::future::poll_fn(|cx| std::task::Poll::Ready(permit.as_mut().poll(cx).is_pending()))
@@ -3929,7 +3961,7 @@ async fn restored_key_pauses_crawl_instead_of_failing_pages(db: SqlitePool) {
         &db,
         &net::Net::new(vec![]).unwrap(),
         &Pages::local(site.port),
-        &Limit::default(),
+        &Turns::default(),
         &claim,
         &Cooldown::new(Arc::default()),
     )

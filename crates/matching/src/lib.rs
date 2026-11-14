@@ -4,7 +4,7 @@ use failure::Failure;
 use mentor::{MentorDetail, matching as queue};
 use model::{
     Chosen, Feature, ModelError,
-    background::{Cooldown, Limited, RateLimit, Rounds},
+    background::{Cooldown, Limited, Priority, RateLimit, Rounds, Turns},
     usage::Purpose,
 };
 use serde::{Deserialize, Serialize};
@@ -218,13 +218,20 @@ async fn analyze(
     net: &net::Net,
     writes: &db::Writes,
     matcher: &Matcher,
+    turns: &Turns,
     claim: queue::Claim,
 ) -> Result<Outcome, sqlx::Error> {
     let id = claim.id;
-    let started_at = now();
-    let Some(chosen) = model::chosen(db, Feature::Match).await? else {
+    let Some((turn, chosen)) = turns
+        .take_current(Priority::Background, || model::chosen(db, Feature::Match))
+        .await?
+    else {
         return Ok(Outcome::Pause(Failure::new(NO_MODEL), None));
     };
+    if !queue::running(db, claim).await? {
+        return Ok(Outcome::Gone);
+    }
+    let started_at = now();
     if !chosen.agreed {
         return Ok(Outcome::Pause(Failure::new(NOT_AGREED), Some(chosen)));
     }
@@ -248,19 +255,18 @@ async fn analyze(
     let mut system = SYSTEM.to_owned();
     for attempt in 0..2 {
         let round = matcher.round();
-        let answer =
-            match model::ask(net, &chosen.access, &chosen.model, &system, &message, true).await {
-                Ok(a) => a,
-                Err(e) => {
-                    tracing::warn!(
-                        mentor_id = id,
-                        model = chosen.model,
-                        diagnostic = e.diagnostic(),
-                        "match model failed: {e}"
-                    );
-                    return Ok(classify(e, chosen, round));
-                }
-            };
+        let answer = match model::ask(net, &turn, &system, &message, true).await {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::warn!(
+                    mentor_id = id,
+                    model = chosen.model,
+                    diagnostic = e.diagnostic(),
+                    "match model failed: {e}"
+                );
+                return Ok(classify(&e, chosen, round));
+            }
+        };
         tracing::info!(
             mentor_id = id,
             model = chosen.model,
@@ -277,7 +283,7 @@ async fn analyze(
         }
         if answer.text.trim().is_empty() {
             return Ok(classify(
-                ModelError::NoAnswer {
+                &ModelError::NoAnswer {
                     finish_reason: answer.finish_reason,
                 },
                 chosen,
@@ -303,7 +309,7 @@ async fn analyze(
     unreachable!("both attempts return")
 }
 
-fn classify(error: ModelError, chosen: Chosen, round: u64) -> Outcome {
+fn classify(error: &ModelError, chosen: Chosen, round: u64) -> Outcome {
     match model::background::classify(error, &chosen.access) {
         model::background::Effect::Pause(message) => Outcome::Pause(message, Some(chosen)),
         model::background::Effect::RateLimit(limit) => Outcome::RateLimit(limit, chosen, round),
@@ -337,14 +343,14 @@ async fn requeue(
     Ok(true)
 }
 
-/// Restores interrupted claims and runs at most three calls at once. The queue, not the view,
-/// owns the work, so leaving a page does not interrupt it.
+/// Restores interrupted claims and works on at most three at once. The queue, not the view, owns
+/// the work, so leaving a page does not interrupt it.
 pub async fn run(
     db: SqlitePool,
     writes: db::Writes,
     net: net::Net,
     matcher: Matcher,
-    limit: model::background::Limit,
+    turns: Turns,
     changed: impl Fn() + Send + 'static,
     finished: impl Fn(MatchFinished) + Send + 'static,
 ) {
@@ -378,15 +384,10 @@ pub async fn run(
             && workers.len() < CONCURRENCY
             && let Some(claim) = writes.retry("claim match", || queue::next(&db)).await
         {
-            let (db, net, limit) = (db.clone(), net.clone(), limit.clone());
+            let (db, net, turns) = (db.clone(), net.clone(), turns.clone());
             let (writes, matcher) = (writes.clone(), matcher.clone());
             let task = workers.spawn(async move {
-                let _permit = limit.acquire().await;
-                let result = match queue::running(&db, claim).await {
-                    Ok(true) => analyze(&db, &net, &writes, &matcher, claim).await,
-                    Ok(false) => Ok(Outcome::Gone),
-                    Err(e) => Err(e),
-                };
+                let result = analyze(&db, &net, &writes, &matcher, &turns, claim).await;
                 (claim, result)
             });
             claims.insert(task.id(), claim);

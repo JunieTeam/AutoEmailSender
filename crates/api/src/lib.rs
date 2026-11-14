@@ -69,7 +69,7 @@ pub struct Context {
     pub todo_reminders: receive::reminders::Scheduler,
     pub crawler: crawl::runner::Crawler,
     pub generator: task::generation::Generator,
-    pub model_limit: model::background::Limit,
+    pub turns: model::background::Turns,
     pub writings: writing_turns::Writings,
     pub mail_domains: MailDomains,
     pub cloud_backup: backup::cloud::CloudBackup,
@@ -108,7 +108,7 @@ impl Context {
             reply_processor: Default::default(),
             todo_reminders: Default::default(),
             generator: Default::default(),
-            model_limit: Default::default(),
+            turns: Default::default(),
             writings: Default::default(),
             mail_domains: Default::default(),
         }
@@ -2008,13 +2008,15 @@ async fn test_model(ctx: &Context, input: ModelTest) -> Result<(), CallError> {
     let provider = input.form.provider.clone();
     let fields = input.form.check().map_err(CallError::invalid)?;
     let api_key = entered_or_saved_key(ctx, &input.api_key, input.id, &fields.source).await?;
-    model::test(
-        &ctx.net,
-        &fields.source.access(Some(api_key)),
-        &fields.model,
-    )
-    .await
-    .map_err(|e| {
+    let turn = ctx
+        .turns
+        .take(
+            &fields.source.access(Some(api_key)),
+            &fields.model,
+            model::background::Priority::Interactive,
+        )
+        .await;
+    model::test(&ctx.net, &turn).await.map_err(|e| {
         CallError::from(e).logging(format!(
             "model config {:?} of {provider}: {}",
             input.id, fields.model
@@ -2429,14 +2431,13 @@ async fn write_letter(
         edit: input,
     }: Writing<FirstDraftEdit>,
 ) -> Result<writing::Letter, CallError> {
-    let turn = ctx.writing_turn(request).await?;
+    let (turn, chosen) = ctx
+        .writing_turn(request, || model::chosen(&ctx.db, model::Feature::Writing))
+        .await?;
     let current = writing::Letter {
         subject: input.subject,
         body_md: input.body_md,
     };
-    let chosen = model::chosen(&ctx.db, model::Feature::Writing)
-        .await?
-        .ok_or(writing::Error::NoModel)?;
     let references = material::for_writing(&ctx.db).await?;
     let prepared = writing::prepare(
         &ctx.db,
@@ -2452,10 +2453,16 @@ async fn write_letter(
     let email_id = email::first_draft(&ctx.db, input.mentor_id)
         .await?
         .map(|draft| draft.id);
-    turn.send()?;
-    writing::write(&ctx.net, &prepared, &current, |purpose, usage, at| {
-        model::usage::record_for_email(&ctx.db, &chosen, purpose, email_id, usage, at)
-    })
+    let model = turn.send()?;
+    writing::write(
+        &ctx.net,
+        model,
+        &prepared,
+        &current,
+        |purpose, usage, at| {
+            model::usage::record_for_email(&ctx.db, &chosen, purpose, email_id, usage, at)
+        },
+    )
     .await
     .map_err(|e| writing_failed(e, input.mentor_id, chosen.id))
 }
@@ -2827,10 +2834,9 @@ async fn write_follow_up(
         edit: input,
     }: Writing<FirstDraftEdit>,
 ) -> Result<writing::Letter, CallError> {
-    let turn = ctx.writing_turn(request).await?;
-    let chosen = model::chosen(&ctx.db, model::Feature::Writing)
-        .await?
-        .ok_or(writing::Error::NoModel)?;
+    let (turn, chosen) = ctx
+        .writing_turn(request, || model::chosen(&ctx.db, model::Feature::Writing))
+        .await?;
     let references = material::for_writing(&ctx.db).await?;
     let previous = task::history(&mut *ctx.db.acquire().await?, input.mentor_id).await?;
     let prepared = writing::prepare(
@@ -2847,9 +2853,10 @@ async fn write_follow_up(
     let email_id = email::follow_up::draft(&ctx.db, input.mentor_id)
         .await?
         .map(|draft| draft.id);
-    turn.send()?;
+    let model = turn.send()?;
     writing::write(
         &ctx.net,
+        model,
         &prepared,
         &writing::Letter {
             subject: String::new(),
@@ -2882,10 +2889,9 @@ async fn write_reply(
         edit: input,
     }: Writing<ReplyDraftEdit>,
 ) -> Result<writing::Letter, CallError> {
-    let turn = ctx.writing_turn(request).await?;
-    let chosen = model::chosen(&ctx.db, model::Feature::Writing)
-        .await?
-        .ok_or(writing::Error::NoModel)?;
+    let (turn, chosen) = ctx
+        .writing_turn(request, || model::chosen(&ctx.db, model::Feature::Writing))
+        .await?;
     let references = material::for_writing(&ctx.db).await?;
     let previous = writing::reply::history(&ctx.db, input.mentor_id, &input.reply_to).await?;
     let prepared = writing::prepare(
@@ -2903,9 +2909,10 @@ async fn write_reply(
         .await?
         .filter(|draft| draft.reply_to == input.reply_to)
         .map(|draft| draft.id);
-    turn.send()?;
+    let model = turn.send()?;
     writing::write(
         &ctx.net,
+        model,
         &prepared,
         &writing::Letter {
             subject: String::new(),
@@ -3341,7 +3348,6 @@ mod writing_tests {
     use std::{
         future::{Future, poll_fn},
         pin::Pin,
-        sync::Arc,
         task::Poll,
     };
 
@@ -3376,9 +3382,20 @@ mod writing_tests {
         .unwrap();
         let id = model::create(&ctx.db, &fields, "", 0).await.unwrap();
         assert!(model::agree(&ctx.db, id, &fields.source).await.unwrap());
-        let mut permits = Vec::new();
+        let chosen = model::chosen(&ctx.db, model::Feature::Writing)
+            .await
+            .unwrap()
+            .unwrap();
+        let take = || {
+            ctx.turns.take(
+                &chosen.access,
+                &chosen.model,
+                model::background::Priority::Background,
+            )
+        };
+        let mut turns = Vec::new();
         for _ in 0..model::background::CONCURRENCY {
-            permits.push(ctx.model_limit.acquire().await);
+            turns.push(take().await);
         }
         let write = |request: &str| {
             call(
@@ -3430,12 +3447,12 @@ mod writing_tests {
         cancel("r2").await.unwrap();
         assert!(again.await.is_err());
 
-        // Canceled after its turn came up, while the letter is still being put together.
+        // Canceled while it reads what it needs, with turns free.
         let mut held = Vec::new();
         for _ in 0..ctx.db.options().get_max_connections() {
             held.push(ctx.db.acquire().await.unwrap());
         }
-        drop(permits);
+        drop(turns);
         let mut last = std::pin::pin!(write("r3"));
         waiting(last.as_mut()).await;
         cancel("r3").await.unwrap();
@@ -3443,14 +3460,18 @@ mod writing_tests {
         assert!(last.await.is_err());
 
         assert!(received.lock().unwrap().is_empty());
-        assert_eq!(
-            ctx.model_limit
-                .acquire()
-                .await
-                .semaphore()
-                .available_permits(),
-            model::background::CONCURRENCY - 1
-        );
+        // None of them kept a turn.
+        let mut free = Vec::new();
+        for _ in 0..model::background::CONCURRENCY {
+            let mut turn = std::pin::pin!(take());
+            free.push(
+                poll_fn(|cx| match turn.as_mut().poll(cx) {
+                    Poll::Ready(turn) => Poll::Ready(turn),
+                    Poll::Pending => panic!("a call kept its turn"),
+                })
+                .await,
+            );
+        }
     }
 
     #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -3497,11 +3518,22 @@ mod writing_tests {
                 .unwrap()
         );
 
-        let mut permits = Vec::new();
+        let old = model::chosen(&ctx.db, model::Feature::Writing)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut turns = Vec::new();
         for _ in 0..model::background::CONCURRENCY {
-            permits.push(ctx.model_limit.acquire().await);
+            turns.push(
+                ctx.turns
+                    .take(
+                        &old.access,
+                        &old.model,
+                        model::background::Priority::Background,
+                    )
+                    .await,
+            );
         }
-        let owners = Arc::strong_count(permits[0].semaphore());
         let mut writing = std::pin::pin!(call(
             &ctx,
             "writeLetter",
@@ -3509,15 +3541,9 @@ mod writing_tests {
                 "mentorId": mentor, "subject": "", "bodyMd": "", "attachments": []
             }),
         ));
-        // An owned acquire retains the semaphore while queued. Wait for that so the edit
-        // cannot race with database reads that precede acquiring capacity.
         poll_fn(|cx| {
             assert!(writing.as_mut().poll(cx).is_pending());
-            if Arc::strong_count(permits[0].semaphore()) > owners {
-                Poll::Ready(())
-            } else {
-                Poll::Pending
-            }
+            Poll::Ready(())
         })
         .await;
 
@@ -3542,7 +3568,9 @@ mod writing_tests {
         )
         .await
         .unwrap();
-        drop(permits);
+        // Whether it read the configuration before the edit or not, it calls the address saved
+        // by the time its turn comes.
+        drop(turns);
         let letter = writing.await.unwrap();
 
         assert!(

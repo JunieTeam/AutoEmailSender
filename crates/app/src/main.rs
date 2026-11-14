@@ -360,7 +360,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         todo_reminders,
         crawler,
         generator,
-        model_limit,
+        turns,
         ..
     } = &*ctx;
     let ui = app.clone();
@@ -409,7 +409,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         writes.clone(),
         net.clone(),
         reply_processor.clone(),
-        model_limit.clone(),
+        turns.clone(),
         move || {
             changed_todos.wake();
             if let Err(e) = ui.emit("reply-processing-changed", ()) {
@@ -446,7 +446,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         writes.clone(),
         net.clone(),
         matcher.clone(),
-        model_limit.clone(),
+        turns.clone(),
         move || {
             if let Err(e) = ui.emit("matching-changed", ()) {
                 tracing::warn!("refresh matching: {e}");
@@ -469,7 +469,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         writes.clone(),
         net.clone(),
         generator.clone(),
-        model_limit.clone(),
+        turns.clone(),
         move || {
             if let Err(e) = ui.emit("tasks-changed", ()) {
                 tracing::warn!("refresh tasks: {e}");
@@ -489,7 +489,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         db.clone(),
         net.clone(),
         crawler.clone(),
-        model_limit.clone(),
+        turns.clone(),
         Some(std::sync::Arc::new(browser::Browser::new(app.clone()))),
         move || {
             if let Err(e) = ui.emit("crawl-changed", ()) {

@@ -214,13 +214,20 @@ async fn missing_key_is_distinct_from_a_keyless_model_and_pauses_background_work
     assert!(model::list(&db, 0).await.unwrap()[0].needs_api_key);
     let chosen = model::chosen(&db, Feature::Writing).await.unwrap().unwrap();
     let net = net::Net::new(vec![]).unwrap();
-    let error = model::ask(&net, &chosen.access, &chosen.model, "system", "user", false)
+    let turn = model::background::Turns::default()
+        .take(
+            &chosen.access,
+            &chosen.model,
+            model::background::Priority::Background,
+        )
+        .await;
+    let error = model::ask(&net, &turn, "system", "user", false)
         .await
         .unwrap_err();
     assert!(matches!(error, model::ModelError::MissingKey));
     assert!(error.failure().message.contains("设置 › AI › 模型"));
     assert!(matches!(
-        model::background::classify(error, &chosen.access),
+        model::background::classify(&error, &chosen.access),
         model::background::Effect::Pause(_)
     ));
     assert!(matches!(
@@ -228,7 +235,7 @@ async fn missing_key_is_distinct_from_a_keyless_model_and_pauses_background_work
         Err(model::ModelError::MissingKey)
     ));
     assert!(matches!(
-        model::test(&net, &chosen.access, &chosen.model).await,
+        model::test(&net, &turn).await,
         Err(model::ModelError::MissingKey)
     ));
 }

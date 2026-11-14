@@ -56,9 +56,9 @@ pub(super) async fn answered(
 ) -> (Outcome, String) {
     let net = net::Net::new(vec![]).unwrap();
     let fetcher = Pages::local(site.port);
-    let limit = Limit::default();
+    let turns = Turns::default();
     let cooldown = Cooldown::new(Arc::default());
-    let read = process(db, &net, &fetcher, &limit, claim, &cooldown);
+    let read = process(db, &net, &fetcher, &turns, claim, &cooldown);
     tokio::pin!(read);
     let respond = async {
         let request = provider.requests.recv().await.unwrap();
@@ -424,7 +424,7 @@ async fn enrichment_failure_reasons_and_single_page_retry(db: SqlitePool) {
         &db,
         &net::Net::new(vec![]).unwrap(),
         &Pages::local(site.port),
-        &Limit::default(),
+        &Turns::default(),
         &c,
         &Cooldown::new(Arc::default()),
     )
@@ -480,7 +480,7 @@ async fn enrichment_failure_reasons_and_single_page_retry(db: SqlitePool) {
                 &db,
                 &net::Net::new(vec![]).unwrap(),
                 &Pages::local(site.port),
-                &Limit::default(),
+                &Turns::default(),
                 &c,
                 &Cooldown::new(Arc::default()),
             )
@@ -522,11 +522,29 @@ async fn enrichment_waiting_for_quota_rechecks_default_deletion_edits_and_consen
             .await
             .unwrap()
             .unwrap();
-        let limit = Limit::default();
+        let turns = Turns::default();
         let permits = [
-            limit.acquire().await,
-            limit.acquire().await,
-            limit.acquire().await,
+            turns
+                .take(
+                    &chosen.access,
+                    &chosen.model,
+                    model::background::Priority::Background,
+                )
+                .await,
+            turns
+                .take(
+                    &chosen.access,
+                    &chosen.model,
+                    model::background::Priority::Background,
+                )
+                .await,
+            turns
+                .take(
+                    &chosen.access,
+                    &chosen.model,
+                    model::background::Priority::Background,
+                )
+                .await,
         ];
         let net = net::Net::new(vec![]).unwrap();
         let cooldown = Cooldown::new(Arc::default());
@@ -535,7 +553,7 @@ async fn enrichment_waiting_for_quota_rechecks_default_deletion_edits_and_consen
             writes: &writes,
             db: &db,
             net: &net,
-            limit: &limit,
+            turns: &turns,
             claim: &c,
             chosen: &chosen,
             cooldown: &cooldown,
@@ -607,7 +625,7 @@ async fn enrichment_waiting_for_quota_rechecks_default_deletion_edits_and_consen
         }
         save(&db, &c, &Outcome::Gone).await.unwrap();
         let c = queue::next(&db).await.unwrap().unwrap();
-        let outcome = process(&db, &net, &Pages::local(site.port), &limit, &c, &cooldown)
+        let outcome = process(&db, &net, &Pages::local(site.port), &turns, &c, &cooldown)
             .await
             .unwrap();
         assert!(matches!(outcome, Outcome::Pause(_, _)));
@@ -654,15 +672,15 @@ async fn enrichment_rate_limit_cools_other_pages_format_retry(db: SqlitePool) {
         enrich::start(&db, &[id], 1).await.unwrap();
     }
     let cooldown = Cooldown::new(Arc::default());
-    let limit = Limit::default();
+    let turns = Turns::default();
     let start = |claim: Claim| {
-        let (db, cd, limit, port) = (db.clone(), cooldown.clone(), limit.clone(), site.port);
+        let (db, cd, turns, port) = (db.clone(), cooldown.clone(), turns.clone(), site.port);
         tokio::spawn(async move {
             let result = process(
                 &db,
                 &net::Net::new(vec![]).unwrap(),
                 &Pages::local(port),
-                &limit,
+                &turns,
                 &claim,
                 &cd,
             )
@@ -1819,9 +1837,9 @@ async fn enrichment_model_receives_existing_affiliations(db: SqlitePool) {
     let c = queue::next(&db).await.unwrap().unwrap();
     let net = net::Net::new(vec![]).unwrap();
     let fetcher = Pages::local(site.port);
-    let limit = Limit::default();
+    let turns = Turns::default();
     let cooldown = Cooldown::new(Arc::default());
-    let read = process(&db, &net, &fetcher, &limit, &c, &cooldown);
+    let read = process(&db, &net, &fetcher, &turns, &c, &cooldown);
     let respond = async {
         let request = provider.requests.recv().await.unwrap();
         let data: Value =
