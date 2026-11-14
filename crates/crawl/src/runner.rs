@@ -394,8 +394,8 @@ struct Reader<'a> {
     claim: &'a Claim,
     chosen: &'a Chosen,
     cooldown: &'a Cooldown,
-    /// Set once one of the page's calls has failed: the page is read again later, so its calls
-    /// still waiting for their turn are not sent.
+    /// Set once one of the page's calls has failed: the page is read again later, so its calls not
+    /// sent yet are not sent.
     failed: watch::Sender<bool>,
 }
 impl Reader<'_> {
@@ -434,6 +434,10 @@ impl Reader<'_> {
                         && model::background::same_config(m, self.chosen)
                 }) {
                     return Err(ReadError::Gone);
+                }
+                // Another part may have failed while this one checked.
+                if *self.failed.borrow() {
+                    return Err(ReadError::Wait);
                 }
                 if self.cooldown.until().is_none() {
                     break permit;

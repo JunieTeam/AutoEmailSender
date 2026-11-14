@@ -3608,6 +3608,47 @@ async fn a_long_list_limited_in_a_later_part_waits_out_the_limit(db: SqlitePool)
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_call_still_checking_its_claim_when_another_part_fails_is_not_sent(db: SqlitePool) {
+    let mut provider = Provider::start().await.unwrap();
+    let id = config(&db, &provider.address).await;
+    let url = PageUrl::parse("https://school.example.edu/").unwrap();
+    queue::start(&db, &[url], id, 1).await.unwrap();
+    let claim = queue::next(&db).await.unwrap().unwrap();
+    let chosen = model::selected(&db, Some(id), model::Feature::Crawl)
+        .await
+        .unwrap()
+        .unwrap();
+    let reader = Reader {
+        writes: &db::Writes::default(),
+        db: &db,
+        net: &net::Net::new(vec![]).unwrap(),
+        limit: &Limit::default(),
+        claim: &claim,
+        chosen: &chosen,
+        cooldown: &Cooldown::new(Arc::default()),
+        failed: watch::Sender::new(false),
+    };
+    // With every connection taken, the call has its turn and waits for one to check its claim.
+    let mut held = Vec::new();
+    for _ in 0..db.options().get_max_connections() {
+        held.push(db.acquire().await.unwrap());
+    }
+    let ask = reader.ask::<extract::Route>("route", extract::ROUTE, json!({}));
+    tokio::pin!(ask);
+    tokio::select! {
+        biased;
+        _ = &mut ask => panic!("the call went on without a connection"),
+        () = std::future::ready(()) => {}
+    }
+    reader.failed.send_replace(true);
+    drop(held);
+    tokio::select! {
+        result = ask => assert!(matches!(result, Err(ReadError::Wait))),
+        _ = provider.requests.recv() => panic!("the call was sent after another part failed"),
+    }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn regression_retry_after_blocks_inflight_pages_next_request(db: SqlitePool) {
     let site = Site::new().await;
     for path in ["/a", "/b"] {
