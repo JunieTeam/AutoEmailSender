@@ -19,7 +19,11 @@ use model::{
 use serde::Serialize;
 use sqlx::{SqliteConnection, SqlitePool, types::Json};
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::{sync::Notify, task::JoinSet, time::Instant};
+use tokio::{
+    sync::{Notify, watch},
+    task::JoinSet,
+    time::Instant,
+};
 use tracing::Instrument;
 use ts_rs::TS;
 /// Crawls share it: they can use the same model and websites.
@@ -126,6 +130,7 @@ impl Pages {
                 // Like a model's rate limit: no new pages start until then, and this one goes again.
                 crate::CrawlError::SlowDown(wait) => {
                     tracing::info!(wait_ms = wait.as_millis(), "website rate limited");
+                    hold_back(cooldown, c.crawl, round, wait);
                     ReadError::RateLimit(
                         RateLimit {
                             wait,
@@ -348,6 +353,28 @@ enum ReadError {
     Gone,
 }
 
+impl ReadError {
+    /// How much of the crawl it holds back: a pause all of it, a rate limit its calls for a while,
+    /// anything else this page alone, and a call given up because another failed nothing.
+    fn reach(&self) -> u8 {
+        match self {
+            Self::Pause(_) | Self::Database { .. } => 3,
+            Self::RateLimit(..) => 2,
+            Self::Failed(_) | Self::Mismatched { .. } | Self::Gone => 1,
+            Self::Wait => 0,
+        }
+    }
+}
+
+/// Holds the crawls back from the moment a call meets a limit, not once its page is done: the
+/// page's other calls may take a while yet. A limit met in a round the user has since gone on
+/// from holds nothing back: the new round's own calls find out whether it still holds.
+fn hold_back(cooldown: &Cooldown, crawl: i64, round: u64, wait: Duration) {
+    if round == cooldown.round(&crawl) {
+        cooldown.defer(crawl, round, wait);
+    }
+}
+
 fn database(
     operation: &'static str,
     reason: &'static str,
@@ -367,6 +394,9 @@ struct Reader<'a> {
     claim: &'a Claim,
     chosen: &'a Chosen,
     cooldown: &'a Cooldown,
+    /// Set once one of the page's calls has failed: the page is read again later, so its calls
+    /// still waiting for their turn are not sent.
+    failed: watch::Sender<bool>,
 }
 impl Reader<'_> {
     async fn ask<T: extract::Output>(
@@ -378,7 +408,11 @@ impl Reader<'_> {
         let mut rules = system.to_owned();
         for attempt in 0..2 {
             let _permit = loop {
-                let permit = self.cooldown.acquire(self.limit).await;
+                let mut failed = self.failed.subscribe();
+                let permit = tokio::select! {
+                    permit = self.cooldown.acquire(self.limit) => permit,
+                    _ = failed.wait_for(|&failed| failed) => return Err(ReadError::Wait),
+                };
                 let mut conn = self
                     .db
                     .acquire()
@@ -453,6 +487,7 @@ impl Reader<'_> {
                     Effect::Pause(r) => ReadError::Pause(r),
                     Effect::RateLimit(limit) => {
                         tracing::info!(wait_ms = limit.wait.as_millis(), "model cooldown");
+                        hold_back(self.cooldown, self.claim.crawl, round, limit.wait);
                         ReadError::RateLimit(limit, round)
                     }
                     Effect::Failed(r) => ReadError::Failed(r),
@@ -587,6 +622,7 @@ async fn read(
         claim: c,
         chosen,
         cooldown,
+        failed: watch::Sender::new(false),
     };
     let targeted = targeted(c.kind);
     // A page that shows nothing over HTTP may fill in once its scripts have run.
@@ -681,13 +717,30 @@ async fn interpret(
     }
     let people = match route.kind {
         Kind::List => {
-            let parts = extract::segments(&m).into_iter().map(|range| {
-                reader.ask::<extract::People>("list", extract::LIST, extract::data(&m, range))
+            let parts = extract::segments(&m).into_iter().map(|range| async {
+                let part = reader
+                    .ask::<extract::People>("list", extract::LIST, extract::data(&m, range))
+                    .await;
+                if part.is_err() {
+                    reader.failed.send_replace(true);
+                }
+                part
             });
-            // Each request runs to its end, so that what it used is recorded when another fails.
+            // Each request sent runs to its end, so that what it used is recorded when another
+            // fails.
             let mut all = Vec::new();
+            let mut failure: Option<ReadError> = None;
             for part in futures_util::future::join_all(parts).await {
-                all.extend(part?.people);
+                match part {
+                    Ok(part) => all.extend(part.people),
+                    Err(e) if failure.as_ref().is_none_or(|f| e.reach() > f.reach()) => {
+                        failure = Some(e);
+                    }
+                    Err(_) => {}
+                }
+            }
+            if let Some(e) = failure {
+                return Err(e);
             }
             extract::listed(&m, all, scope, unit).map_err(|reason| {
                 tracing::info!(reason = "invalid_people", "page extraction failed");
@@ -1405,14 +1458,6 @@ async fn run_with_pages(
                                 )
                             }
                         };
-                        // A limit from before the user went on with the crawl does not hold
-                        // crawls back: its own requests find out whether it still holds. Nor does
-                        // one that paused the crawl, so that going on sends at once.
-                        if let Outcome::RateLimit(limit, _, round) = &outcome
-                            && current(*round)
-                        {
-                            cooldown.defer(c.crawl, *round, limit.wait);
-                        }
                         (c, outcome)
                     }
                     Err(e) => {

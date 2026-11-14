@@ -209,6 +209,7 @@ async fn extraction_requests_a_json_object(db: SqlitePool) {
         claim: &claim,
         chosen: &chosen,
         cooldown: &Cooldown::new(Arc::default()),
+        failed: watch::Sender::new(false),
     };
     let ask = reader.ask::<extract::Route>("route", extract::ROUTE, json!({}));
     let respond = async {
@@ -3306,6 +3307,7 @@ async fn regression_deleted_or_changed_config_requeues_and_requires_current_cons
             claim: &c,
             chosen: &chosen,
             cooldown: &cooldown,
+            failed: watch::Sender::new(false),
         };
         let ask = reader.ask::<extract::Route>(
             "route",
@@ -3478,10 +3480,6 @@ async fn a_website_asking_to_slow_down_holds_new_pages_and_keeps_the_page(db: Sq
         )
         .await
         .unwrap();
-        // As the run loop does with a limit that does not pause the crawl.
-        if let Outcome::RateLimit(limit, _, round) = &outcome {
-            cooldown.defer(claim.crawl, *round, limit.wait);
-        }
         outcomes.push(outcome);
     }
     assert!(matches!(
@@ -3491,29 +3489,36 @@ async fn a_website_asking_to_slow_down_holds_new_pages_and_keeps_the_page(db: Sq
     assert_eq!(*site.visits.lock().unwrap(), ["/list"]);
 }
 
-#[sqlx::test(migrator = "db::MIGRATOR")]
-async fn a_long_list_records_what_each_part_used_when_one_is_limited(db: SqlitePool) {
+/// A site with a list long enough to be read in `parts` parts, claimed with the provider at `p`.
+async fn long_list(db: &SqlitePool, p: &Provider, parts: usize) -> (Site, Claim) {
     let site = Site::new().await;
-    // Two blocks too long to be read in one part.
     let block = format!(
         "<p>{}</p>",
         "张三 教授 研究方向：机器学习与数据挖掘。".repeat(200)
     );
-    site.page("/", &format!("<title>教师名单</title>{block}{block}"));
+    site.page(
+        "/",
+        &format!("<title>教师名单</title>{}", block.repeat(parts)),
+    );
+    let config = config(db, &p.address).await;
+    queue::start(db, &[site.url("/")], config, 1).await.unwrap();
+    let claim = queue::next(db).await.unwrap().unwrap();
+    (site, claim)
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_long_list_limited_in_one_part_holds_back_at_once_and_pays_for_the_rest(db: SqlitePool) {
     let mut p = Provider::start().await.unwrap();
-    let config = config(&db, &p.address).await;
-    queue::start(&db, &[site.url("/")], config, 1)
-        .await
-        .unwrap();
-    let claim = queue::next(&db).await.unwrap().unwrap();
+    let (site, claim) = long_list(&db, &p, 3).await;
+    let limit = Limit::default();
+    let cooldown = Cooldown::new(Arc::default());
+    // A turn taken elsewhere: two parts go out, and the third waits for a turn.
+    let elsewhere = limit.acquire().await;
     let page = tokio::spawn({
-        let db = db.clone();
-        let port = site.port;
+        let (db, limit, cooldown, port) = (db.clone(), limit.clone(), cooldown.clone(), site.port);
         async move {
-            let cooldown = Cooldown::new(Arc::default());
-            let pages = Pages::local(port);
             let net = net::Net::new(vec![]).unwrap();
-            process(&db, &net, &pages, &Limit::default(), &claim, &cooldown)
+            process(&db, &net, &Pages::local(port), &limit, &claim, &cooldown)
                 .await
                 .unwrap()
         }
@@ -3533,25 +3538,73 @@ async fn a_long_list_records_what_each_part_used_when_one_is_limited(db: SqliteP
             retry_after: Some(60),
         })
         .ok();
-    first.completed.await.unwrap();
-    tokio::pin!(page);
-    // What the other part used is paid for even though the page is to be read again.
-    assert!(
-        tokio::time::timeout(Duration::from_millis(300), &mut page)
-            .await
-            .is_err(),
-        "the page gave up on a part already asked for"
-    );
+    // Its turn handed back once the limit is met, which holds back at once, not once the page is
+    // done.
+    drop(limit.acquire().await);
+    assert!(cooldown.until().is_some());
     second
         .respond
         .send(Response::answer(r#"{"people":[]}"#))
         .ok();
-    assert!(matches!(page.await.unwrap(), Outcome::RateLimit(..)));
+    drop(elsewhere);
+    tokio::select! {
+        outcome = page => assert!(matches!(outcome.unwrap(), Outcome::RateLimit(..))),
+        _ = p.requests.recv() => panic!("the part waiting for its turn was sent after the limit"),
+    }
     let calls = sqlx::query_scalar::<_, i64>("SELECT count(*) FROM usage")
         .fetch_one(&db)
         .await
         .unwrap();
     assert_eq!(calls, 2, "the route and the part that was answered");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_long_list_limited_in_a_later_part_waits_out_the_limit(db: SqlitePool) {
+    let mut p = Provider::start().await.unwrap();
+    let (site, claim) = long_list(&db, &p, 2).await;
+    let page = tokio::spawn({
+        let (db, port) = (db.clone(), site.port);
+        async move {
+            let net = net::Net::new(vec![]).unwrap();
+            let cooldown = Cooldown::new(Arc::default());
+            process(
+                &db,
+                &net,
+                &Pages::local(port),
+                &Limit::default(),
+                &claim,
+                &cooldown,
+            )
+            .await
+            .unwrap()
+        }
+    });
+    let route = p.requests.recv().await.unwrap();
+    route
+        .respond
+        .send(Response::answer(r#"{"kind":"list","next":[]}"#))
+        .ok();
+    let first = p.requests.recv().await.unwrap();
+    let second = p.requests.recv().await.unwrap();
+    first
+        .respond
+        .send(Response::Refused {
+            status: 500,
+            message: "internal error".into(),
+            retry_after: None,
+        })
+        .ok();
+    first.completed.await.unwrap();
+    second
+        .respond
+        .send(Response::Refused {
+            status: 429,
+            message: "slow down".into(),
+            retry_after: Some(60),
+        })
+        .ok();
+    // Read again once the limit lifts, not failed for what went wrong in the first part.
+    assert!(matches!(page.await.unwrap(), Outcome::RateLimit(..)));
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

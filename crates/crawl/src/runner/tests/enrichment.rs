@@ -539,6 +539,7 @@ async fn enrichment_waiting_for_quota_rechecks_default_deletion_edits_and_consen
             claim: &c,
             chosen: &chosen,
             cooldown: &cooldown,
+            failed: watch::Sender::new(false),
         };
         let ask = reader.ask::<extract::Targeted>(
             "profile",
@@ -693,11 +694,10 @@ async fn enrichment_rate_limit_cools_other_pages_format_retry(db: SqlitePool) {
         r = &mut a => (true, r.unwrap()),
         r = &mut b => (false, r.unwrap())
     };
-    let Outcome::RateLimit(limit, _, round) = &result else {
-        panic!("the first page was limited");
-    };
-    // As the run loop does with a limit that does not pause the crawl.
-    cooldown.defer(claim.crawl, *round, limit.wait);
+    assert!(
+        matches!(result, Outcome::RateLimit(..)),
+        "the first page was limited"
+    );
     save(&db, &claim, &result).await.unwrap();
     second.respond.send(Response::answer("invalid JSON")).ok();
     loop {
