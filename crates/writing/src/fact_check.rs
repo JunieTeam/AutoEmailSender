@@ -74,7 +74,8 @@ pub fn estimate(
 
 /// Checks in `turn` at the model of `chosen`. The caller controls usage persistence so background
 /// retries keep each answer in memory. `go_on` says right before each request whether the check
-/// is still wanted, as it may not be after waiting for the turn or an answer; None when it is not.
+/// is still wanted, as it may not be after waiting for the turn or an answer; None when it is not,
+/// whatever the consent to `chosen`.
 #[expect(
     clippy::too_many_arguments,
     reason = "the callers' checks and usage records differ; a one-use context would only wrap them"
@@ -94,9 +95,6 @@ where
     G: Future<Output = Result<bool, sqlx::Error>>,
     F: Future<Output = Result<(), sqlx::Error>>,
 {
-    if !chosen.agreed {
-        return Err(Error::NotAgreed);
-    }
     let me = profile::get(db).await?;
     let message = message(&me, references, letter);
     let mut system = SYSTEM.to_owned();
@@ -104,6 +102,10 @@ where
     loop {
         if !go_on().await? {
             return Ok(None);
+        }
+        // Only a check that still goes out needs the consent.
+        if !chosen.agreed {
+            return Err(Error::NotAgreed);
         }
         // JSON mode only produces objects; fact checks return a top-level array.
         let answer = model::ask(net, turn, &system, &message, false)
