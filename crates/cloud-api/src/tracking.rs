@@ -20,6 +20,8 @@ pub fn valid_id(value: &str) -> bool {
 pub const MAX_IDS: usize = 100;
 /// The most opens one page carries.
 pub const PAGE: usize = 500;
+/// How many of an email's latest opens the server keeps the time of.
+pub const OPEN_TIMES: usize = 50;
 /// How long after registration the server counts opens, in milliseconds; it forgets the email
 /// then.
 pub const RETENTION: i64 = 180 * 24 * 60 * 60 * 1000;
@@ -89,4 +91,7 @@ pub struct Open {
     pub opens: u32,
     pub first_at: i64,
     pub last_at: i64,
+    /// The times of the latest opens, newest first, `OPEN_TIMES` at most: fewer than `opens` once
+    /// there were more, and none of those counted before the server kept them.
+    pub times: Vec<i64>,
 }

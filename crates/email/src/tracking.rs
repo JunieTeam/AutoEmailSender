@@ -29,6 +29,8 @@ pub struct Tracking {
     pub opens: u32,
     pub first_open_at: Option<i64>,
     pub last_open_at: Option<i64>,
+    /// Of the latest opens, newest first, as the server keeps them (`cloud_api::tracking::Open`).
+    pub open_times: Vec<i64>,
 }
 
 /// The tracking id the email goes with this time: the one an earlier attempt chose, which may be
@@ -140,18 +142,17 @@ pub async fn registered(
 /// An email's opens as the server counts them.
 pub async fn opened(
     conn: &mut SqliteConnection,
-    id: &str,
-    opens: u32,
-    first_at: i64,
-    last_at: i64,
+    open: &cloud_api::tracking::Open,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
-        r#"UPDATE email SET open_count = ?, first_opened_at = ?, last_opened_at = ?
+        r#"UPDATE email SET open_count = ?, first_opened_at = ?, last_opened_at = ?,
+            open_times = ?
         WHERE tracking_id = ?"#,
-        opens,
-        first_at,
-        last_at,
-        id
+        open.opens,
+        open.first_at,
+        open.last_at,
+        sqlx::types::Json(&open.times),
+        open.id
     )
     .execute(conn)
     .await?;

@@ -143,6 +143,9 @@ function PlanRow({ email: e, column }: { email: PlanEmail; column: PlanColumn })
       <p className="truncate text-xs text-muted-foreground">
         {column === "history" ? `${e.fromAddress ?? ""}${e.byCloud ? "（云端）" : ""}` : (e.taskName ?? "单独首封")}
       </p>
+      {column === "history" && e.opens !== null && (
+        <p className="text-xs text-muted-foreground">{e.opens > 0 ? `已打开 ${e.opens} 次` : "尚无打开记录"}</p>
+      )}
       {e.waiting !== null && <p className="text-xs text-muted-foreground">{WAITING[e.waiting]}</p>}
       {column === "pending" && (
         <div className="text-xs text-warning">

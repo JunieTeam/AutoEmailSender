@@ -377,7 +377,11 @@ tracking: EmailTracking | null, } & ({ "state": "approved" } | { "state": "cloud
 
 export type EmailId = { id: number, };
 
-export type EmailTracking = { state: TrackingState, opens: number, firstOpenAt: number | null, lastOpenAt: number | null, };
+export type EmailTracking = { state: TrackingState, opens: number, firstOpenAt: number | null, lastOpenAt: number | null,
+/**
+ * Of the latest opens, newest first, as the server keeps them (`cloud_api::tracking::Open`).
+ */
+openTimes: Array<number>, };
 
 export type EnableCloudBackup = {
 /**
@@ -1158,7 +1162,11 @@ cloud: PlanCloud | null,
 /**
  * The official server sent it, or tried to.
  */
-byCloud: boolean, };
+byCloud: boolean,
+/**
+ * Of an email tracked, how many times it was opened.
+ */
+opens: number | null, };
 
 export type PlanPage = { emails: Array<PlanEmail>, total: number, };
 

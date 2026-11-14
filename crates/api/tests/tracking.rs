@@ -149,8 +149,29 @@ async fn letters_are_registered_while_the_quota_lasts_and_opens_come_back(db: Sq
         server.open(&id(1));
     }
     api::tracking::sync(&setup.ctx, true, NOW).await.unwrap();
-    assert_eq!(setup.emails().await[0].2, Some(2));
-    assert_eq!(setup.emails().await[0].3, Some(NOW + 2000));
+    let letters = email::list(&setup.ctx.db, 1).await.unwrap();
+    let tracking = letters[0].tracking.as_ref().unwrap();
+    assert_eq!(
+        (
+            tracking.opens,
+            tracking.last_open_at,
+            &tracking.open_times[..]
+        ),
+        (2, Some(NOW + 2000), &[NOW + 2000, NOW + 1000][..])
+    );
+    // The plan's history says how often a letter tracked was opened, and nothing of the other.
+    let history = send::plan::list(
+        &setup.ctx.db,
+        &send::plan::PlanQuery {
+            column: send::plan::PlanColumn::History,
+            page: std::num::NonZeroU32::MIN,
+        },
+        NOW,
+    )
+    .await
+    .unwrap();
+    let opens: Vec<_> = history.emails.iter().map(|e| e.opens).collect();
+    assert_eq!(opens, [None, Some(2)]);
 
     // Without Plus, new letters are not registered, as their opens would not count; one the
     // server took before Plus ended, but whose answer was lost, still is, in the same batch.

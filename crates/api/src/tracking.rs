@@ -192,8 +192,7 @@ async fn exchange(
         let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
         same_login(&mut tx, login).await?;
         for open in &page.opens {
-            email::tracking::opened(&mut tx, &open.id, open.opens, open.first_at, open.last_at)
-                .await?;
+            email::tracking::opened(&mut tx, open).await?;
         }
         sqlx::query!("UPDATE account SET tracking_revision = ?", page.revision)
             .execute(&mut *tx)

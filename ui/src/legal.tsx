@@ -26,7 +26,7 @@ export type Legal = keyof typeof LEGAL;
  * accounts that agreed to that one (docs/development.md#条款). Rewrite it with each new version.
  */
 export const TERMS_CHANGES =
-  "新增《用户服务协议》和《隐私政策》，写明使用账号和官方服务的规则，以及处理哪些个人信息、如何保护。";
+  "《隐私政策》更新：开启邮件追踪后，服务器保存每封邮件第一次和最近五十次打开的时间，以便在往来里列出每次打开。";
 
 // The texts are the app's own, with headings and tables a letter never has, so not the letters' parser.
 const parser = new Marked(cjkFriendly());

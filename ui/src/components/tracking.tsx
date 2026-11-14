@@ -10,6 +10,9 @@ export const TRACKING_CAVEAT =
 export function TrackingNote({ tracking: t }: { tracking: EmailTracking }) {
   if (t.state === "pending") return null;
   if (t.state !== "tracked") return <p className="text-sm text-muted-foreground">未追踪：{UNTRACKED[t.state]}</p>;
+  // The server keeps the times of the latest opens only, and none of those it counted before it
+  // began to keep them.
+  const untimed = t.opens > t.openTimes.length;
   return (
     <Popover>
       <PopoverTrigger
@@ -18,8 +21,18 @@ export function TrackingNote({ tracking: t }: { tracking: EmailTracking }) {
       >
         {t.lastOpenAt === null ? "尚无打开记录" : `已打开 ${t.opens} 次，最近 ${at(t.lastOpenAt)}`}
       </PopoverTrigger>
-      <PopoverContent side="top" className="w-72 p-3 text-muted-foreground">
-        {t.firstOpenAt !== null && <p className="mb-1.5 text-foreground">第一次打开：{at(t.firstOpenAt)}</p>}
+      <PopoverContent side="top" className="w-72 space-y-1.5 p-3 text-muted-foreground">
+        {t.openTimes.length > 0 && (
+          <div className="text-foreground">
+            <p>{untimed ? `共打开 ${t.opens} 次，这里是最近 ${t.openTimes.length} 次：` : "每次打开的时间："}</p>
+            <ol className="max-h-40 overflow-y-auto tabular-nums">
+              {t.openTimes.map((ms, i) => (
+                <li key={i}>{at(ms)}</li>
+              ))}
+            </ol>
+          </div>
+        )}
+        {untimed && t.firstOpenAt !== null && <p className="text-foreground">第一次打开：{at(t.firstOpenAt)}</p>}
         <p>{TRACKING_CAVEAT}</p>
       </PopoverContent>
     </Popover>

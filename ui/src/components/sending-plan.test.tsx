@@ -48,6 +48,7 @@ const email: PlanEmail = {
   waiting: null,
   cloud: null,
   byCloud: false,
+  opens: null,
 };
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 const container = document.createElement("div");

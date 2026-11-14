@@ -55,6 +55,8 @@ pub struct PlanEmail {
     pub cloud: Option<Cloud>,
     /// The official server sent it, or tried to.
     pub by_cloud: bool,
+    /// Of an email tracked, how many times it was opened.
+    pub opens: Option<u32>,
 }
 
 /// An email with the official server.
@@ -174,7 +176,8 @@ pub async fn list(db: &SqlitePool, query: &PlanQuery, now: i64) -> Result<PlanPa
             e.kind IN ('reply', 'follow_up') AS "reply!: bool",
             e.cloud_at, e.cloud_uploading AS "cloud_uploading: bool",
             e.by_cloud AS "by_cloud: bool", b.cloud_paused_until,
-            b.cloud_pause_reason AS "cloud_pause_reason: Json<Failure>"
+            b.cloud_pause_reason AS "cloud_pause_reason: Json<Failure>",
+            CASE WHEN e.tracking_state = 'tracked' THEN coalesce(e.open_count, 0) END AS "opens?: u32"
         FROM json_each(?1) j
         JOIN email e ON e.id = j.value
         JOIN mentor m ON m.id = e.mentor_id
@@ -259,6 +262,7 @@ pub async fn list(db: &SqlitePool, query: &PlanQuery, now: i64) -> Result<PlanPa
                 waiting,
                 cloud,
                 by_cloud: r.by_cloud,
+                opens: r.opens,
             }
         })
         .collect();

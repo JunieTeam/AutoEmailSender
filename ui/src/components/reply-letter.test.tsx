@@ -305,6 +305,7 @@ it.each([
       waiting: null,
       cloud: null,
       byCloud: false,
+      opens: null,
     };
     remote.draft = {
       factCheck: null,
@@ -366,6 +367,7 @@ it.each(["correspondence", "sending plan"])(
       waiting: null,
       cloud: null,
       byCloud: false,
+      opens: null,
     };
     remote.withdrawnDraft = {
       factCheck: null,

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE email SET open_count = ?, first_opened_at = ?, last_opened_at = ?,\n            open_times = ?\n        WHERE tracking_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "023c1974d2e2f35413488973b28feb3495916e2ea1d753bb7ff0af16f3bcfaec"
+}

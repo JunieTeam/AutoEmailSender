@@ -29,6 +29,8 @@ pub struct Opened {
     pub opens: u32,
     pub first_at: i64,
     pub last_at: i64,
+    /// Newest first, `cloud_api::tracking::OPEN_TIMES` at most.
+    pub times: Vec<i64>,
     pub revision: i64,
 }
 
@@ -66,10 +68,14 @@ impl State {
         let opened = self.emails.get_mut(id).unwrap();
         let first_at = opened.as_ref().map_or(now, |o| o.first_at);
         let opens = opened.as_ref().map_or(0, |o| o.opens) + 1;
+        let mut times = opened.as_ref().map(|o| o.times.clone()).unwrap_or_default();
+        times.insert(0, now);
+        times.truncate(cloud_api::tracking::OPEN_TIMES);
         *opened = Some(Opened {
             opens,
             first_at,
             last_at: now,
+            times,
             revision,
         });
     }
@@ -144,6 +150,7 @@ fn respond(state: &mut State, method: &str, path: &str, body: Vec<u8>) -> Reply 
                         opens: o.opens,
                         first_at: o.first_at,
                         last_at: o.last_at,
+                        times: o.times,
                     })
                     .collect(),
                 more,

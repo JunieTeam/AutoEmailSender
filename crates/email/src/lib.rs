@@ -476,7 +476,8 @@ pub async fn list_in(db: &mut SqliteConnection, mentor_id: i64) -> Result<Vec<Em
             cancel_reason, cloud_at,
             cloud_uploading AS "cloud_uploading: bool",
             tracking_state AS "tracking_state: tracking::State",
-            open_count AS "open_count: u32", first_opened_at, last_opened_at
+            open_count AS "open_count: u32", first_opened_at, last_opened_at,
+            open_times AS "open_times: Json<Vec<i64>>"
         FROM email
         WHERE mentor_id = ? AND (state IN ('approved', 'cloud', 'sending', 'maybe_sent', 'sent',
             'bounced', 'failed') OR (state = 'canceled' AND kind = 'follow_up'
@@ -553,6 +554,7 @@ pub async fn list_in(db: &mut SqliteConnection, mentor_id: i64) -> Result<Vec<Em
                 opens: r.open_count.unwrap_or_default(),
                 first_open_at: r.first_opened_at,
                 last_open_at: r.last_opened_at,
+                open_times: r.open_times.0,
             }),
         })
     })
