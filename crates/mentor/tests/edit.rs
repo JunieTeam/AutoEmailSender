@@ -91,6 +91,18 @@ fn a_page_at_http_and_at_https_is_one_homepage() {
         fields.homepages,
         ["https://x.cn/zhang/", "https://x.cn/zhang/cv"]
     );
+    // A query or fragment names another page, slash and all.
+    let mut input = form("张伟", "", "https://x.cn/t?path=zhang/");
+    input.homepages.push("https://x.cn/t?path=zhang".into());
+    input.homepages.push("https://x.cn/t#cv/".into());
+    assert_eq!(
+        input.check().unwrap().homepages,
+        [
+            "https://x.cn/t?path=zhang/",
+            "https://x.cn/t?path=zhang",
+            "https://x.cn/t#cv/"
+        ]
+    );
 }
 
 #[test]

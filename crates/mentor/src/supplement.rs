@@ -28,16 +28,18 @@ pub fn same(a: &str, b: &str) -> bool {
     a == b || comparable_chars(a).eq(comparable_chars(b))
 }
 
-/// Whether two homepages are one page, written as [`same`] values are: sites link to a page at
-/// http that they serve at https, and to a folder with or without its closing slash.
+/// Whether two homepages are one page, their paths written as [`same`] values are: sites link to a
+/// page at http that they serve at https, and to a folder with or without its closing slash. A query
+/// or fragment names another page however it ends.
 pub fn same_page(a: &str, b: &str) -> bool {
-    fn page(url: &str) -> &str {
-        url.trim()
-            .split_once("://")
-            .map_or(url, |(_, page)| page)
-            .trim_end_matches('/')
+    fn page(url: &str) -> (&str, &str) {
+        let url = url.trim();
+        let url = url.split_once("://").map_or(url, |(_, page)| page);
+        let (path, rest) = url.split_at(url.find(['?', '#']).unwrap_or(url.len()));
+        (path.trim_end_matches('/'), rest)
     }
-    same(page(a), page(b))
+    let ((a, a_rest), (b, b_rest)) = (page(a), page(b));
+    same(a, b) && a_rest == b_rest
 }
 
 pub(crate) fn same_affiliation(a: &Affiliation, b: &Affiliation) -> bool {
