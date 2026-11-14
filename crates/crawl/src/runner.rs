@@ -723,31 +723,39 @@ async fn interpret(
     let found = route.affiliation(&m);
     // The crawl's way of writing its school and college, once one page has named them.
     let unit = unit.or(found.as_ref());
-    let mut next: Vec<PageUrl> = Vec::new();
-    let mut clicks: Vec<String> = Vec::new();
-    if !matches!(route.kind, Kind::Profile) {
-        let links = extract::links(&m);
-        for n in route.next.iter().filter_map(|id| id.checked_sub(1)) {
-            if let Some((_, url)) = links.get(n) {
-                if scope.page((*url).clone()).is_ok()
-                    && !m.pagination.urls.contains(url)
-                    && !url.is_normalization_of(&c.url)
-                    && !url.is_normalization_of(&m.url)
-                    && !next.contains(*url)
-                {
-                    next.push((*url).clone());
+    let person = match route.kind {
+        Kind::Profile => {
+            let p = reader
+                .ask::<extract::Profile>(
+                    "profile",
+                    extract::PROFILE,
+                    extract::data(&m, 0..m.units.len()),
+                )
+                .await?;
+            match p.name {
+                Some(name) => {
+                    let mut p = extract::profile(&m, name, p.details).map_err(|reason| {
+                        tracing::info!(reason = "invalid_profile", "page extraction failed");
+                        ReadError::Failed(Failure::new(reason))
+                    })?;
+                    if let Some(unit) = unit {
+                        extract::fill(&mut p.fields.affiliations, unit);
+                    }
+                    p.profile = Some(c.url.clone());
+                    Some(p)
                 }
-            } else if let Some(control) = controls.get(n - links.len())
-                && !clicks.contains(control)
-            {
-                clicks.push(control.clone());
+                None => None,
             }
         }
-    }
-    let people = match route.kind {
+        Kind::List | Kind::Entry | Kind::Other => None,
+    };
+    let (kind, people) = match (person, &route.kind) {
+        (Some(p), _) => (PageKind::Profile, vec![p]),
+        (None, Kind::Other) => (PageKind::Entry, vec![]),
         // Routing sees only a page's edges and links, which do not show names written as plain
-        // text: an entry can list teachers too.
-        Kind::List | Kind::Entry => {
+        // text: an entry can list teachers too, and a list whose head shows its first teacher reads
+        // as that teacher's page.
+        (None, read_as) => {
             let parts = extract::segments(&m).into_iter().map(|range| async {
                 let part = reader
                     .ask::<extract::People>("list", extract::LIST, extract::data(&m, range))
@@ -773,37 +781,39 @@ async fn interpret(
             if let Some(e) = failure {
                 return Err(e);
             }
-            extract::listed(&m, all, scope, unit).map_err(|reason| {
+            let people = extract::listed(&m, all, scope, unit).map_err(|reason| {
                 tracing::info!(reason = "invalid_people", "page extraction failed");
                 ReadError::Failed(Failure::new(reason))
-            })?
-        }
-        Kind::Profile => {
-            let p = reader
-                .ask::<extract::Profile>(
-                    "profile",
-                    extract::PROFILE,
-                    extract::data(&m, 0..m.units.len()),
-                )
-                .await?;
-            let mut p = extract::profile(&m, p.name, p.details).map_err(|reason| {
-                tracing::info!(reason = "invalid_profile", "page extraction failed");
-                ReadError::Failed(Failure::new(reason))
             })?;
-            if let Some(unit) = unit {
-                extract::fill(&mut p.fields.affiliations, unit);
-            }
-            p.profile = Some(c.url.clone());
-            vec![p]
+            let kind = if matches!(read_as, Kind::List) || !people.is_empty() {
+                PageKind::List
+            } else {
+                PageKind::Entry
+            };
+            (kind, people)
         }
-        Kind::Other => vec![],
     };
-    let kind = match route.kind {
-        Kind::Profile => PageKind::Profile,
-        Kind::List => PageKind::List,
-        Kind::Entry if !people.is_empty() => PageKind::List,
-        Kind::Entry | Kind::Other => PageKind::Entry,
-    };
+    let mut next: Vec<PageUrl> = Vec::new();
+    let mut clicks: Vec<String> = Vec::new();
+    if kind != PageKind::Profile {
+        let links = extract::links(&m);
+        for n in route.next.iter().filter_map(|id| id.checked_sub(1)) {
+            if let Some((_, url)) = links.get(n) {
+                if scope.page((*url).clone()).is_ok()
+                    && !m.pagination.urls.contains(url)
+                    && !url.is_normalization_of(&c.url)
+                    && !url.is_normalization_of(&m.url)
+                    && !next.contains(*url)
+                {
+                    next.push((*url).clone());
+                }
+            } else if let Some(control) = controls.get(n - links.len())
+                && !clicks.contains(control)
+            {
+                clicks.push(control.clone());
+            }
+        }
+    }
     Ok(Page {
         material: m,
         kind,

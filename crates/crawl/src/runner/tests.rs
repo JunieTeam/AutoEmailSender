@@ -1467,6 +1467,77 @@ async fn a_copy_of_a_teacher_s_page_read_before_is_not_read_again() {
     dir.close().unwrap();
 }
 
+#[tokio::test]
+async fn a_list_routing_takes_for_a_teacher_s_page_is_read_as_a_list() {
+    // As sse.sysu.edu.cn's list of off-campus supervisors, whose head shows its first teacher.
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>校外导师</title><p>张三</p><p>研究方向：机器学习</p><p>李四</p>\
+        <p>研究方向：数据库</p><a href='/prof'>教授</a>",
+    );
+    site.page("/prof", "<title>教授</title><p>王五</p>");
+    let mut provider = Provider::start().await.unwrap();
+    let id = config(&db, &provider.address).await;
+    let model = tokio::spawn(async move {
+        while let Some(r) = provider.requests.recv().await {
+            let system = r.body["messages"][0]["content"].as_str().unwrap();
+            let data: Value =
+                serde_json::from_str(r.body["messages"][1]["content"].as_str().unwrap()).unwrap();
+            let first = data["title"] == "校外导师";
+            let answer = if system.starts_with("你整理学院") {
+                let next: Vec<_> = (offered(&data).into_iter())
+                    .filter(|(text, _)| text == "教授")
+                    .map(|(_, n)| n)
+                    .collect();
+                json!({"kind": if first { "profile" } else { "list" }, "next": next})
+            } else if system.starts_with("你整理一位") {
+                json!({
+                    "name": null,
+                    "aliases": [],
+                    "emails": [],
+                    "affiliations": [],
+                    "homepages": [],
+                    "research": null,
+                    "papers": []
+                })
+            } else {
+                let names = if first {
+                    &["张三", "李四"][..]
+                } else {
+                    &["王五"]
+                };
+                json!({"people": names.iter().map(|n| json!({"n": n})).collect::<Vec<_>>()})
+            };
+            r.respond.send(Response::answer(&answer.to_string())).ok();
+        }
+    });
+    let crawl = queue::start(&db, &[site.url("/")], id, 1).await.unwrap();
+    let (tx, mut events) = mpsc::unbounded_channel();
+    let task = tokio::spawn(run_with_pages(
+        db.clone(),
+        net::Net::new(vec![]).unwrap(),
+        Arc::new(Pages::local(site.port)),
+        Crawler::default(),
+        Turns::default(),
+        move || {
+            tx.send(()).ok();
+        },
+        |_| {},
+    ));
+    changed_until(&db, crawl, &mut events, "done").await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY id")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三", "李四", "王五"]);
+    task.abort();
+    model.abort();
+    db.close().await;
+    dir.close().unwrap();
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn later_profile_facts_need_review_and_keep_the_user_approved_identity(db: SqlitePool) {
     let url = PageUrl::parse("https://school.example.edu/profile").unwrap();
