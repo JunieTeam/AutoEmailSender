@@ -736,6 +736,27 @@ async fn interpret(
     unit: Option<&Affiliation>,
 ) -> Result<Page, ReadError> {
     let c = reader.claim;
+    // A page reading as one the crawl read already gives nothing more: a category that shows
+    // nothing new when clicked, or a list at another address.
+    let text = m.text();
+    if sqlx::query_scalar!(
+        r#"SELECT EXISTS (
+            SELECT 1
+            FROM crawl_page
+            WHERE crawl_id = ? AND id != ? AND candidate_id IS NULL AND kind IN ('entry', 'list')
+            AND work_state = 'done' AND status = 'success' AND text = ?
+        ) AS "read!: bool""#,
+        c.crawl,
+        c.id,
+        text
+    )
+    .fetch_one(reader.db)
+    .await
+    .map_err(database("read pages read", READ_FAILED))?
+    {
+        tracing::info!(url = c.url.as_str(), "page read before");
+        return Ok(Page::nothing(m, PageKind::Entry));
+    }
     // Clicks are replayed on the page as it opens, so only that page offers its controls.
     let controls: &[String] = if c.steps.is_empty() { &m.controls } else { &[] };
     let route = reader

@@ -899,6 +899,34 @@ async fn a_page_the_browser_finds_moved_to_its_link_does_not_lead_on_to_itself(d
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_category_showing_nothing_new_when_clicked_is_not_read_again(db: SqlitePool) {
+    // As math.nankai.edu.cn's filter groups, which only unfold their options when clicked.
+    let site = Site::new().await;
+    let list = "<title>在职教师</title><ul><li onclick=\"unfold('dept')\">部门</li></ul>\
+        <p>张三</p>";
+    site.page("/", list);
+    let browser = Arc::new(FakeBrowser::default());
+    browser.page(&site.url("/"), list);
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let routed = route_all(provider, "list");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let clicked = PageStep {
+        page: None,
+        control: "部门".into(),
+    };
+    assert_eq!(*browser.steps.lock().unwrap(), [vec![clicked]]);
+    assert_eq!(*routed.lock().unwrap(), ["在职教师"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_list_read_again_as_it_was_but_for_controls_is_routed_again(db: SqlitePool) {
     // Its scripts make the category written over HTTP one to click.
     let site = Site::new().await;
