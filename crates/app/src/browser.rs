@@ -27,9 +27,6 @@ const PREFIX: &str = "crawl-browser-";
 const TIMEOUT: Duration = Duration::from_secs(20);
 const POLL: Duration = Duration::from_millis(500);
 const STABLE: Duration = Duration::from_millis(1500);
-/// How long a click has to change the page before what it shows is taken to be what the page
-/// showed already, as the category a list opens on does when clicked.
-const SHOWN: Duration = Duration::from_secs(5);
 const PAGE_SNAPSHOT: &str = r#"({
     state: document.readyState,
     url: location.href,
@@ -372,12 +369,13 @@ fn render(
                 None => format!("找不到可点开的“{}”", step.control),
             }));
         }
-        match step.page {
-            Some(_) => wait(&window, state, Some(&before), TIMEOUT),
-            None => match wait(&window, state, Some(&before), SHOWN) {
-                Err(BrowserError::TimedOut) => wait(&window, state, None, TIMEOUT),
-                result => result,
-            },
+        match wait(&window, state, Some(&before), TIMEOUT) {
+            // Clicked, the category a list opens on shows nothing new: what still shows after the
+            // time a slow site gets to load another is taken to be what was asked for.
+            Err(BrowserError::TimedOut) if step.page.is_none() => {
+                wait(&window, state, None, TIMEOUT)
+            }
+            result => result,
         }
         .map_err(failed_step)?;
     }
