@@ -225,14 +225,16 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
             continue;
         }
         // The nearest pager the control is in, and the nearest of its own that counts the pages:
-        // a pager can count them beside its controls, as "页码：1/1" after them.
+        // a pager can count them beside its controls, as "页码：1/1" after them. Labelled
+        // otherwise, a control is a pager's only as a link naming a page.
+        let named = control.link.as_ref().and_then(query_page);
         let (mut context, mut counted) = (None, None);
         for element in control
             .element
             .ancestors()
             .filter_map(ElementRef::wrap)
             .take_while(|e| !matches!(e.value().name(), "body" | "html"))
-            .take_while(|_| !matches!(control.kind, Kind::Other))
+            .take_while(|_| !matches!(control.kind, Kind::Other) || named.is_some())
         {
             let index =
                 if let Some(index) = contexts.iter().position(|c| c.element.id() == element.id()) {
@@ -322,7 +324,6 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
         let context = context.map(|i| &contexts[i]);
         let counted = counted.and_then(|i| contexts[i].counts);
         pagination.page = pagination.page.or(counted.map(|(page, _)| page));
-        let named = control.link.as_ref().and_then(query_page);
         let is_page = match control.kind {
             Kind::Forward | Kind::Last | Kind::Backward | Kind::Jump => true,
             Kind::First => {
@@ -351,10 +352,11 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
             Kind::Backward | Kind::First => false,
             Kind::Number(n) => counted.is_none_or(|(page, _)| n > page),
             // Labelled otherwise, as 返回, a link leads on only to a page after the one this is, as
-            // its address names it or else its pager: a query counting from 0 falls one short of
-            // the pager, which at most notes pages unread that were not.
+            // its address names it or else the pager the link is in counts it: a query counting
+            // from 0 falls one short of the pager, which at most notes pages unread that were not.
             Kind::Other => {
-                (named.zip(query_page(url).or(pagination.page))).is_some_and(|(n, on)| n > on)
+                let on = query_page(url).or(counted.map(|(page, _)| page));
+                named.zip(on).is_some_and(|(n, on)| n > on)
             }
             _ => true,
         };
