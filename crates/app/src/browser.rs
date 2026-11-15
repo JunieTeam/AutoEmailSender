@@ -373,10 +373,12 @@ fn render(
             }));
         }
         match wait(&window, state, Some(&before), TIMEOUT) {
-            // Clicked, the category a list opens on shows nothing new: no settled change in the
-            // time a slow site gets to load another takes what shows, once it settles, for what
-            // was asked for.
-            Err(BrowserError::TimedOut) if step.page.is_none() => {
+            // Clicked, the category a list opens on shows nothing new, and so does a page turn
+            // with no page after, as a carousel's: no settled change in the time a slow site gets
+            // to load another takes what shows, once it settles, for what was asked for. A page
+            // reading as the one before ends the pages.
+            Err(BrowserError::TimedOut) => {
+                tracing::info!(page = step.page, "browser step showed nothing new");
                 wait(&window, state, None, TIMEOUT)
             }
             result => result,
