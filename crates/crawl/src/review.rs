@@ -621,8 +621,9 @@ pub async fn set_unit(
 const COPY_LINES: usize = 3;
 
 /// The addresses among `addresses` that another candidate of the crawl sharing a name with `id`
-/// has, when a page read for them is a copy of the one whose text is `text`: by the rule `save`
-/// follows, the two are one person, and the copy has nothing more to give.
+/// has, when a page read for them is a copy of the one whose text is `text` and the page `addresses`
+/// are on shows no address that one does not: by the rule `save` follows, the two are one person.
+/// One whose research no page gave may find it in another version of their page.
 pub(crate) async fn known(
     db: impl sqlx::SqliteExecutor<'_>,
     crawl: i64,
@@ -634,8 +635,8 @@ pub(crate) async fn known(
         r#"SELECT c.emails AS "emails!: Json<Vec<String>>", p.text AS "text!"
         FROM candidate c
         JOIN crawl_page p ON p.target_id = c.id
-        WHERE c.crawl_id = ?1 AND c.id != ?2 AND c.emails IS NOT NULL
-        AND p.work_state = 'done' AND p.status = 'success'
+        WHERE c.crawl_id = ?1 AND p.crawl_id = ?1 AND c.id != ?2 AND c.emails IS NOT NULL
+        AND c.research IS NOT NULL AND p.work_state = 'done' AND p.status = 'success'
         AND EXISTS (
             SELECT 1
             FROM json_each(c.match_names) a
@@ -656,8 +657,14 @@ pub(crate) async fn known(
     Ok((read.into_iter())
         .filter(|r| {
             let other = lines(&r.text);
+            let written = r.text.to_lowercase();
             page.difference(&other).count() <= COPY_LINES
                 && other.difference(&page).count() <= COPY_LINES
+                // Text alone does not show the addresses behind links.
+                && addresses.iter().all(|a| {
+                    r.emails.0.iter().any(|e| e.eq_ignore_ascii_case(a))
+                        || written.contains(&a.to_lowercase())
+                })
         })
         .flat_map(|r| r.emails.0)
         .filter(|e| addresses.iter().any(|a| a.eq_ignore_ascii_case(e)))

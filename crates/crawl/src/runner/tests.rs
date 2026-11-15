@@ -1580,6 +1580,73 @@ async fn a_page_showing_the_address_of_a_teacher_of_the_same_name_is_read() {
 }
 
 #[tokio::test]
+async fn a_page_writing_the_same_with_another_address_behind_its_link_is_read() {
+    // Two teachers named 张三, each linking their own address, and both naming the college's
+    // contact, which is the first one.
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = columns().await;
+    for (path, address) in [("/info/1/7.htm", "a"), ("/info/2/8.htm", "b")] {
+        site.page(
+            path,
+            &format!(
+                "<title>张三</title><p>张三</p>\
+                <p><a href='mailto:{address}@school.example.edu'>发送邮件</a></p>\
+                <p>学院联系人 a@school.example.edu</p>"
+            ),
+        );
+    }
+    let read = read_for_zhang(&db, &site, vec![], |data| {
+        targeted(if data.to_string().contains("b@school") {
+            "b@school.example.edu"
+        } else {
+            "a@school.example.edu"
+        })
+    })
+    .await;
+    assert_eq!(read, 2);
+    let emails: Vec<String> = sqlx::query_scalar("SELECT emails FROM candidate ORDER BY id")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        emails,
+        [r#"["a@school.example.edu"]"#, r#"["b@school.example.edu"]"#]
+    );
+    db.close().await;
+    dir.close().unwrap();
+}
+
+#[tokio::test]
+async fn a_copy_is_read_for_research_the_one_read_before_did_not_give() {
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = columns().await;
+    site.page(
+        "/info/1/7.htm",
+        "<title>张三</title><p>张三 a@school.example.edu</p>",
+    );
+    site.page(
+        "/info/2/8.htm",
+        "<title>张三</title><p>张三 a@school.example.edu</p><p>研究方向：机器学习</p>",
+    );
+    let read = read_for_zhang(&db, &site, vec![], |data| {
+        let mut answer = targeted("a@school.example.edu");
+        if !data.to_string().contains("机器学习") {
+            answer["research"] = Value::Null;
+        }
+        answer
+    })
+    .await;
+    assert_eq!(read, 2);
+    let research: Vec<Option<String>> = sqlx::query_scalar("SELECT research FROM candidate")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(research, [Some("机器学习".to_owned())]);
+    db.close().await;
+    dir.close().unwrap();
+}
+
+#[tokio::test]
 async fn a_site_read_over_http_after_https_failed_reads_its_start_once() {
     // Its pages link back to the start over http.
     let (dir, db) = test_fixtures::db::open().await.unwrap();
