@@ -1547,14 +1547,17 @@ async fn read_for_zhang(
 #[tokio::test]
 async fn a_copy_of_a_teacher_s_page_read_before_is_not_read_again() {
     // As chem.fzu.edu.cn and jidian.cug.edu.cn publish a teacher's page under each column that
-    // lists them, at another address each time, naming the column on it.
+    // lists them, at another address each time, naming the column on it; the former's footer
+    // gives the college's address and links its dean's.
     let (dir, db) = test_fixtures::db::open().await.unwrap();
     let site = columns().await;
     for (path, column) in [("/info/1/7.htm", "教授"), ("/info/2/8.htm", "博士生导师")] {
         site.page(
             path,
             &format!(
-                "<title>张三</title><h2>{column}</h2><p>张三 a@school.example.edu 机器学习</p>"
+                "<title>张三</title><h2>{column}</h2><p>张三 a@school.example.edu 机器学习</p>\
+                <div class='footer'><p>邮箱：office@school.example.edu</p>\
+                <p><a href='mailto:dean@school.example.edu'>院长信箱</a></p></div>"
             ),
         );
     }
@@ -1635,22 +1638,25 @@ async fn a_page_showing_the_address_of_a_teacher_of_the_same_name_is_read() {
 
 #[tokio::test]
 async fn a_page_writing_the_same_with_another_address_behind_its_link_is_read() {
-    // Two teachers named 张三, each linking their own address, and both naming the college's
-    // contact, which is the first one.
+    // Two teachers named 张三 of two departments, each linking their own address, both pages
+    // writing their group's contacts, which are the two of them.
     let (dir, db) = test_fixtures::db::open().await.unwrap();
     let site = columns().await;
-    for (path, address) in [("/info/1/7.htm", "a"), ("/info/2/8.htm", "b")] {
+    for (path, department, address) in [
+        ("/info/1/7.htm", "化学系", "a"),
+        ("/info/2/8.htm", "物理系", "b"),
+    ] {
         site.page(
             path,
             &format!(
-                "<title>张三</title><p>张三</p>\
+                "<title>张三</title><p>张三 {department}</p>\
                 <p><a href='mailto:{address}@school.example.edu'>发送邮件</a></p>\
-                <p>学院联系人 a@school.example.edu</p>"
+                <p>课题组联系人 a@school.example.edu b@school.example.edu</p>"
             ),
         );
     }
     let read = read_for_zhang(&db, &site, vec![], |data| {
-        targeted(if data.to_string().contains("b@school") {
+        targeted(if data.to_string().contains("物理系") {
             "b@school.example.edu"
         } else {
             "a@school.example.edu"
@@ -1666,6 +1672,24 @@ async fn a_page_writing_the_same_with_another_address_behind_its_link_is_read() 
         emails,
         [r#"["a@school.example.edu"]"#, r#"["b@school.example.edu"]"#]
     );
+    db.close().await;
+    dir.close().unwrap();
+}
+
+#[tokio::test]
+async fn a_copy_writing_an_address_found_only_within_another_before_is_read() {
+    // Another version of his page adds li@, which the one read before writes only inside weili@.
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = columns().await;
+    let page = "<title>张三</title><p>张三 a@school.example.edu</p>\
+        <p>联系人 weili@school.example.edu</p>";
+    site.page("/info/1/7.htm", page);
+    site.page(
+        "/info/2/8.htm",
+        &format!("{page}<p>li@school.example.edu</p>"),
+    );
+    let read = read_for_zhang(&db, &site, vec![], |_| targeted("a@school.example.edu")).await;
+    assert_eq!(read, 2);
     db.close().await;
     dir.close().unwrap();
 }

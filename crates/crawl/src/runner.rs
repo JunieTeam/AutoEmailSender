@@ -915,10 +915,11 @@ async fn read_for_candidate(
     // A site can publish a teacher's page under each column that lists them, at another address
     // each time. Once one copy was read, another adds nothing.
     if c.kind == PageKind::Profile {
-        let addresses: Vec<_> = (m.units.iter().flat_map(|u| &u.emails))
-            .map(|e| e.address.as_str())
+        // A footer's or a menu's addresses are the site's, on each of its pages alike.
+        let emails: Vec<_> = (m.units.iter().filter(|u| u.footer_or_nav.is_none()))
+            .flat_map(|u| &u.emails)
             .collect();
-        let known = review::known(reader.db, c.crawl, id, &m.text(), &addresses)
+        let known = review::known(reader.db, c.crawl, id, &m.text(), &emails)
             .await
             .map_err(database("read page candidate", CANDIDATE_READ_FAILED))?;
         if !known.is_empty() {

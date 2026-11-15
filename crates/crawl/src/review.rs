@@ -1,5 +1,8 @@
 //! Candidate review uses the very same intake calculation and writes as table imports.
-use crate::{PageUrl, extract::Person, queue, store::PageKind, url::both_schemes};
+use crate::{
+    EmailEvidence, EmailLocation, PageUrl, email::EMAILS, extract::Person, queue, store::PageKind,
+    url::both_schemes,
+};
 use failure::Failure;
 use mentor::{
     MentorFields,
@@ -620,16 +623,16 @@ pub async fn set_unit(
 /// site differed in eleven lines or more.
 const COPY_LINES: usize = 3;
 
-/// The addresses among `addresses` that another candidate of the crawl sharing a name with `id`
-/// has, when a page read for them is a copy of the one whose text is `text` and the page `addresses`
-/// are on shows no address that one does not: by the rule `save` follows, the two are one person.
-/// One whose research no page gave may find it in another version of their page.
+/// The addresses among `emails` that another candidate of the crawl sharing a name with `id` has,
+/// when a page read for them is a copy of the one whose text is `text` and writes the rest of
+/// `emails` too: by the rule `save` follows, the two are one person. One whose research no page
+/// gave may find it in another version of their page.
 pub(crate) async fn known(
     db: impl sqlx::SqliteExecutor<'_>,
     crawl: i64,
     id: i64,
     text: &str,
-    addresses: &[&str],
+    emails: &[&EmailEvidence],
 ) -> Result<Vec<String>, sqlx::Error> {
     let read = sqlx::query!(
         r#"SELECT c.emails AS "emails!: Json<Vec<String>>", p.text AS "text!"
@@ -657,17 +660,20 @@ pub(crate) async fn known(
     Ok((read.into_iter())
         .filter(|r| {
             let other = lines(&r.text);
-            let written = r.text.to_lowercase();
+            let written: Vec<_> = (EMAILS.text(&r.text).into_iter())
+                .map(|e| e.address)
+                .collect();
             page.difference(&other).count() <= COPY_LINES
                 && other.difference(&page).count() <= COPY_LINES
-                // Text alone does not show the addresses behind links.
-                && addresses.iter().all(|a| {
-                    r.emails.0.iter().any(|e| e.eq_ignore_ascii_case(a))
-                        || written.contains(&a.to_lowercase())
+                // The text read shows none of the addresses behind its links.
+                && emails.iter().all(|e| {
+                    r.emails.0.iter().any(|a| a.eq_ignore_ascii_case(&e.address))
+                        || (matches!(e.location, EmailLocation::Text { .. })
+                            && written.contains(&e.address))
                 })
         })
         .flat_map(|r| r.emails.0)
-        .filter(|e| addresses.iter().any(|a| a.eq_ignore_ascii_case(e)))
+        .filter(|a| emails.iter().any(|e| e.address.eq_ignore_ascii_case(a)))
         .collect())
 }
 
