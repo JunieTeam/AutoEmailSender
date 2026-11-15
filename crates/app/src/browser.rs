@@ -239,6 +239,8 @@ fn render(
         // A desktop's: narrower, sites fold their menus away, out of reach of a click, as
         // math.nankai.edu.cn hides its categories under 1000 pixels.
         .inner_size(1920.0, 1080.0)
+        // Hidden and unfocused, it leaves the user's window in front: on macOS, wry before 0.57.1
+        // brought the app forward for every webview it made.
         .visible(false)
         .focused(false)
         .incognito(true)
