@@ -1047,63 +1047,79 @@ async fn a_list_a_link_too_far_at_another_address_is_read_once_though_its_menu_l
     assert_eq!(*routed.lock().unwrap(), ["首页", "在职教师", "退休教师"]);
 }
 
-#[sqlx::test(migrator = "db::MIGRATOR")]
-async fn a_list_a_link_too_far_linking_its_teacher_s_page_elsewhere_is_read(db: SqlitePool) {
-    // Its teachers' pages are read from it, a link too far or not.
-    let site = Site::new().await;
-    site.page("/", "<title>首页</title><a href='/szdw'>在职教师</a>");
-    let list = |profile| {
-        format!(
-            "<title>在职教师</title><a href='/t1/szdw'>全体教师</a>\
-            <p><a href='{profile}'>张三</a></p>"
-        )
-    };
-    site.page("/szdw", &list("/old"));
-    site.page("/t1/szdw", &list("/new"));
-    for path in ["/old", "/new"] {
-        site.page(path, "<title>张三</title><p>张三 a@school.example.edu</p>");
-    }
-    let mut provider = Provider::start().await.unwrap();
-    let model = config(&db, &provider.address).await;
-    tokio::spawn(async move {
-        while let Some(request) = provider.requests.recv().await {
-            let system = request.body["messages"][0]["content"].as_str().unwrap();
-            let data = request.body["messages"][1]["content"].as_str().unwrap();
-            let data: Value = serde_json::from_str(data).unwrap();
-            let output = if system.starts_with("你整理学院") {
-                let next: Vec<_> = (offered(&data).into_iter())
-                    .filter(|(text, _)| ["在职教师", "全体教师"].contains(&text.as_str()))
-                    .map(|(_, n)| n)
-                    .collect();
-                json!({"kind": if data["title"] == "首页" { "entry" } else { "list" }, "next": next})
-            } else if system.starts_with("你从教师") {
-                let text = data.to_string();
-                let link = (text.split("[张三](").nth(1))
-                    .and_then(|rest| rest.split(')').next()?.parse::<usize>().ok());
-                json!({"people": [listed("张三", link, vec![])]})
-            } else {
-                super::targeted("a@school.example.edu")
-            };
-            request
-                .respond
-                .send(Response::answer(&output.to_string()))
-                .ok();
+#[tokio::test]
+async fn a_list_a_link_too_far_linking_its_teacher_s_page_elsewhere_is_read() {
+    // Its teachers' pages are read from it, a link too far or not, whether the list read before
+    // linked another page of theirs or none, linking back to itself.
+    for (old, read) in [("/old", vec!["/new", "/old"]), ("/szdw", vec!["/new"])] {
+        let (dir, db) = test_fixtures::db::open().await.unwrap();
+        let site = Site::new().await;
+        site.page("/", "<title>首页</title><a href='/szdw'>在职教师</a>");
+        let list = |profile| {
+            format!(
+                "<title>在职教师</title><a href='/t1/szdw'>全体教师</a>\
+                <p><a href='{profile}'>张三</a></p>"
+            )
+        };
+        site.page("/szdw", &list(old));
+        site.page("/t1/szdw", &list("/new"));
+        for path in ["/old", "/new"] {
+            site.page(path, "<title>张三</title><p>张三 a@school.example.edu</p>");
         }
-    });
-    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
-    let pages = Pages {
-        writes: db::Writes::default(),
-        http: Fetcher::local(site.port),
-        browser: None,
-        recognize: super::recognize,
-    };
-    drain(&db, &pages).await;
-    let read: Vec<String> =
-        sqlx::query_scalar("SELECT url FROM crawl_page WHERE target_id IS NOT NULL ORDER BY url")
-            .fetch_all(&db)
-            .await
-            .unwrap();
-    assert_eq!(read, [site.url("/new").as_str(), site.url("/old").as_str()]);
+        let mut provider = Provider::start().await.unwrap();
+        let model = config(&db, &provider.address).await;
+        tokio::spawn(async move {
+            while let Some(request) = provider.requests.recv().await {
+                let system = request.body["messages"][0]["content"].as_str().unwrap();
+                let data = request.body["messages"][1]["content"].as_str().unwrap();
+                let data: Value = serde_json::from_str(data).unwrap();
+                let output = if system.starts_with("你整理学院") {
+                    let next: Vec<_> = (offered(&data).into_iter())
+                        .filter(|(text, _)| ["在职教师", "全体教师"].contains(&text.as_str()))
+                        .map(|(_, n)| n)
+                        .collect();
+                    let kind = if data["title"] == "首页" {
+                        "entry"
+                    } else {
+                        "list"
+                    };
+                    json!({"kind": kind, "next": next})
+                } else if system.starts_with("你从教师") {
+                    let text = data.to_string();
+                    let link = (text.split("[张三](").nth(1))
+                        .and_then(|rest| rest.split(')').next()?.parse::<usize>().ok());
+                    json!({"people": [listed("张三", link, vec![])]})
+                } else {
+                    super::targeted("a@school.example.edu")
+                };
+                request
+                    .respond
+                    .send(Response::answer(&output.to_string()))
+                    .ok();
+            }
+        });
+        queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+        let pages = Pages {
+            writes: db::Writes::default(),
+            http: Fetcher::local(site.port),
+            browser: None,
+            recognize: super::recognize,
+        };
+        drain(&db, &pages).await;
+        let urls: Vec<String> = sqlx::query_scalar(
+            "SELECT url FROM crawl_page WHERE target_id IS NOT NULL ORDER BY url",
+        )
+        .fetch_all(&db)
+        .await
+        .unwrap();
+        let read: Vec<_> = read
+            .iter()
+            .map(|p| site.url(p).as_str().to_owned())
+            .collect();
+        assert_eq!(urls, read, "{old}");
+        db.close().await;
+        dir.close().unwrap();
+    }
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
