@@ -570,15 +570,24 @@ fn a_bare_page_turn_beside_one_page_number_is_clicked() {
 #[test]
 fn a_pager_s_numbers_drawn_side_by_side_are_read_apart() {
     // A script draws its pager with nothing between the page it is on and the count beside it,
-    // which read "11/3" together.
+    // which read "11/3" together; or draws the count in parts, "1" and "0" of 10, which read "1"
+    // and "0" apart.
     let base = PageUrl::parse("https://www.school.example.edu/list?page=1").unwrap();
-    let page = parse(
-        &base,
-        r#"<div class="pages"><a class="current_page">1</a><span>1/3</span>
-        <a href="/list?page=2">下一页</a></div>"#,
-    );
-    let urls: Vec<_> = page.pagination.urls.iter().map(PageUrl::as_str).collect();
-    assert_eq!(urls, ["https://www.school.example.edu/list?page=2"]);
+    for pager in [
+        r#"<a class="current_page">1</a><span>1/3</span>"#,
+        "第1页/<span>1</span><span>0</span>页",
+    ] {
+        let page = parse(
+            &base,
+            &format!(r#"<div class="pages">{pager}<a href="/list?page=2">下一页</a></div>"#),
+        );
+        let urls: Vec<_> = page.pagination.urls.iter().map(PageUrl::as_str).collect();
+        assert_eq!(
+            urls,
+            ["https://www.school.example.edu/list?page=2"],
+            "{pager}"
+        );
+    }
 }
 
 #[test]

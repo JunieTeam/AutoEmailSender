@@ -261,16 +261,22 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                             .and_then(|e| visible_text(e).parse::<u32>().ok())
                     };
                     let marked = marked_container(element);
+                    let counts = |text: &str| {
+                        let found = |pattern: &Regex| pattern.captures(text)?[1].parse().ok();
+                        let page = number(&CURRENT).or_else(|| found(&PAGE));
+                        page.zip(number(&TOTAL).or_else(|| found(&PAGES)))
+                            .or_else(|| {
+                                let found = PAGE_COUNTS.captures(text)?;
+                                Some((found[1].parse().ok()?, found[2].parse().ok()?))
+                            })
+                    };
+                    // Read apart, a pager's "1" beside its "1/3" is not "11/3", but a number drawn
+                    // in parts, as "1" and "0" of 10, is not 1: counts reading otherwise together
+                    // tell nothing.
                     let counts = (marked || group)
                         .then(|| {
-                            let text = visible_words(element);
-                            let found = |pattern: &Regex| pattern.captures(&text)?[1].parse().ok();
-                            let page = number(&CURRENT).or_else(|| found(&PAGE));
-                            page.zip(number(&TOTAL).or_else(|| found(&PAGES)))
-                                .or_else(|| {
-                                    let found = PAGE_COUNTS.captures(&text)?;
-                                    Some((found[1].parse().ok()?, found[2].parse().ok()?))
-                                })
+                            let apart = counts(&visible_words(element));
+                            apart.filter(|_| apart == counts(&visible_text(element)))
                         })
                         .flatten();
                     let recognized = marked || consecutive_links || counts.is_some();
