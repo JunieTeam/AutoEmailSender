@@ -1385,6 +1385,48 @@ async fn a_category_showing_one_teacher_s_page_is_not_where_their_page_is(db: Sq
     assert_eq!(profiles, 0);
 }
 
+#[tokio::test]
+async fn a_list_naming_its_teachers_leaves_its_index_of_initials_alone() {
+    // Each initial shows some of them, as scst.suda.edu.cn's 26 letters do; with no one named, the
+    // index is the way to them.
+    for (named, clicked) in [("<p>张三</p><p>李四</p>", 0), ("", 2)] {
+        let (dir, db) = test_fixtures::db::open().await.unwrap();
+        let site = Site::new().await;
+        let index = "<a href='javascript:void(0)' onclick=\"show('a')\">A</a>\
+            <a href='javascript:void(0)' onclick=\"show('b')\">B</a>";
+        site.page(
+            "/",
+            &format!("<title>教师名录</title>{named}<div>{index}</div>"),
+        );
+        let browser = Arc::new(FakeBrowser::default());
+        for name in ["张三", "李四"] {
+            browser.page(
+                &site.url("/"),
+                &format!("<title>教师名录</title><p>{name}</p><div>{index}</div>"),
+            );
+        }
+        let provider = Provider::start().await.unwrap();
+        let model = config(&db, &provider.address).await;
+        route_profiles(provider);
+        queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+        let pages = Pages {
+            writes: db::Writes::default(),
+            http: Fetcher::local(site.port),
+            browser: Some(browser.clone()),
+            recognize: super::recognize,
+        };
+        drain(&db, &pages).await;
+        let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY name")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+        assert_eq!(names, ["张三", "李四"], "{named}");
+        assert_eq!(browser.opened.lock().unwrap().len(), clicked, "{named}");
+        db.close().await;
+        dir.close().unwrap();
+    }
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_category_whose_first_page_reads_as_the_list_s_pages_on(db: SqlitePool) {
     // Its teachers come first in the whole list too, which goes on to another department's.

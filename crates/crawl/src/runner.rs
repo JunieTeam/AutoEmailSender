@@ -882,11 +882,18 @@ async fn interpret(
     };
     let mut next: Vec<PageUrl> = Vec::new();
     let mut clicks: Vec<String> = Vec::new();
+    // Told to leave an index of initials alone on a page naming its teachers, each initial
+    // showing some of them, the model still chose all of scst.suda.edu.cn's 26 letters, read in 62
+    // calls, more than the rest of the crawl took.
+    let index = |label: &str| {
+        !people.is_empty() && label.len() == 1 && label.as_bytes()[0].is_ascii_alphabetic()
+    };
     if kind != PageKind::Profile {
         let links = extract::links(&m);
         for n in route.next.iter().filter_map(|id| id.checked_sub(1)) {
-            if let Some((_, url)) = links.get(n) {
-                if scope.page((*url).clone()).is_ok()
+            if let Some((text, url)) = links.get(n) {
+                if !index(text)
+                    && scope.page((*url).clone()).is_ok()
                     && !m.pagination.urls.contains(url)
                     && !url.is_normalization_of(&c.url)
                     && !url.is_normalization_of(&m.url)
@@ -895,6 +902,7 @@ async fn interpret(
                     next.push((*url).clone());
                 }
             } else if let Some(control) = controls.get(n - links.len())
+                && !index(control)
                 && !clicks.contains(control)
             {
                 clicks.push(control.clone());
