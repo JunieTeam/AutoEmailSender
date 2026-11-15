@@ -592,23 +592,30 @@ fn a_bare_page_turn_beside_one_page_number_is_clicked() {
 #[test]
 fn a_pager_s_numbers_drawn_side_by_side_are_read_apart() {
     // A script draws its pager with nothing between the page it is on and the count beside it,
-    // which read "11/3" together; or draws the count in parts, "1" and "0" of 10, which read "1"
-    // and "0" apart.
+    // which read "11/3" together, past its own count: it is on the first of three, which a jump
+    // alone may lead on from. It may draw a count in parts, "1" and "0" of 10, which read "1/1"
+    // apart, or the rows a page shows beside it, which read "3/350" together: either way the count
+    // is not known, and the page is not taken for its last.
     let base = PageUrl::parse("https://www.school.example.edu/list?page=1").unwrap();
-    for pager in [
-        r#"<a class="current_page">1</a><span>1/3</span>"#,
-        "第1页/<span>1</span><span>0</span>页",
+    let pager = |count: &str, turn: &str| {
+        parse(&base, &format!(r#"<div class="pages">{count}{turn}</div>"#)).pagination
+    };
+    let next = r#"<a href="/list?page=2">下一页</a>"#;
+    let jump = r#"<input type="text" value="3"><button onclick="go()">跳转</button>"#;
+    for (count, page) in [
+        (r#"<a class="current_page">1</a><span>1/3</span>"#, Some(1)),
+        ("第1页/<span>1</span><span>0</span>页", None),
+        ("<span>3/3</span><span>50</span>条/页", None),
     ] {
-        let page = parse(
-            &base,
-            &format!(r#"<div class="pages">{pager}<a href="/list?page=2">下一页</a></div>"#),
-        );
-        let urls: Vec<_> = page.pagination.urls.iter().map(PageUrl::as_str).collect();
+        let read = pager(count, next);
+        let urls: Vec<_> = read.urls.iter().map(PageUrl::as_str).collect();
         assert_eq!(
             urls,
             ["https://www.school.example.edu/list?page=2"],
-            "{pager}"
+            "{count}"
         );
+        assert_eq!(read.page, page, "{count}");
+        assert_eq!(pager(count, jump).jump_only, page.is_some(), "{count}");
     }
 }
 

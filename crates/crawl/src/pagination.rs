@@ -271,12 +271,17 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                             })
                     };
                     // Read apart, a pager's "1" beside its "1/3" is not "11/3", but a number drawn
-                    // in parts, as "1" and "0" of 10, is not 1: counts reading otherwise together
-                    // tell nothing.
+                    // in parts, as "1" and "0" of 10, is not 1. A reading past its own count is
+                    // none; two others differing tell nothing, as "3/3" beside the 50 rows a page
+                    // shows reads "3/350" together.
                     let counts = (marked || group)
                         .then(|| {
-                            let apart = counts(&visible_words(element));
-                            apart.filter(|_| apart == counts(&visible_text(element)))
+                            let [apart, joined] = [visible_words(element), visible_text(element)]
+                                .map(|text| counts(&text).filter(|(page, total)| page <= total));
+                            match (apart, joined) {
+                                (Some(apart), Some(joined)) => (apart == joined).then_some(apart),
+                                (apart, joined) => apart.or(joined),
+                            }
                         })
                         .flatten();
                     let recognized = marked || consecutive_links || counts.is_some();
