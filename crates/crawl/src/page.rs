@@ -349,11 +349,14 @@ fn block(name: &str) -> bool {
     )
 }
 
-/// The page an `href` leads to; none when it is empty or a place within this page.
+/// The page an `href` leads to; none when it is empty, a place within this page or an address.
 fn linked(href: &str, base: &PageUrl, page: &PageUrl) -> Option<PageUrl> {
     let href = href.trim();
     let target = base.join(href).ok()?;
-    (!href.is_empty() && !(href.starts_with('#') && target == *page)).then_some(target)
+    (!href.is_empty()
+        && !(href.starts_with('#') && target == *page)
+        && EMAILS.href_addresses(href).is_empty())
+    .then_some(target)
 }
 
 fn navigation(script: &str, pattern: &Regex, base: &PageUrl, page: &PageUrl) -> Option<PageUrl> {
@@ -580,11 +583,9 @@ fn parse_page(
                 let found = (href
                     .map(|href| emails.mailto(href, element_index, current.text.len())))
                 .unwrap_or_default();
-                // An address where a link goes leads to no page.
-                let addressed = !found.is_empty();
                 // A page copied from a colleague's can keep the colleague's address in a link that
                 // shows nothing.
-                if addressed && shows_something(element) {
+                if !found.is_empty() && shows_something(element) {
                     current.emails.extend(found);
                 }
                 if let Some(encoded) = element.value().attr("data-cfemail")
@@ -645,9 +646,7 @@ fn parse_page(
                 {
                     documents.push(document);
                 }
-                let direct = href
-                    .filter(|_| !addressed)
-                    .and_then(|h| linked(h, base, url));
+                let direct = href.and_then(|h| linked(h, base, url));
                 let link = direct
                     .or_else(|| {
                         element

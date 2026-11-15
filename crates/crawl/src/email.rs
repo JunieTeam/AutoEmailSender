@@ -94,19 +94,25 @@ impl Emails {
     }
 
     pub fn mailto(&self, href: &str, element: usize, offset: usize) -> Vec<EmailEvidence> {
-        let evidence = |address| EmailEvidence {
-            address,
-            location: EmailLocation::Attribute {
-                element,
-                attribute: "href".into(),
-                raw: href.into(),
-                offset,
-            },
-            from_image: false,
-        };
+        (self.href_addresses(href).into_iter())
+            .map(|address| EmailEvidence {
+                address,
+                location: EmailLocation::Attribute {
+                    element,
+                    attribute: "href".into(),
+                    raw: href.into(),
+                    offset,
+                },
+                from_image: false,
+            })
+            .collect()
+    }
+
+    /// The addresses an `href` gives in place of a page.
+    pub fn href_addresses(&self, href: &str) -> Vec<String> {
         // Cloudflare's email protection replaces a mailto link with this one.
         if let Some((_, encoded)) = href.split_once("/cdn-cgi/l/email-protection#") {
-            return cloudflare(encoded).map(evidence).into_iter().collect();
+            return cloudflare(encoded).into_iter().collect();
         }
         let addresses = match href.split_once(':') {
             Some((scheme, rest)) if scheme.eq_ignore_ascii_case("mailto") => {
@@ -118,9 +124,8 @@ impl Emails {
             _ => return Vec::new(),
         };
         let addresses = percent_encoding::percent_decode_str(addresses).decode_utf8_lossy();
-        self.text(&addresses)
-            .into_iter()
-            .map(|found| evidence(found.address))
+        (self.text(&addresses).into_iter())
+            .map(|found| found.address)
             .collect()
     }
 }

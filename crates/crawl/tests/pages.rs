@@ -702,6 +702,18 @@ fn fallback_keeps_document_order_and_ignores_hidden_executable_content() {
 }
 
 #[test]
+fn a_scripted_list_giving_only_an_address_in_its_place_needs_a_browser() {
+    // Its script fills in the teachers where it now gives the office's address in place of a page.
+    let page = parse(
+        &url(),
+        "<a href='/retired'>退休教师</a>\
+        <div class='teacher-box'><a href='office@school.example.edu'>学院办公室</a></div>\
+        <script src='search_teacher.js'></script>",
+    );
+    assert_eq!(page.needs_browser, Some(BrowserReason::JavaScript));
+}
+
+#[test]
 fn real_challenge_and_dynamic_directory_need_browser() {
     let challenge = response_material(
         &url(),
