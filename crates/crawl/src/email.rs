@@ -113,8 +113,8 @@ impl Emails {
                 rest.split('?').next().unwrap_or_default()
             }
             // Written with no mailto:, as “邮箱：a@b.edu.cn”, an address is still one; with a
-            // path, one is part of a page's.
-            None if !href.contains('/') => href,
+            // path, query or fragment, one is part of a page's.
+            None if !href.contains(['/', '?', '#']) => href,
             _ => return Vec::new(),
         };
         let addresses = percent_encoding::percent_decode_str(addresses).decode_utf8_lossy();
