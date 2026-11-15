@@ -349,11 +349,14 @@ fn block(name: &str) -> bool {
     )
 }
 
-/// The page an `href` leads to; none when it is empty, a place within this page or an address.
+/// The page an `href` leads to; none when it is empty, a place within this page, an address or
+/// markup, as no address writes a quote or an angle bracket: one left empty unquoted, as in
+/// `href= target="blank"`, takes what follows it for its value.
 fn linked(href: &str, base: &PageUrl, page: &PageUrl) -> Option<PageUrl> {
     let href = href.trim();
     let target = base.join(href).ok()?;
     (!href.is_empty()
+        && !href.contains(['"', '<', '>'])
         && !(href.starts_with('#') && target == *page)
         && EMAILS.href_addresses(href).is_empty())
     .then_some(target)
