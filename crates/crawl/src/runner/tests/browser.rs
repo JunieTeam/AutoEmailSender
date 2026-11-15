@@ -821,6 +821,84 @@ async fn a_page_leading_only_a_link_too_far_is_read_in_the_browser(db: SqlitePoo
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_read_again_with_an_address_its_scripts_fill_in_is_read_again(db: SqlitePool) {
+    // Over HTTP its address link leads nowhere, which the model takes for no teacher's line.
+    let site = Site::new().await;
+    site.page("/", "<title>教师名录</title><p>张三 <a>邮箱</a></p>");
+    let browser = Arc::new(FakeBrowser::default());
+    browser.page(
+        &site.url("/"),
+        "<title>教师名录</title><p>张三 <a href='mailto:a@school.example.edu'>邮箱</a></p>",
+    );
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let data = request.body["messages"][1]["content"].as_str().unwrap();
+            let output = if system.starts_with("你整理学院") {
+                json!({"kind": "list", "next": []})
+            } else if data.contains("a@school.example.edu") {
+                json!({"people": [listed("张三", None, vec!["a@school.example.edu"])]})
+            } else {
+                json!({"people": []})
+            };
+            (request.respond)
+                .send(Response::answer(&output.to_string()))
+                .ok();
+        }
+    });
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let emails: Vec<String> = sqlx::query_scalar("SELECT emails FROM candidate")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(emails, [r#"["a@school.example.edu"]"#]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_page_the_browser_finds_moved_to_its_link_does_not_lead_on_to_itself(db: SqlitePool) {
+    // Two links from the start, its scripts take it to the address it links.
+    let site = Site::new().await;
+    site.page("/", "<title>首页</title><a href='/szdw'>师资队伍</a>");
+    site.page(
+        "/szdw",
+        "<title>师资队伍</title><a href='/catalog'>教师名录</a>",
+    );
+    let catalog = "<title>教师名录</title><a href='/canonical'>教师名录</a><h3>无内容</h3>";
+    site.page("/catalog", catalog);
+    let browser = Arc::new(FakeBrowser::default());
+    browser.page(&site.url("/canonical"), catalog);
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "entry");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    assert_eq!(
+        *browser.opened.lock().unwrap(),
+        [site.url("/catalog").as_str()]
+    );
+    let limits: String = sqlx::query_scalar("SELECT limits FROM crawl")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(limits, "[]");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_list_read_again_as_it_was_but_for_controls_is_routed_again(db: SqlitePool) {
     // Its scripts make the category written over HTTP one to click.
     let site = Site::new().await;

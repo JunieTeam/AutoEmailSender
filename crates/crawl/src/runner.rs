@@ -698,10 +698,14 @@ async fn read(
     }
 }
 
-/// What the model is given of a page opened as it was found, looking for lists.
+/// What the model is asked of a page opened as it was found, looking for lists, with where the
+/// page is and where the links it numbers go.
 fn seen<'m>(m: &'m Material, scope: &Scope) -> impl PartialEq + 'm {
-    let units: Vec<_> = m.units.iter().map(|u| (&u.text, &u.links)).collect();
-    (units, extract::routing(m, scope, &m.controls))
+    let parts: Vec<_> = (extract::segments(m).into_iter())
+        .map(|range| extract::data(m, range))
+        .collect();
+    let routing = extract::routing(m, scope, &m.controls);
+    (&m.url, extract::links(m), routing, parts)
 }
 
 /// The school and college a crawl from a website found its pages to belong to.
