@@ -531,6 +531,16 @@ fn a_pager_s_counts_beside_its_controls_end_all_of_them_on_its_last_page() {
 }
 
 #[test]
+fn a_pager_offering_only_to_jump_to_a_page_needs_no_browser() {
+    // A list of chem.scu.edu.cn on one page: its page turns are plain text, and only the control
+    // jumping to the page written in the box beside it acts, which no browser can replay either.
+    let base = PageUrl::parse("https://chem.scu.edu.cn/szll/szdwgk/ys.htm").unwrap();
+    let page = parse(&base, include_str!("pages/scu-ys.html"));
+    assert_eq!(page.needs_browser, None);
+    assert!(page.pagination.urls.is_empty() && page.pagination.buttons.is_empty());
+}
+
+#[test]
 fn last_page_placeholders_do_not_require_browser_pagination() {
     let base = PageUrl::parse("https://cyber.seu.edu.cn/yjsds_22371/list4.htm").unwrap();
     let html = include_str!("pages/seu.html")

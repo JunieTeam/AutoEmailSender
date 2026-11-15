@@ -321,24 +321,25 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
             if link.website() == url.website() && link != url && !pagination.urls.contains(link) {
                 pagination.urls.push(link.clone());
             }
-        } else if !matches!(control.kind, Kind::Backward | Kind::First)
+        } else if !matches!(control.kind, Kind::Backward | Kind::First | Kind::Jump)
             && scripted(control.element, has_scripts)
         {
+            // A jump goes to the page written in the box beside it, which no click replays: a
+            // pager with more pages offers the next one too, and one offering nothing else has
+            // none.
             pagination.needs_browser = true;
-            if !matches!(control.kind, Kind::Jump) {
-                let page = match control.kind {
-                    Kind::Number(n) => Some(n),
-                    Kind::Last => counted.and_then(|c| c.last_page),
-                    _ => None,
-                };
-                if (!matches!(control.kind, Kind::Last) || page.is_some())
-                    && !pagination.buttons.iter().any(|b| b.control == control.text)
-                {
-                    pagination.buttons.push(crate::page::ButtonPage {
-                        page,
-                        control: control.text.clone(),
-                    });
-                }
+            let page = match control.kind {
+                Kind::Number(n) => Some(n),
+                Kind::Last => counted.and_then(|c| c.last_page),
+                _ => None,
+            };
+            if (!matches!(control.kind, Kind::Last) || page.is_some())
+                && !pagination.buttons.iter().any(|b| b.control == control.text)
+            {
+                pagination.buttons.push(crate::page::ButtonPage {
+                    page,
+                    control: control.text.clone(),
+                });
             }
         }
     }
