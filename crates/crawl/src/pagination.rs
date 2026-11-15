@@ -189,8 +189,6 @@ struct Context<'a> {
     consecutive: bool,
     /// The page it is on and how many it counts.
     counts: Option<(u32, u32)>,
-    /// It shows one page's number and no other.
-    alone: bool,
 }
 
 static CURRENT: LazyLock<Selector> = LazyLock::new(|| {
@@ -294,7 +292,6 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                         recognized,
                         consecutive,
                         counts,
-                        alone: recognized && numbers.len() == 1,
                     });
                     contexts.len() - 1
                 };
@@ -351,9 +348,6 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
             pagination.jump_only |= counted.is_some();
         } else if !matches!(control.kind, Kind::Backward | Kind::First)
             && scripted(control.element, has_scripts)
-            // A site writing each page to its own file links the next from its page turns,
-            // leaving them bare where there is none, as beside a list's one page number.
-            && !(bare(control.element) && context.is_some_and(|c| c.alone))
         {
             pagination.needs_browser = true;
             let page = match control.kind {
@@ -403,15 +397,6 @@ pub(crate) fn clickable(controls: &[Control<'_>], has_scripts: bool) -> Vec<Stri
         })
         .map(|c| c.text.clone())
         .collect()
-}
-
-/// A link to nowhere that says nothing of a script acting on it.
-fn bare(element: ElementRef<'_>) -> bool {
-    let value = element.value();
-    value.name() == "a"
-        && ["href", "onclick", "role"]
-            .iter()
-            .all(|a| value.attr(a).is_none())
 }
 
 /// Leads nowhere by itself, so that only a script acts on it.

@@ -541,20 +541,30 @@ fn a_pager_offering_only_to_jump_to_a_page_needs_no_browser() {
 }
 
 #[test]
-fn a_pager_showing_its_one_page_alone_needs_no_browser() {
-    // A list of cs.bit.edu.cn on one page. The site links each page from its page turns, which on
-    // the last page are bare links beside its number.
+fn a_bare_page_turn_beside_one_page_number_is_clicked() {
+    // A list of cs.bit.edu.cn on one page, which leaves its page turns bare where there is no page
+    // to link, and a pager showing the one page it is on and that there are three, whose script
+    // binds its bare page turn: only a click tells whether a page follows.
     let base = PageUrl::parse("https://cs.bit.edu.cn/szdw/jcrc/ys/index.htm").unwrap();
-    let page = parse(&base, include_str!("pages/bit-ys.html"));
-    assert_eq!(page.needs_browser, None);
-    assert!(page.pagination.urls.is_empty() && page.pagination.buttons.is_empty());
-    // A script's pager offering other pages too goes on to them.
-    let page = parse(
-        &base,
-        r#"<div class="pages"><a class="number on_page">1</a><a class="number">2</a>
-        <a class="next">&gt;</a></div><script>bind('.pages a')</script>"#,
-    );
-    assert_eq!(page.needs_browser, Some(BrowserReason::Pagination));
+    for (name, html) in [
+        ("bit-ys", include_str!("pages/bit-ys.html")),
+        (
+            "bound",
+            r#"<div class="pages"><a class="current_page">1</a><span>1/3</span><a class="next">&gt;</a>
+            </div><script>document.querySelector('.next').addEventListener('click', next)</script>"#,
+        ),
+    ] {
+        let page = parse(&base, html);
+        assert_eq!(
+            page.needs_browser,
+            Some(BrowserReason::Pagination),
+            "{name}"
+        );
+        let buttons: Vec<_> = (page.pagination.buttons.iter())
+            .map(|b| b.control.as_str())
+            .collect();
+        assert_eq!(buttons, [">"], "{name}");
+    }
 }
 
 #[test]
