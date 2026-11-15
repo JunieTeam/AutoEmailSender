@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO candidate_profile(candidate_id, crawl_id, url, mismatched_at)\n        SELECT c.id, c.crawl_id, u.value, ?3\n        FROM candidate c, json_each(?2) u\n        WHERE c.id = ?1\n        ON CONFLICT (candidate_id, url) DO UPDATE SET mismatched_at = excluded.mismatched_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "32a41d7670defa375a0dc5e914c561d0ef89f9a74c64974a3f222e222e4d82da"
+}

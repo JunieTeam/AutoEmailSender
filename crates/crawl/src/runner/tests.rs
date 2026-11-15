@@ -1402,6 +1402,60 @@ async fn a_teacher_s_page_linked_over_http_and_https_is_one_page(db: SqlitePool)
     assert_eq!(names, ["何世文", "贺文"]);
 }
 
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_page_proved_not_someone_s_is_not_theirs_over_a_scheme_linked_later(db: SqlitePool) {
+    let url = PageUrl::parse("https://school.example.edu/szdw").unwrap();
+    let config = config(&db, "http://127.0.0.1:1").await;
+    let crawl = queue::start(&db, std::slice::from_ref(&url), config, 1)
+        .await
+        .unwrap();
+    let page = queue::next(&db).await.unwrap().unwrap();
+    let wrong =
+        |scheme: &str| PageUrl::parse(&format!("{scheme}://school.example.edu/wrong")).unwrap();
+    let person = |name: &str, scheme: &str, emails: &[&str]| Person {
+        fields: MentorFields {
+            name: name.into(),
+            emails: emails.iter().map(|&e| e.into()).collect(),
+            homepages: vec![wrong(scheme).as_str().into()],
+            ..Default::default()
+        },
+        papers: vec![],
+        profile: Some(wrong(scheme)),
+        recognized: vec![],
+    };
+    let zhang = ["z@school.example.edu"];
+    let mut tx = db.begin_with("BEGIN IMMEDIATE").await.unwrap();
+    let source = review::Source::List { id: page.id };
+    (review::save(
+        &mut tx,
+        crawl,
+        source,
+        url.as_str(),
+        person("张三", "https", &zhang),
+    )
+    .await)
+        .unwrap();
+    let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM candidate")
+        .fetch_all(&mut *tx)
+        .await
+        .unwrap();
+    // Read over https, the page proves not to be his; another list then links him to it over
+    // http, and a third gives it to its teacher over https.
+    review::mismatched(&mut tx, ids[0], &[wrong("https").as_str()], 2)
+        .await
+        .unwrap();
+    for p in [person("张三", "http", &zhang), person("李四", "https", &[])] {
+        let source = review::Source::List { id: page.id };
+        (review::save(&mut tx, crawl, source, url.as_str(), p).await).unwrap();
+    }
+    tx.commit().await.unwrap();
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY id")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三", "李四"]);
+}
+
 /// A site whose `/` lists 张三 at `/info/1/7.htm` and links `/boshi`, which lists him again at
 /// `/info/2/8.htm`.
 async fn columns() -> Site {
@@ -2051,6 +2105,15 @@ fn observed(name: &str, emails: &[&str], research: Option<&str>) -> MentorFields
         ..Default::default()
     }
 }
+/// The links `links` gives for pages at `urls` proved not to be the candidate's: each over either
+/// scheme.
+fn proved_not(urls: &[&str]) -> Vec<(String, bool)> {
+    let mut links: Vec<_> = (crate::url::both_schemes(urls).into_iter())
+        .map(|url| (url, true))
+        .collect();
+    links.sort();
+    links
+}
 async fn links(db: &SqlitePool, candidate: i64) -> (Option<String>, Vec<(String, bool)>) {
     let profile = sqlx::query_scalar("SELECT profile_url FROM candidate WHERE id = ?")
         .bind(candidate)
@@ -2195,10 +2258,11 @@ async fn b3_redirect_to_another_person_must_not_merge(db: SqlitePool) {
         serde_json::to_value(review::detail(&db, ids[0]).await.unwrap()).unwrap(),
         expected
     );
+    // Nor is 李四's page it ended at his.
     let old_zhang = site.url("/old-zhang").as_str().to_owned();
     assert_eq!(
         links(&db, ids[0]).await,
-        (None, vec![(old_zhang.clone(), true)])
+        (None, proved_not(&[&old_zhang, site.url("/li").as_str()]))
     );
     let detail = queue::detail(&db, root.crawl, 1, false)
         .await
@@ -2262,17 +2326,17 @@ async fn b3_redirect_to_another_person_must_not_merge(db: SqlitePool) {
             .status,
         PageStatus::Success
     );
-    // Read for him again, the page proves his own, and the link is his again.
-    assert_eq!(
-        links(&db, ids[0]).await,
-        (
-            Some(old_zhang.clone()),
-            vec![
-                (old_zhang, false),
-                (site.url("/zhang").as_str().to_owned(), false)
-            ]
-        )
+    // Read for him again, the page proves his own, and the link is his again over either scheme;
+    // 李四's page stays not his.
+    let mut expected = proved_not(&[site.url("/li").as_str()]);
+    expected.extend(
+        crate::url::both_schemes(&[&old_zhang])
+            .into_iter()
+            .chain([site.url("/zhang").as_str().to_owned()])
+            .map(|url| (url, false)),
     );
+    expected.sort();
+    assert_eq!(links(&db, ids[0]).await, (Some(old_zhang), expected));
     server.abort();
 }
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -2315,7 +2379,7 @@ async fn a_link_found_not_to_be_theirs_is_read_again_for_whom_another_list_gives
         links(&db, li).await,
         (Some(link.clone()), vec![(link.clone(), false)])
     );
-    assert_eq!(links(&db, zhang).await, (None, vec![(link.clone(), true)]));
+    assert_eq!(links(&db, zhang).await, (None, proved_not(&[&link])));
     let li = review::detail(&db, li).await.unwrap().unwrap().candidate;
     assert_eq!(li.fields.emails, ["li@example.edu"]);
     assert_eq!(li.fields.homepages, [link]);
@@ -2388,7 +2452,7 @@ async fn a_page_counts_for_whom_its_candidate_merges_into_while_it_is_read(db: S
         .candidate;
     assert!(a.fields.emails.contains(&"zhang@example.edu".to_owned()));
     let wang_link = site.url("/wang").as_str().to_owned();
-    assert_eq!(links(&db, ids[1]).await, (None, vec![(wang_link, true)]));
+    assert_eq!(links(&db, ids[1]).await, (None, proved_not(&[&wang_link])));
     let b = review::detail(&db, ids[1])
         .await
         .unwrap()
@@ -2705,10 +2769,12 @@ async fn b3_same_request_changed_destination_must_not_merge(db: SqlitePool) {
             .fetch_all(&db)
             .await
             .unwrap();
-    assert_eq!(
-        identities,
-        vec![site.url("/old").as_str(), site.url("/zhang").as_str()]
-    );
+    // His page stays his; the link and 李四's page it ends at now are not, over either scheme.
+    let mut expected =
+        crate::url::both_schemes(&[site.url("/old").as_str(), site.url("/li").as_str()]);
+    expected.push(site.url("/zhang").as_str().to_owned());
+    expected.sort();
+    assert_eq!(identities, expected);
     let detail = queue::detail(&db, root.crawl, 1, false)
         .await
         .unwrap()

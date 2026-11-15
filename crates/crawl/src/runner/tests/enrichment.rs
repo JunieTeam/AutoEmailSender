@@ -808,7 +808,11 @@ async fn a_link_proved_not_theirs_is_no_homepage_when_a_retry_is_unsure(db: Sqli
     let result = process_answer(&db, &site, &mut p, &retry, a).await;
     save(&db, &retry, &result).await.unwrap();
     assert!(detail(&db, id).await.candidate.fields.homepages.is_empty());
-    assert_eq!(links(&db, id).await, (None, vec![(link, true)]));
+    let reached = site.url("/v");
+    assert_eq!(
+        links(&db, id).await,
+        (None, proved_not(&[&link, reached.as_str()]))
+    );
 }
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn enrichment_redirect_checks_identity_and_merged_candidate_discards_results(db: SqlitePool) {
@@ -887,7 +891,7 @@ async fn enrichment_redirect_checks_identity_and_merged_candidate_discards_resul
             assert!(d.candidate.fields.homepages.is_empty(), "{path}");
             assert_eq!(
                 links(&db, id).await,
-                (None, urls.map(|url| (url, true)).to_vec()),
+                (None, proved_not(&urls.each_ref().map(String::as_str))),
                 "{path}"
             );
         }

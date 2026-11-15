@@ -1001,15 +1001,17 @@ pub(crate) async fn mismatched(
     urls: &[&str],
     at: i64,
 ) -> Result<(), sqlx::Error> {
-    // What a page proves holds for its link over either scheme.
+    // What a page proves holds for its link over either scheme, which a later list may give.
     let urls = both_schemes(urls);
     sqlx::query!(
-        r#"UPDATE candidate_profile
-        SET mismatched_at = ?
-        WHERE candidate_id = ? AND url IN (SELECT value FROM json_each(?))"#,
-        at,
+        r#"INSERT INTO candidate_profile(candidate_id, crawl_id, url, mismatched_at)
+        SELECT c.id, c.crawl_id, u.value, ?3
+        FROM candidate c, json_each(?2) u
+        WHERE c.id = ?1
+        ON CONFLICT (candidate_id, url) DO UPDATE SET mismatched_at = excluded.mismatched_at"#,
         candidate,
-        Json(&urls)
+        Json(&urls),
+        at
     )
     .execute(&mut *conn)
     .await?;
