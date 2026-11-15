@@ -1050,15 +1050,27 @@ async fn a_list_a_link_too_far_at_another_address_is_read_once_though_its_menu_l
 #[tokio::test]
 async fn a_list_a_link_too_far_linking_its_teacher_s_page_elsewhere_is_read() {
     // Its teachers' pages are read from it, a link too far or not, whether the list read before
-    // linked another page of theirs or none, linking back to itself.
-    for (old, read) in [("/old", vec!["/new", "/old"]), ("/szdw", vec!["/new"])] {
+    // linked another page of theirs or none, linking back to itself, and whether the link names
+    // them or not, as a card's 个人主页 under their name, or names them spaced out.
+    let cards = [
+        ("<p><a href='PROFILE'>张三</a></p>", "张三"),
+        (
+            "<article><p>张三</p><p><a href='PROFILE'>个人主页</a></p></article>",
+            "个人主页",
+        ),
+        ("<p><a href='PROFILE'>张 三</a></p>", "张 三"),
+    ];
+    let lists: [(&str, &[&str]); 2] = [("/old", &["/new", "/old"]), ("/szdw", &["/new"])];
+    for (&(card, label), &(old, read)) in
+        (cards.iter()).flat_map(|card| lists.iter().map(move |list| (card, list)))
+    {
         let (dir, db) = test_fixtures::db::open().await.unwrap();
         let site = Site::new().await;
         site.page("/", "<title>首页</title><a href='/szdw'>在职教师</a>");
         let list = |profile| {
             format!(
-                "<title>在职教师</title><a href='/t1/szdw'>全体教师</a>\
-                <p><a href='{profile}'>张三</a></p>"
+                "<title>在职教师</title><a href='/t1/szdw'>全体教师</a>{}",
+                card.replace("PROFILE", profile)
             )
         };
         site.page("/szdw", &list(old));
@@ -1086,7 +1098,7 @@ async fn a_list_a_link_too_far_linking_its_teacher_s_page_elsewhere_is_read() {
                     json!({"kind": kind, "next": next})
                 } else if system.starts_with("你从教师") {
                     let text = data.to_string();
-                    let link = (text.split("[张三](").nth(1))
+                    let link = (text.split(&format!("[{label}](")).nth(1))
                         .and_then(|rest| rest.split(')').next()?.parse::<usize>().ok());
                     json!({"people": [listed("张三", link, vec![])]})
                 } else {
@@ -1116,7 +1128,7 @@ async fn a_list_a_link_too_far_linking_its_teacher_s_page_elsewhere_is_read() {
             .iter()
             .map(|p| site.url(p).as_str().to_owned())
             .collect();
-        assert_eq!(urls, read, "{old}");
+        assert_eq!(urls, read, "{card} {old}");
         db.close().await;
         dir.close().unwrap();
     }

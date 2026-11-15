@@ -716,10 +716,10 @@ fn seen<'m>(m: &'m Material, scope: &Scope) -> impl PartialEq + 'm {
 /// What the crawl read a page as already that reads as `m` does, as near its start and offering
 /// as much to click, so that this one gives nothing more: a category showing nothing new when
 /// clicked, or a list at another address. One read a link too far follows only the links it gives
-/// its teachers, which are in the blocks naming them, and where the others lead does not tell one
-/// this far from another: a list's other address can link its site's pages at others too. Read over
-/// HTTP, `m` is compared only with pages read so: scripts filling in one may fill in the other
-/// otherwise.
+/// its teachers, which the same blocks give them by the same numbers, and where the others lead
+/// does not tell one this far from another: a list's other address can link its site's pages at
+/// others too. Read over HTTP, `m` is compared only with pages read so: scripts filling in one may
+/// fill in the other otherwise.
 async fn read_before(
     db: &SqlitePool,
     c: &Claim,
@@ -729,9 +729,11 @@ async fn read_before(
     let text = compared(c, m);
     let clicked = !c.steps.is_empty();
     let last = c.depth >= queue::LIST_DEPTH;
-    // Pages saved before their text was written as JSON are compared as they are. Where a link in a
-    // block naming a teacher the crawl found leads elsewhere, this one may give another page of
-    // theirs: blocks write the links in them as `[text](number)`.
+    // Pages saved before their text was written as JSON are compared as they are. Where a link that
+    // was a teacher's page on the other leads elsewhere, this one gives another page of theirs, and
+    // so may one there leading to that page itself, which is nobody's, unless this one does too.
+    // Each link is paired with this page's by its number: joining the two `json_each` would
+    // compare every pair.
     let kind = sqlx::query_scalar!(
         r#"SELECT kind AS "kind: PageKind"
         FROM crawl_page
@@ -741,11 +743,13 @@ async fn read_before(
         AND (text = ?3 OR ?8 AND CASE WHEN json_valid(text) THEN
             json_remove(text, '$.links') = json_remove(?3, '$.links') AND NOT EXISTS (
                 SELECT 1
-                FROM json_each(text, '$.links') old
-                JOIN json_each(?3, '$.links') new ON new.key = old.key AND new.value != old.value
-                JOIN json_each(?3, '$.blocks') block
-                    ON instr(block.value, '](' || (new.key + 1) || ')')
-                JOIN candidate teacher ON teacher.crawl_id = ?1 AND instr(block.value, teacher.name)
+                FROM (
+                    SELECT value AS old, json_extract(?3, '$.links[' || key || ']') AS new
+                    FROM json_each(text, '$.links')
+                )
+                WHERE new != old
+                AND (old IN (SELECT url FROM candidate_profile WHERE crawl_id = ?1)
+                    OR old = crawl_page.url AND new != ?9)
             )
         END)
         ORDER BY kind = 'list' DESC
@@ -757,7 +761,8 @@ async fn read_before(
         c.depth,
         clicked,
         rendered,
-        last
+        last,
+        m.url.as_str()
     )
     .fetch_optional(db)
     .await
