@@ -701,6 +701,125 @@ async fn a_list_that_shows_no_teacher_over_http_is_read_in_the_browser(db: Sqlit
     responder.abort();
 }
 
+/// Answers routing with `kind` and every link offered, and lists whichever of 张三 and 李四 a page
+/// names; gives the titles of the pages routed.
+fn route_all(mut provider: Provider, kind: &'static str) -> Arc<Mutex<Vec<String>>> {
+    let routed = Arc::new(Mutex::new(Vec::new()));
+    let titles = routed.clone();
+    tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let data = request.body["messages"][1]["content"].as_str().unwrap();
+            let data: Value = serde_json::from_str(data).unwrap();
+            let output = if system.starts_with("你整理学院") {
+                titles
+                    .lock()
+                    .unwrap()
+                    .push(data["title"].as_str().unwrap().into());
+                let next: Vec<_> = offered(&data).into_iter().map(|(_, n)| n).collect();
+                json!({"kind": kind, "next": next})
+            } else {
+                let text = data.to_string();
+                let people: Vec<_> = (["张三", "李四"].into_iter())
+                    .filter(|name| text.contains(name))
+                    .map(|name| listed(name, None, vec![]))
+                    .collect();
+                json!({ "people": people })
+            };
+            request
+                .respond
+                .send(Response::answer(&output.to_string()))
+                .ok();
+        }
+    });
+    routed
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_filled_in_by_scripts_is_read_in_the_browser_though_it_links_others(db: SqlitePool) {
+    // As math.nankai.edu.cn lists its teachers in post by a search script, beside links to its
+    // other lists; an empty category shows as it did.
+    let site = Site::new().await;
+    let retired = "<a href='/retired'>退休教师</a>";
+    site.page(
+        "/",
+        &format!("<title>在职教师</title>{retired}<div id='list'></div>"),
+    );
+    site.page("/assistant", &format!("<title>助教</title>{retired}"));
+    site.page("/retired", "<title>退休教师</title><p>李四</p>");
+    let browser = Arc::new(FakeBrowser::default());
+    browser.page(
+        &site.url("/"),
+        &format!("<title>在职教师</title>{retired}<p>张三</p>"),
+    );
+    browser.page(
+        &site.url("/assistant"),
+        &format!("<title>助教</title>{retired}"),
+    );
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let routed = route_all(provider, "list");
+    let starts = [site.url("/"), site.url("/assistant")];
+    queue::start(&db, &starts, model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY name")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三", "李四"]);
+    assert_eq!(
+        *browser.opened.lock().unwrap(),
+        starts.map(|url| url.as_str().to_owned())
+    );
+    let routed = routed.lock().unwrap();
+    assert_eq!(routed.iter().filter(|title| *title == "助教").count(), 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_page_a_link_too_far_to_click_is_read_in_the_browser(db: SqlitePool) {
+    // As econ.fudan.edu.cn's teachers in post, two links from its home page, which over HTTP only
+    // offers ways to sort them.
+    let site = Site::new().await;
+    site.page("/", "<title>首页</title><a href='/szdw'>师资队伍</a>");
+    site.page(
+        "/szdw",
+        "<title>师资队伍</title><a href='/szdw/zzjs'>在职教师</a>",
+    );
+    site.page(
+        "/szdw/zzjs",
+        "<title>在职教师</title><ul><li onclick=\"sort('name')\">按拼音排序</li></ul>\
+        <h3>无内容</h3>",
+    );
+    let browser = Arc::new(FakeBrowser::default());
+    browser.page(
+        &site.url("/szdw/zzjs"),
+        "<title>在职教师</title><p>张三</p>",
+    );
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "entry");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三"]);
+    assert_eq!(*browser.steps.lock().unwrap(), [Vec::<PageStep>::new()]);
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_profile_that_shows_no_teacher_over_http_is_read_in_the_browser(db: SqlitePool) {
     let site = Site::new().await;

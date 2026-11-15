@@ -325,15 +325,6 @@ impl Page {
             filled: None,
         }
     }
-    /// Gives no one and leads nowhere.
-    fn is_empty(&self) -> bool {
-        let p = &self.material.pagination;
-        self.people.is_empty()
-            && self.next.is_empty()
-            && self.clicks.is_empty()
-            && p.urls.is_empty()
-            && p.buttons.is_empty()
-    }
 }
 enum Outcome {
     Done(Box<Page>),
@@ -677,12 +668,24 @@ async fn read(
         .await;
     }
     let page = interpret(&reader, &scope, m, unit.as_ref()).await?;
-    // A list that loads its teachers with scripts gives none over HTTP: read it in the browser,
-    // which fails the page when it shows nothing either.
+    // A list that loads its teachers with scripts gives none over HTTP, though its menu may link
+    // other lists. Another page is read again only when it leads nowhere, as an entry links to
+    // the lists it is for or shows them by its controls, unless they are a link too far.
+    let leads = !page.next.is_empty() || (!page.clicks.is_empty() && c.depth < queue::LIST_DEPTH);
     if !rendered
-        && page.is_empty()
+        && page.people.is_empty()
+        && (page.kind == PageKind::List || !leads)
         && let Some(material) = fetcher.render_again(db, c, &target, &page.material).await?
     {
+        // What its scripts left as it was reads as it did.
+        if (material.units.iter().map(|u| (&u.text, &u.links))).eq(page
+            .material
+            .units
+            .iter()
+            .map(|u| (&u.text, &u.links)))
+        {
+            return Ok(page);
+        }
         return interpret(&reader, &scope, material, unit.as_ref()).await;
     }
     Ok(page)
@@ -1158,7 +1161,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                 }
             } else {
                 for url in &p.next {
-                    if c.depth < 2 {
+                    if c.depth < queue::LIST_DEPTH {
                         queue::enqueue(
                             &mut tx,
                             c.crawl,
@@ -1178,7 +1181,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                         page: None,
                         control: control.clone(),
                     }];
-                    if c.depth < 2 {
+                    if c.depth < queue::LIST_DEPTH {
                         queue::enqueue_steps(
                             &mut tx,
                             c.crawl,

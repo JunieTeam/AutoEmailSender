@@ -11,6 +11,9 @@ use ts_rs::TS;
 
 pub const LIST_LIMIT: i64 = 60;
 pub const PERSON_LIMIT: i64 = 1000;
+/// How many links from where a crawl starts it follows to find lists; a part a click shows counts
+/// as one more.
+pub(crate) const LIST_DEPTH: i64 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS, sqlx::Type)]
 #[serde(rename_all = "snake_case")]

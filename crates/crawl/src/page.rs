@@ -21,7 +21,7 @@ pub enum BrowserReason {
     Click,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Link {
     pub text: String,
     pub url: PageUrl,
