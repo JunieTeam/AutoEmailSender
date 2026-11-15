@@ -502,23 +502,27 @@ pub fn listed(
     scope: &Scope,
     unit: Option<&Affiliation>,
 ) -> Result<Vec<Person>, String> {
+    let text = compact(&m.text());
+    // Whom the page does not name is none of its people, and has no say in theirs.
+    let people: Vec<_> = (people.iter())
+        .filter(|p| text.contains(&compact(&p.name)))
+        .collect();
     let names: Vec<_> = people
         .iter()
         .map(|p| p.name.trim())
         .filter(|n| !n.is_empty())
         .collect();
     let all = links(m);
-    let text = compact(&m.text());
     let linked = |p: &Listed| {
         (p.profile.and_then(|id| id.checked_sub(1)))
             .and_then(|n| all.get(n))
             .map(|(_, u)| *u)
     };
     let same = |a: &str, b: &str| compact(&comparable(a)) == compact(&comparable(b));
+    let alike = |a: &PageUrl, b: &PageUrl| a.is_normalization_of(b) || b.is_normalization_of(a);
     people
         .iter()
-        .filter(|p| text.contains(&compact(&p.name)))
-        .map(|p| {
+        .map(|&p| {
             let name = p.name.trim();
             let emails = p
                 .emails
@@ -530,9 +534,9 @@ pub fn listed(
             // would make them one person, and so is the list's own.
             let profile = linked(p)
                 .filter(|u| {
-                    !(people.iter()).any(|o| linked(o) == Some(*u) && !same(&o.name, &p.name))
-                        && !u.is_normalization_of(&m.url)
-                        && !m.url.is_normalization_of(u)
+                    !(people.iter())
+                        .any(|o| linked(o).is_some_and(|v| alike(v, u)) && !same(&o.name, &p.name))
+                        && !alike(u, &m.url)
                 })
                 .filter(|u| scope.linked_profile(m, u).is_ok())
                 .cloned();
@@ -773,16 +777,19 @@ mod tests {
 
     #[test]
     fn a_link_given_to_teachers_of_different_names_is_none_of_theirs() {
-        // As ie.ncu.edu.cn's list was read, 13 of its teachers given one system's home page.
+        // As ie.ncu.edu.cn's list was read, 13 of its teachers given one system's home page; a
+        // page over either scheme is one.
         let url = PageUrl::parse("https://ie.example.edu/szdw/fwtd.htm").unwrap();
         let page = crate::parse(
             &url,
             "<a href='/system'>办公系统</a><p>张三</p><p>李四</p>\
-            <p><a href='/t/wang'>王五</a></p><p>王 五</p>",
+            <p><a href='/t/wang'>王五</a></p><p>王 五</p>\
+            <a href='http://ie.example.edu/dir'>名录</a><a href='/dir'>名录</a>\
+            <p>赵六</p><p>钱七</p>",
         );
         let people = parse::<People>(
             r#"{"people":[{"n":"张三","p":1},{"n":"李四","p":1},{"n":"王五","p":2},
-            {"n":"王 五","p":2}]}"#,
+            {"n":"王 五","p":2},{"n":"赵六","p":3},{"n":"钱七","p":4}]}"#,
             true,
         )
         .unwrap()
@@ -793,7 +800,25 @@ mod tests {
             .map(|p| p.profile.map(|u| u.as_str().to_owned()))
             .collect();
         let wang = Some("https://ie.example.edu/t/wang".to_owned());
-        assert_eq!(profiles, [None, None, wang.clone(), wang]);
+        assert_eq!(profiles, [None, None, wang.clone(), wang, None, None]);
+    }
+
+    #[test]
+    fn a_name_not_on_the_list_shares_no_one_s_page() {
+        // The model gave the link to someone the page does not name too.
+        let url = PageUrl::parse("https://ie.example.edu/szdw/fwtd.htm").unwrap();
+        let page = crate::parse(&url, "<p><a href='/t/zhang'>张三</a></p>");
+        let people = parse::<People>(
+            r#"{"people":[{"n":"张三","p":1},{"n":"李四","p":1}]}"#,
+            true,
+        )
+        .unwrap()
+        .people;
+        let listed = listed(&page, people, &Scope::new(&url), None).unwrap();
+        let profiles: Vec<_> = (listed.iter())
+            .map(|p| p.profile.as_ref().map(PageUrl::as_str))
+            .collect();
+        assert_eq!(profiles, [Some("https://ie.example.edu/t/zhang")]);
     }
 
     #[test]
