@@ -1009,6 +1009,37 @@ async fn a_list_at_another_address_is_read_once(db: SqlitePool) {
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_a_link_too_far_at_another_address_is_read_once_though_its_menu_links_elsewhere(
+    db: SqlitePool,
+) {
+    // As math.nankai.edu.cn's teachers in post at /33156/list.htm, linking all of them at
+    // /_t1017/33156/list.htm, whose menu links each page at /_s91/….psp.
+    let site = Site::new().await;
+    site.page("/", "<title>首页</title><a href='/szdw'>在职教师</a>");
+    let list = |retired| {
+        format!(
+            "<title>在职教师</title><a href='{retired}'>退休教师</a>\
+            <a href='/t1/szdw'>全体教师</a><p>张三</p>"
+        )
+    };
+    site.page("/szdw", &list("/retired"));
+    site.page("/t1/szdw", &list("/s1/retired.psp"));
+    site.page("/retired", "<title>退休教师</title><p>李四</p>");
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let routed = route_all(provider, "list");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    assert_eq!(*routed.lock().unwrap(), ["首页", "在职教师", "退休教师"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_page_reading_as_another_but_leading_elsewhere_is_read(db: SqlitePool) {
     let site = Site::new().await;
     site.page(
