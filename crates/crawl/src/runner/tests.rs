@@ -2424,6 +2424,32 @@ async fn a_link_found_not_to_be_theirs_is_read_again_for_whom_another_list_gives
     server.abort();
 }
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_link_another_list_gave_someone_of_another_name_is_not_theirs(db: SqlitePool) {
+    // Two lists giving their group's page to two teachers, as one list may give it to several.
+    let site = Site::new().await;
+    let (root, server) = profile_fixture(&db, &site).await;
+    for (name, email) in [("张三", "zhang@example.edu"), ("李四", "li@example.edu")] {
+        let line = list_line(&site, "/group", name, email);
+        observation(&db, &root, &site, "/group", PageKind::List, line).await;
+    }
+    let ids = candidate_ids(&db).await;
+    assert_eq!(ids.len(), 2);
+    let link = site.url("/group").as_str().to_owned();
+    assert_eq!(
+        links(&db, ids[0]).await,
+        (Some(link.clone()), vec![(link, false)])
+    );
+    assert_eq!(links(&db, ids[1]).await, (None, vec![]));
+    let li = review::detail(&db, ids[1])
+        .await
+        .unwrap()
+        .unwrap()
+        .candidate;
+    assert_eq!(li.fields.emails, ["li@example.edu"]);
+    assert!(li.fields.homepages.is_empty());
+    server.abort();
+}
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_page_counts_for_whom_its_candidate_merges_into_while_it_is_read(db: SqlitePool) {
     let site = Site::new().await;
     site.page("/zhang", "<title>张三</title><p>张三 zhang@example.edu</p>");

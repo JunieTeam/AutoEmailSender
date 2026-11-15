@@ -683,8 +683,38 @@ pub(crate) async fn save(
     crawl: i64,
     source: Source,
     url: &str,
-    person: Person,
+    mut person: Person,
 ) -> Result<bool, sqlx::Error> {
+    let names: Vec<_> = std::iter::once(&person.fields.name)
+        .chain(&person.fields.aliases)
+        .map(|name| intake::comparable(name))
+        .collect();
+    // A link another list gave someone of other names is a list's or a group's, as when one list
+    // gives it to several; reading it for them shows whether it is theirs.
+    if matches!(source, Source::List { .. })
+        && let Some(link) = &person.profile
+        && sqlx::query_scalar!(
+            r#"SELECT EXISTS (
+                SELECT 1
+                FROM candidate_profile p
+                JOIN candidate c ON c.id = p.candidate_id
+                WHERE p.crawl_id = ?1 AND p.url IN (SELECT value FROM json_each(?2))
+                AND p.mismatched_at IS NULL AND NOT EXISTS (
+                    SELECT 1
+                    FROM json_each(c.match_names) a
+                    JOIN json_each(?3) b ON a.value = b.value
+                )
+            ) AS "claimed!: bool""#,
+            crawl,
+            Json(both_schemes(&[link.as_str()])),
+            Json(&names)
+        )
+        .fetch_one(&mut *conn)
+        .await?
+    {
+        person.fields.homepages.retain(|h| h != link.as_str());
+        person.profile = None;
+    }
     let f = &person.fields;
     let profile = person.profile.as_ref().map(crate::PageUrl::as_str);
     let (list_page, profile_page, is_profile, reached, note) = match &source {
@@ -698,10 +728,6 @@ pub(crate) async fn save(
         Source::Profile { own, target, .. } => (*target, *own),
         _ => (None, false),
     };
-    let names: Vec<_> = std::iter::once(&f.name)
-        .chain(&f.aliases)
-        .map(|name| intake::comparable(name))
-        .collect();
     let ids = sqlx::query_scalar!(
         r#"SELECT id
         FROM candidate

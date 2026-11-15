@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (\n                SELECT 1\n                FROM candidate_profile p\n                JOIN candidate c ON c.id = p.candidate_id\n                WHERE p.crawl_id = ?1 AND p.url IN (SELECT value FROM json_each(?2))\n                AND p.mismatched_at IS NULL AND NOT EXISTS (\n                    SELECT 1\n                    FROM json_each(c.match_names) a\n                    JOIN json_each(?3) b ON a.value = b.value\n                )\n            ) AS \"claimed!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "claimed!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "65d68abff0b8c601f40c5cd81afb7420a5e259dcf99a6d9d9a73acac6655ccc3"
+}
