@@ -347,9 +347,12 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
         let onward = match control.kind {
             Kind::Backward | Kind::First => false,
             Kind::Number(n) => counted.is_none_or(|(page, _)| n > page),
-            // Labelled otherwise, as 返回, a link leads on only to a page after the one this is,
-            // the first where no page is named.
-            Kind::Other => named.is_some_and(|n| n > query_page(url).unwrap_or(1)),
+            // Labelled otherwise, as 返回, a link leads on only to a page after the one this is, as
+            // its address names it or else its pager: a query counting from 0 falls one short of
+            // the pager, which at most notes pages unread that were not.
+            Kind::Other => {
+                (named.zip(query_page(url).or(pagination.page))).is_some_and(|(n, on)| n > on)
+            }
             _ => true,
         };
         if let Some(link) = &control.link {
