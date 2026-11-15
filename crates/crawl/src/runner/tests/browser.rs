@@ -56,6 +56,12 @@ impl Browser for FakeBrowser {
     }
 }
 
+/// The blocks of the text a page found looking for lists is saved with.
+fn blocks(text: &str) -> Vec<String> {
+    let text: Value = serde_json::from_str(text).unwrap();
+    serde_json::from_value(text["blocks"].clone()).unwrap()
+}
+
 fn challenge(site: &Site) {
     site.pages.lock().unwrap().insert(
         "/".into(),
@@ -427,16 +433,14 @@ async fn browser_failures_preserve_http_text_and_preview_still_needs_browser(db:
         };
         assert!(error.message.contains(reason), "{error:?}");
         assert!(save(&db, &claim, &Outcome::Failed(error)).await.unwrap());
-        let row: (String, String, String) =
+        let (status, mode, text): (String, String, String) =
             sqlx::query_as("SELECT status,mode,text FROM crawl_page WHERE id=?")
                 .bind(claim.id)
                 .fetch_one(&db)
                 .await
                 .unwrap();
-        assert_eq!(
-            row,
-            ("failed".into(), "webview".into(), "HTTP 已读文字".into())
-        );
+        assert_eq!((status.as_str(), mode.as_str()), ("failed", "webview"));
+        assert_eq!(blocks(&text), ["HTTP 已读文字"]);
         queue::retry(&db, id, Some(claim.id), 2).await.unwrap();
         claim = queue::next(&db).await.unwrap().unwrap();
     }
@@ -501,7 +505,7 @@ async fn pause_and_cancel_drop_browser_and_reject_late_results(db: SqlitePool) {
                 .await
                 .unwrap();
         assert_eq!(before, after);
-        assert_eq!(after.2, "HTTP 已读文字");
+        assert_eq!(blocks(&after.2), ["HTTP 已读文字"]);
         if action == "pause" {
             queue::control(&db, id, "cancel", 3).await.unwrap();
         }
@@ -704,26 +708,19 @@ async fn a_list_that_shows_no_teacher_over_http_is_read_in_the_browser(db: Sqlit
     responder.abort();
 }
 
-/// Answers routing with `kind` and every link offered, and lists whichever of 张三 and 李四 a page
-/// names; gives the titles of the pages routed.
-fn route_all(mut provider: Provider, kind: &'static str) -> Arc<Mutex<Vec<String>>> {
-    let routed = Arc::new(Mutex::new(Vec::new()));
-    let titles = routed.clone();
+/// Answers routing as `route` does with the request's data, and lists whichever of 张三, 李四 and
+/// 王五 a page names.
+fn answer(mut provider: Provider, route: impl Fn(&Value) -> Value + Send + 'static) {
     tokio::spawn(async move {
         while let Some(request) = provider.requests.recv().await {
             let system = request.body["messages"][0]["content"].as_str().unwrap();
             let data = request.body["messages"][1]["content"].as_str().unwrap();
             let data: Value = serde_json::from_str(data).unwrap();
             let output = if system.starts_with("你整理学院") {
-                titles
-                    .lock()
-                    .unwrap()
-                    .push(data["title"].as_str().unwrap().into());
-                let next: Vec<_> = offered(&data).into_iter().map(|(_, n)| n).collect();
-                json!({"kind": kind, "next": next})
+                route(&data)
             } else {
                 let text = data.to_string();
-                let people: Vec<_> = (["张三", "李四"].into_iter())
+                let people: Vec<_> = (["张三", "李四", "王五"].into_iter())
                     .filter(|name| text.contains(name))
                     .map(|name| listed(name, None, vec![]))
                     .collect();
@@ -735,7 +732,33 @@ fn route_all(mut provider: Provider, kind: &'static str) -> Arc<Mutex<Vec<String
                 .ok();
         }
     });
+}
+
+/// Answers routing with `kind` and every link offered, and lists as `answer` does; gives the titles
+/// of the pages routed.
+fn route_all(provider: Provider, kind: &'static str) -> Arc<Mutex<Vec<String>>> {
+    let routed = Arc::new(Mutex::new(Vec::new()));
+    let titles = routed.clone();
+    answer(provider, move |data| {
+        (titles.lock().unwrap()).push(data["title"].as_str().unwrap().into());
+        let next: Vec<_> = offered(data).into_iter().map(|(_, n)| n).collect();
+        json!({"kind": kind, "next": next})
+    });
     routed
+}
+
+/// Routes the start, titled 首页, as an entry following every link it offers, and the others as
+/// `kind` gives by their titles, following none, as the model leaves page turns alone.
+fn route_from_start(provider: Provider, kind: fn(&str) -> &'static str) {
+    answer(provider, move |data| {
+        match data["title"].as_str().unwrap() {
+            "首页" => {
+                let next: Vec<_> = offered(data).into_iter().map(|(_, n)| n).collect();
+                json!({"kind": "entry", "next": next})
+            }
+            title => json!({"kind": kind(title), "next": []}),
+        }
+    });
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -1077,6 +1100,105 @@ async fn a_page_read_before_a_link_too_far_is_read_again_nearer_the_start(db: Sq
     assert_eq!(near.url, site.url("/near"));
     drain(&db, &pages).await;
     finish(&db, &pages, &near).await;
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_page_reading_as_another_but_offering_a_category_to_click_is_read(db: SqlitePool) {
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>首页</title><a href='/a'>师资</a><a href='/b'>教师</a>",
+    );
+    site.page(
+        "/a",
+        "<title>教师名录</title><a href='/'>首页</a><ul><li>教授</li></ul>",
+    );
+    let category = "<title>教师名录</title><a href='/'>首页</a>\
+        <ul><li onclick=\"show('prof')\">教授</li></ul>";
+    site.page("/b", category);
+    let browser = Arc::new(FakeBrowser::default());
+    browser.page(&site.url("/b"), &format!("{category}<p>张三</p>"));
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "entry");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_reading_as_another_but_paging_on_is_read(db: SqlitePool) {
+    // The two link the same next page, which the first marks as no page to turn to.
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>首页</title><a href='/a'>在职教师</a><a href='/b'>教师名录</a>",
+    );
+    for (path, class) in [("/a", " class='disabled'"), ("/b", "")] {
+        site.page(
+            path,
+            &format!("<title>名单</title><p>张三</p><a href='/p2'{class}>下一页</a>"),
+        );
+    }
+    site.page("/p2", "<title>名单</title><p>李四</p>");
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_from_start(provider, |_| "list");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> =
+        sqlx::query_scalar("SELECT DISTINCT name FROM candidate ORDER BY name")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(names, ["张三", "李四"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_page_reading_as_another_but_for_its_title_is_read(db: SqlitePool) {
+    // News naming a teacher, and his department's list.
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>首页</title><a href='/news'>新闻</a><a href='/list'>师资</a>",
+    );
+    site.page("/news", "<title>新闻动态</title><p>张三</p>");
+    site.page("/list", "<title>教师名单</title><p>张三</p>");
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_from_start(provider, |title| match title {
+        "新闻动态" => "other",
+        _ => "list",
+    });
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
         .fetch_all(&db)

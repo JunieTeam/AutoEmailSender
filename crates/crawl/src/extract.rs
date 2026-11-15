@@ -461,13 +461,22 @@ pub fn written(m: &Material) -> String {
         .collect::<Vec<_>>()
         .join("\n\n")
 }
-/// A page found looking for lists as compared with the crawl's others: as `written`, with where
-/// each link goes, which decides what reading the page gives.
+/// A page found looking for lists as compared with the crawl's others: its title, its blocks as
+/// `written` writes them with where each link goes, the controls it shows and how it pages on,
+/// which decide what reading the page gives.
 pub fn compared(m: &Material) -> String {
-    (m.units.iter())
+    let blocks: Vec<_> = (m.units.iter())
         .map(|u| marked(u, |l| format!("[{}]({})", l.text, l.url.as_str())))
-        .collect::<Vec<_>>()
-        .join("\n\n")
+        .collect();
+    let pages = &m.pagination;
+    json!({
+        "title": m.title,
+        "blocks": blocks,
+        "controls": m.controls,
+        "pages": pages.urls.iter().map(PageUrl::as_str).collect::<Vec<_>>(),
+        "buttons": (pages.buttons.iter()).map(|b| (&b.control, b.page)).collect::<Vec<_>>(),
+    })
+    .to_string()
 }
 /// A block as the model reads it: a link written `[text](number)`, by the number `all` gives it.
 fn block(u: &Unit, all: &[(&str, &PageUrl)]) -> String {
