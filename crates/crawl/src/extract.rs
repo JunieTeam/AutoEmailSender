@@ -506,6 +506,12 @@ pub fn listed(
         .collect();
     let all = links(m);
     let text = compact(&m.text());
+    let linked = |p: &Listed| {
+        (p.profile.and_then(|id| id.checked_sub(1)))
+            .and_then(|n| all.get(n))
+            .map(|(_, u)| *u)
+    };
+    let same = |a: &str, b: &str| compact(&comparable(a)) == compact(&comparable(b));
     people
         .iter()
         .filter(|p| text.contains(&compact(&p.name)))
@@ -517,12 +523,14 @@ pub fn listed(
                 .filter_map(|a| address(m, a))
                 .filter(|a| owns_email(m, &names, &[name], a))
                 .collect();
-            let profile = p
-                .profile
-                .and_then(|id| id.checked_sub(1))
-                .and_then(|n| all.get(n))
-                .filter(|(_, u)| scope.linked_profile(m, u).is_ok())
-                .map(|(_, u)| (*u).clone());
+            // A link given to someone else too is a list's or a group's, which as their page
+            // would make them one person.
+            let profile = linked(p)
+                .filter(|u| {
+                    !(people.iter()).any(|o| linked(o) == Some(*u) && !same(&o.name, &p.name))
+                })
+                .filter(|u| scope.linked_profile(m, u).is_ok())
+                .cloned();
             let fields = MentorForm {
                 name: name.into(),
                 aliases: vec![],
@@ -756,6 +764,31 @@ mod tests {
         );
         let routing = routing(&page, &Scope::new(&url), &page.controls);
         assert_eq!(routing.links, ["[新闻](1)", "[无机化学](3)"]);
+    }
+
+    #[test]
+    fn a_link_given_to_teachers_of_different_names_is_none_of_theirs() {
+        // As cse.csu.edu.cn's list was read, each of its 60 teachers given its link to itself.
+        let url = PageUrl::parse("https://cse.example.edu/szdw/jsml.htm").unwrap();
+        let page = crate::parse(
+            &url,
+            "<a href='/szdw/jsml.htm'>教师名录</a><p>张三</p><p>李四</p>\
+            <p><a href='/t/wang'>王五</a></p><p>王 五</p>",
+        );
+        let people = parse::<People>(
+            r#"{"people":[{"n":"张三","p":1},{"n":"李四","p":1},{"n":"王五","p":2},
+            {"n":"王 五","p":2}]}"#,
+            true,
+        )
+        .unwrap()
+        .people;
+        let profiles: Vec<_> = listed(&page, people, &Scope::new(&url), None)
+            .unwrap()
+            .into_iter()
+            .map(|p| p.profile.map(|u| u.as_str().to_owned()))
+            .collect();
+        let wang = Some("https://cse.example.edu/t/wang".to_owned());
+        assert_eq!(profiles, [None, None, wang.clone(), wang]);
     }
 
     #[test]
