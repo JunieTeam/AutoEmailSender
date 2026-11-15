@@ -261,19 +261,22 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                             .and_then(|e| visible_text(e).parse::<u32>().ok())
                     };
                     let marked = marked_container(element);
+                    let current = number(&CURRENT);
                     let counts = |text: &str| {
                         let found = |pattern: &Regex| pattern.captures(text)?[1].parse().ok();
-                        let page = number(&CURRENT).or_else(|| found(&PAGE));
+                        let page = current.or_else(|| found(&PAGE));
                         page.zip(number(&TOTAL).or_else(|| found(&PAGES)))
                             .or_else(|| {
                                 let found = PAGE_COUNTS.captures(text)?;
                                 Some((found[1].parse().ok()?, found[2].parse().ok()?))
                             })
+                            .filter(|&(page, _)| current.is_none_or(|c| c == page))
                     };
                     // Read apart, a pager's "1" beside its "1/3" is not "11/3", but a number drawn
                     // in parts, as "1" and "0" of 10, is not 1. A reading past its own count is
-                    // none; two others differing tell nothing, as "3/3" beside the 50 rows a page
-                    // shows reads "3/350" together.
+                    // none, and so is one of a page other than that marked current; two others
+                    // differing tell nothing, as "3/3" beside the 50 rows a page shows reads
+                    // "3/350" together.
                     let counts = (marked || group)
                         .then(|| {
                             let [apart, joined] = [visible_words(element), visible_text(element)]
