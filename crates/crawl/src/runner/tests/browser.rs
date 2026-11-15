@@ -782,7 +782,7 @@ async fn a_list_filled_in_by_scripts_is_read_in_the_browser_though_it_links_othe
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn a_page_a_link_too_far_to_click_is_read_in_the_browser(db: SqlitePool) {
+async fn a_page_leading_only_a_link_too_far_is_read_in_the_browser(db: SqlitePool) {
     // As econ.fudan.edu.cn's teachers in post, two links from its home page, which over HTTP only
     // offers ways to sort them.
     let site = Site::new().await;
@@ -793,8 +793,8 @@ async fn a_page_a_link_too_far_to_click_is_read_in_the_browser(db: SqlitePool) {
     );
     site.page(
         "/szdw/zzjs",
-        "<title>在职教师</title><ul><li onclick=\"sort('name')\">按拼音排序</li></ul>\
-        <h3>无内容</h3>",
+        "<title>在职教师</title><ul><li onclick=\"sort('name')\">按拼音排序</li>\
+        <li><a href='/szdw/zzjs?sort=title'>按职称排序</a></li></ul><h3>无内容</h3>",
     );
     let browser = Arc::new(FakeBrowser::default());
     browser.page(
@@ -818,6 +818,74 @@ async fn a_page_a_link_too_far_to_click_is_read_in_the_browser(db: SqlitePool) {
         .unwrap();
     assert_eq!(names, ["张三"]);
     assert_eq!(*browser.steps.lock().unwrap(), [Vec::<PageStep>::new()]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_read_again_as_it_was_but_for_controls_is_routed_again(db: SqlitePool) {
+    // Its scripts make the category written over HTTP one to click.
+    let site = Site::new().await;
+    site.page("/", "<title>教师名录</title><ul><li>教授</li></ul>");
+    let browser = Arc::new(FakeBrowser::default());
+    let category = "<title>教师名录</title><ul><li onclick=\"show('prof')\">教授</li></ul>";
+    browser.page(&site.url("/"), category);
+    browser.page(&site.url("/"), &format!("{category}<p>张三</p>"));
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "list");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三"]);
+    let clicked = PageStep {
+        page: None,
+        control: "教授".into(),
+    };
+    assert_eq!(*browser.steps.lock().unwrap(), [vec![], vec![clicked]]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_the_browser_fails_to_read_again_still_leads_to_the_others(db: SqlitePool) {
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>在职教师</title><a href='/retired'>退休教师</a><div id='list'></div>",
+    );
+    site.page("/retired", "<title>退休教师</title><p>李四</p>");
+    let browser = Arc::new(FakeBrowser::default());
+    (browser.results.lock().unwrap()).push_back(Err(BrowserError::TimedOut));
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "list");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["李四"]);
+    // It shows as failed, to retry.
+    let pages: Vec<(String, String)> =
+        sqlx::query_as("SELECT url, status FROM crawl_page ORDER BY id")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    let page = |path, status: &str| (site.url(path).as_str().to_owned(), status.to_owned());
+    assert_eq!(pages, [page("/", "failed"), page("/retired", "success")]);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

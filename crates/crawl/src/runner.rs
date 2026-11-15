@@ -311,6 +311,8 @@ struct Page {
     /// The school and college its people's units were filled in at, which the user may have
     /// changed while it was being read.
     filled: Option<Affiliation>,
+    /// Why the page was not read in full, though what it gave is kept.
+    failure: Option<Failure>,
 }
 impl Page {
     fn nothing(material: Material, kind: PageKind) -> Self {
@@ -323,6 +325,7 @@ impl Page {
             own: false,
             unit: None,
             filled: None,
+            failure: None,
         }
     }
 }
@@ -671,24 +674,34 @@ async fn read(
     // A list that loads its teachers with scripts gives none over HTTP, though its menu may link
     // other lists. Another page is read again only when it leads nowhere, as an entry links to
     // the lists it is for or shows them by its controls, unless they are a link too far.
-    let leads = !page.next.is_empty() || (!page.clicks.is_empty() && c.depth < queue::LIST_DEPTH);
-    if !rendered
-        && page.people.is_empty()
-        && (page.kind == PageKind::List || !leads)
-        && let Some(material) = fetcher.render_again(db, c, &target, &page.material).await?
-    {
-        // What its scripts left as it was reads as it did.
-        if (material.units.iter().map(|u| (&u.text, &u.links))).eq(page
-            .material
-            .units
-            .iter()
-            .map(|u| (&u.text, &u.links)))
-        {
-            return Ok(page);
-        }
-        return interpret(&reader, &scope, material, unit.as_ref()).await;
+    let leads = c.depth < queue::LIST_DEPTH && !(page.next.is_empty() && page.clicks.is_empty());
+    if rendered || !page.people.is_empty() || (page.kind != PageKind::List && leads) {
+        return Ok(page);
     }
-    Ok(page)
+    match fetcher.render_again(db, c, &target, &page.material).await {
+        Ok(Some(material)) => {
+            // What its scripts left as the model sees it reads as it did, though it pages on as
+            // the browser shows it.
+            if seen(&material, &scope) == seen(&page.material, &scope) {
+                Ok(Page { material, ..page })
+            } else {
+                interpret(&reader, &scope, material, unit.as_ref()).await
+            }
+        }
+        Ok(None) => Ok(page),
+        // The other lists it leads to do not wait on this one; it shows as failed, to retry.
+        Err(ReadError::Failed(failure)) => Ok(Page {
+            failure: Some(failure),
+            ..page
+        }),
+        Err(e) => Err(e),
+    }
+}
+
+/// What the model is given of a page opened as it was found, looking for lists.
+fn seen<'m>(m: &'m Material, scope: &Scope) -> impl PartialEq + 'm {
+    let units: Vec<_> = m.units.iter().map(|u| (&u.text, &u.links)).collect();
+    (units, extract::routing(m, scope, &m.controls))
 }
 
 /// The school and college a crawl from a website found its pages to belong to.
@@ -831,6 +844,7 @@ async fn interpret(
         own: kind == PageKind::Profile,
         filled: unit.cloned(),
         unit: found,
+        failure: None,
     })
 }
 
@@ -1064,6 +1078,7 @@ async fn read_for_candidate(
         own,
         unit: None,
         filled: unit.cloned(),
+        failure: None,
     })
 }
 /// Whom a list's profile page is read for, or whom they have merged into since; none when it is
@@ -1092,13 +1107,12 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
     match outcome {
         Outcome::Done(p) => {
             let text = p.material.text();
-            let reason =
-                (p.material.needs_browser.as_ref()).map(|r| Json(Failure::new(browser(r))));
-            let status = if reason.is_some() {
-                PageStatus::NeedsBrowser
-            } else {
-                PageStatus::Success
+            let (status, reason) = match (&p.material.needs_browser, &p.failure) {
+                (Some(r), _) => (PageStatus::NeedsBrowser, Some(Failure::new(browser(r)))),
+                (None, Some(failure)) => (PageStatus::Failed, Some(failure.clone())),
+                (None, None) => (PageStatus::Success, None),
             };
+            let reason = reason.map(Json);
             sqlx::query!(
                 r#"UPDATE crawl_page
                 SET work_state = 'done', kind = ?, status = ?, error = ?, text = ?,

@@ -366,7 +366,7 @@ const EDGE: usize = 150;
 
 /// What routing reads of a page, its links first: a site's pages share their menus, so a request
 /// then starts as the site's earlier ones did, which the model service can reuse.
-#[derive(Debug, Serialize)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Routing<'a> {
     pub links: Vec<String>,
     pub foot: String,
