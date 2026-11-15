@@ -1547,15 +1547,15 @@ async fn read_for_zhang(
 #[tokio::test]
 async fn a_copy_of_a_teacher_s_page_read_before_is_not_read_again() {
     // As chem.fzu.edu.cn and jidian.cug.edu.cn publish a teacher's page under each column that
-    // lists them, at another address each time, naming the column on it; the former's footer
-    // gives the college's address and links its dean's.
+    // lists them, at another address each time, naming the column on it, though not right above
+    // an address; the former's footer gives the college's address and links its dean's.
     let (dir, db) = test_fixtures::db::open().await.unwrap();
     let site = columns().await;
     for (path, column) in [("/info/1/7.htm", "教授"), ("/info/2/8.htm", "博士生导师")] {
         site.page(
             path,
             &format!(
-                "<title>张三</title><h2>{column}</h2><p>张三 a@school.example.edu 机器学习</p>\
+                "<title>张三</title><h2>{column}</h2><p>张三</p><p>a@school.example.edu 机器学习</p>\
                 <div class='footer'><p>邮箱：office@school.example.edu</p>\
                 <p><a href='mailto:dean@school.example.edu'>院长信箱</a></p></div>"
             ),
@@ -1642,7 +1642,7 @@ async fn a_page_giving_its_own_address_where_one_read_before_gave_another_is_rea
     // both pages writing their group's contacts, which are the two of them; beside a menu linking
     // both; beside a menu giving both in lines just like its own; in a block writing both; giving
     // both in the same order, the two swapping whose is 本人's and whose 助理's, said on the line of
-    // each address, or in a block of its own before or after it.
+    // each address, or in a block of its own before or after it, in the same words or in others.
     for page in [
         "<p>课题组联系人 a@school.example.edu b@school.example.edu</p>\
         <div class='footer'><a href='mailto:OWN@school.example.edu'>联系本人</a></div>",
@@ -1659,16 +1659,31 @@ async fn a_page_giving_its_own_address_where_one_read_before_gave_another_is_rea
         "<dl><dt>联系A</dt><dd>a@school.example.edu</dd>\
         <dt>联系B</dt><dd>b@school.example.edu</dd></dl>",
         "<p>a@school.example.edu</p><p>联系A</p><p>b@school.example.edu</p><p>联系B</p>",
+        "<dl><dt>甲</dt><dd>a@school.example.edu</dd><dt>乙</dt><dd>b@school.example.edu</dd></dl>",
     ] {
         let (dir, db) = test_fixtures::db::open().await.unwrap();
         let site = columns().await;
-        for (path, department, own, [a, b]) in [
-            ("/info/1/7.htm", "化学系", "a", ["本人", "助理"]),
-            ("/info/2/8.htm", "物理系", "b", ["助理", "本人"]),
+        for (path, department, own, [a, b], [first, second]) in [
+            (
+                "/info/1/7.htm",
+                "化学系",
+                "a",
+                ["本人", "助理"],
+                ["本人邮箱", "助理邮箱"],
+            ),
+            (
+                "/info/2/8.htm",
+                "物理系",
+                "b",
+                ["助理", "本人"],
+                ["协助联系人", "本人联系方式"],
+            ),
         ] {
             let page = (page.replace("OWN", own))
                 .replace("联系A", &format!("联系{a}"))
-                .replace("联系B", &format!("联系{b}"));
+                .replace("联系B", &format!("联系{b}"))
+                .replace("甲", first)
+                .replace("乙", second);
             site.page(
                 path,
                 &format!(

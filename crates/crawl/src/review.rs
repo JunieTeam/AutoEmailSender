@@ -626,12 +626,11 @@ const COPY_LINES: usize = 3;
 /// The addresses among `emails` that another candidate of the crawl sharing a name with `id` has,
 /// when a page read for them is a copy of the one `extract::written` writes as `text`: by the
 /// rule `save` follows, the two are one person. A copy differs in a few lines and gives the same
-/// addresses in the same order, written or behind a link, each on the same line, after the same
-/// line or after one of those the two differ in, as the column heading it: a teacher of the name
-/// gives their own where the other's page gave that one's, though both pages may give both
-/// elsewhere, as in a menu, and a line can tell whose an address is, as 本人's or 助理's, on it,
-/// before it or after the one before. One whose research no page gave may find it in another
-/// version of their page.
+/// addresses in the same order, written or behind a link, each on the same line after the same
+/// line: a teacher of the name gives their own where the other's page gave that one's, though both
+/// pages may give both elsewhere, as in a menu, and a line can tell whose an address is, as 本人's
+/// or 助理's, on it, before it or after the one before. One whose research no page gave may find it
+/// in another version of their page.
 pub(crate) async fn known(
     db: impl sqlx::SqliteExecutor<'_>,
     crawl: i64,
@@ -680,13 +679,10 @@ pub(crate) async fn known(
     let (page, given) = (lines(text), addresses(text));
     Ok((read.into_iter())
         .filter(|r| {
-            let (other, read) = (lines(&r.text), addresses(&r.text));
+            let other = lines(&r.text);
             page.difference(&other).count() <= COPY_LINES
                 && other.difference(&page).count() <= COPY_LINES
-                && read.len() == given.len()
-                && (read.iter().zip(&given)).all(|([b, l], [before, line])| {
-                    l == line && (b == before || !page.contains(b) && !other.contains(before))
-                })
+                && addresses(&r.text) == given
         })
         .flat_map(|r| r.emails.0)
         .filter(|a| emails.iter().any(|e| e.address.eq_ignore_ascii_case(a)))
