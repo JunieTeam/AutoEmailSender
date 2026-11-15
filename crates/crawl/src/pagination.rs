@@ -184,8 +184,8 @@ struct Context<'a> {
     element: ElementRef<'a>,
     recognized: bool,
     consecutive: bool,
-    last: bool,
-    last_page: Option<u32>,
+    /// The page it is on and how many it counts.
+    counts: Option<(u32, u32)>,
     /// It shows one page's number and no other.
     alone: bool,
 }
@@ -202,10 +202,19 @@ static PAGE_COUNTS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:第\s*)?(\d+)\s*(?:页\s*)?/\s*(?:共\s*)?(\d+)\s*页?")
         .unwrap_or_else(|_| unreachable!("fixed page count pattern is valid"))
 });
+/// The page a pager is on and how many there are, written apart, as "第 1 页 共 5 页".
+static PAGE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"第\s*(\d+)\s*页").unwrap_or_else(|_| unreachable!("fixed page pattern is valid"))
+});
+static PAGES: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"共\s*(\d+)\s*页").unwrap_or_else(|_| unreachable!("fixed pages pattern is valid"))
+});
 
 pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool) -> Pagination {
     let mut contexts: Vec<Context<'_>> = Vec::new();
     let mut pagination = Pagination::default();
+    // Whether the pager leads on to a later page, by a link or a click.
+    let mut later = false;
     // A last-page control leading here says this is the last page, which another pager on it, as
     // one for phones, can still offer a next page past.
     let at_last =
@@ -253,14 +262,16 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                     let marked = marked_container(element);
                     let counts = (marked || group)
                         .then(|| {
-                            number(&CURRENT).zip(number(&TOTAL)).or_else(|| {
-                                let text = visible_text(element);
-                                let found = PAGE_COUNTS.captures(&text)?;
-                                Some((found[1].parse().ok()?, found[2].parse().ok()?))
-                            })
+                            let text = visible_text(element);
+                            let found = |pattern: &Regex| pattern.captures(&text)?[1].parse().ok();
+                            let page = number(&CURRENT).or_else(|| found(&PAGE));
+                            page.zip(number(&TOTAL).or_else(|| found(&PAGES)))
+                                .or_else(|| {
+                                    let found = PAGE_COUNTS.captures(&text)?;
+                                    Some((found[1].parse().ok()?, found[2].parse().ok()?))
+                                })
                         })
                         .flatten();
-                    let last = counts.is_some_and(|(current, total)| total > 0 && current >= total);
                     let recognized = marked || consecutive_links || counts.is_some();
                     if recognized {
                         numbers.extend(
@@ -279,15 +290,14 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                         element,
                         recognized,
                         consecutive,
-                        last,
-                        last_page: counts.map(|(_, total)| total),
+                        counts,
                         alone: recognized && numbers.len() == 1,
                     });
                     contexts.len() - 1
                 };
             if contexts[index].recognized {
                 context.get_or_insert(index);
-                if contexts[index].last_page.is_some() {
+                if contexts[index].counts.is_some() {
                     counted = Some(index);
                     break;
                 }
@@ -295,7 +305,8 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                 break;
             }
         }
-        let (context, counted) = (context.map(|i| &contexts[i]), counted.map(|i| &contexts[i]));
+        let context = context.map(|i| &contexts[i]);
+        let counted = counted.and_then(|i| contexts[i].counts);
         let is_page = match control.kind {
             Kind::Forward | Kind::Last | Kind::Backward | Kind::Jump => true,
             Kind::First => {
@@ -316,13 +327,21 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
         };
         if !is_page
             || (matches!(control.kind, Kind::Forward | Kind::Last | Kind::Jump)
-                && (at_last || counted.is_some_and(|c| c.last)))
+                && (at_last || counted.is_some_and(|(page, total)| total > 0 && page >= total)))
         {
             continue;
         }
+        let onward = match control.kind {
+            Kind::Backward | Kind::First => false,
+            Kind::Number(n) => counted.is_none_or(|(page, _)| n > page),
+            _ => true,
+        };
         if let Some(link) = &control.link {
-            if link.website() == url.website() && link != url && !pagination.urls.contains(link) {
-                pagination.urls.push(link.clone());
+            if link.website() == url.website() && link != url {
+                if !pagination.urls.contains(link) {
+                    pagination.urls.push(link.clone());
+                }
+                later |= onward;
             }
         } else if matches!(control.kind, Kind::Jump) {
             // Past the check for its last page above, a pager counting its pages has more.
@@ -336,22 +355,23 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
             pagination.needs_browser = true;
             let page = match control.kind {
                 Kind::Number(n) => Some(n),
-                Kind::Last => counted.and_then(|c| c.last_page),
+                Kind::Last => counted.map(|(_, total)| total),
                 _ => None,
             };
-            if (!matches!(control.kind, Kind::Last) || page.is_some())
-                && !pagination.buttons.iter().any(|b| b.control == control.text)
-            {
-                pagination.buttons.push(crate::page::ButtonPage {
-                    page,
-                    control: control.text.clone(),
-                });
+            if !matches!(control.kind, Kind::Last) || page.is_some() {
+                if !pagination.buttons.iter().any(|b| b.control == control.text) {
+                    pagination.buttons.push(crate::page::ButtonPage {
+                        page,
+                        control: control.text.clone(),
+                    });
+                }
+                later |= onward;
             }
         }
     }
     // A jump goes to the page written in the box beside it, which no click replays: the pages
-    // only it leads to stay unread.
-    pagination.jump_only &= pagination.urls.is_empty() && pagination.buttons.is_empty();
+    // only it leads to stay unread, though the pager can lead back to earlier ones.
+    pagination.jump_only &= !later;
     pagination
 }
 

@@ -1316,36 +1316,69 @@ async fn a_list_reading_over_http_as_one_its_scripts_left_alone_is_read_in_the_b
     );
 }
 
-#[sqlx::test(migrator = "db::MIGRATOR")]
-async fn a_list_paging_on_only_by_a_jump_notes_its_later_pages_unread(db: SqlitePool) {
-    // Its pager counts two pages, and only jumps to the one written in its box.
-    let site = Site::new().await;
-    site.page(
-        "/",
-        "<title>名单</title><p>张三</p><div class='pager'><span>1/2</span>\
-        <input type='text' value='2'><button onclick='go()'>跳转</button></div>",
-    );
-    let provider = Provider::start().await.unwrap();
-    let model = config(&db, &provider.address).await;
-    route_all(provider, "list");
-    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
-    let pages = Pages {
-        writes: db::Writes::default(),
-        http: Fetcher::local(site.port),
-        browser: None,
-        recognize: super::recognize,
-    };
-    drain(&db, &pages).await;
-    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
-        .fetch_all(&db)
-        .await
-        .unwrap();
-    assert_eq!(names, ["张三"]);
-    let limits: String = sqlx::query_scalar("SELECT limits FROM crawl")
-        .fetch_one(&db)
-        .await
-        .unwrap();
-    assert_eq!(limits, r#"["有的名单只能输入页码跳转，后面的页没有读"]"#);
+#[tokio::test]
+async fn a_list_paging_on_only_by_a_jump_notes_its_later_pages_unread() {
+    // Its pager counts the pages and only jumps on, to the page written in its box: counting two;
+    // writing the page it is on and how many there are apart; on the second of five, going back.
+    for (start, pagers) in [
+        ("/", vec![("/", "<span>1/2</span>")]),
+        ("/", vec![("/", "<span>第 1 页</span><span>共 5 页</span>")]),
+        (
+            "/",
+            vec![(
+                "/",
+                "<span class='current_page'>1</span><span>共 5 页</span>",
+            )],
+        ),
+        (
+            "/?page=2",
+            vec![
+                ("/?page=2", "<a href='/?page=1'>上一页</a><span>2/5</span>"),
+                ("/?page=1", "<span>1/5</span><a href='/?page=2'>下一页</a>"),
+            ],
+        ),
+    ] {
+        let (dir, db) = test_fixtures::db::open().await.unwrap();
+        let site = Site::new().await;
+        for (path, pager) in &pagers {
+            site.page(
+                path,
+                &format!(
+                    "<title>名单</title><p>张三</p><div class='pager'>{pager}\
+                    <input type='text' value='3'><button onclick='go()'>跳转</button></div>"
+                ),
+            );
+        }
+        let provider = Provider::start().await.unwrap();
+        let model = config(&db, &provider.address).await;
+        route_all(provider, "list");
+        queue::start(&db, &[site.url(start)], model, 1)
+            .await
+            .unwrap();
+        let pages = Pages {
+            writes: db::Writes::default(),
+            http: Fetcher::local(site.port),
+            browser: None,
+            recognize: super::recognize,
+        };
+        drain(&db, &pages).await;
+        let read: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM crawl_page WHERE status = 'success'")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(read, i64::try_from(pagers.len()).unwrap(), "{pagers:?}");
+        let limits: String = sqlx::query_scalar("SELECT limits FROM crawl")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(
+            limits, r#"["有的名单只能输入页码跳转，后面的页没有读"]"#,
+            "{pagers:?}"
+        );
+        db.close().await;
+        dir.close().unwrap();
+    }
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
