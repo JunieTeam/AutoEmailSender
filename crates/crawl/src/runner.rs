@@ -536,7 +536,10 @@ impl Reader<'_> {
                 tracing::info!(step, reason = "output_truncated", "model output rejected");
                 return Err(ReadError::Failed(Failure::new(model::CUT_OFF)));
             }
-            match extract::parse(&answer.text) {
+            match extract::parse(
+                &answer.text,
+                answer.finish_reason == Some(model::Finish::Stop),
+            ) {
                 Ok(v) => return Ok(v),
                 Err(reason) if attempt == 0 => {
                     tracing::info!(step, reason = "invalid_fields", "retry model output");

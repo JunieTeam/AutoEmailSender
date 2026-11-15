@@ -305,14 +305,16 @@ impl Output for Targeted {
     }
 }
 
-pub fn parse<T: Output>(text: &str) -> Result<T, String> {
+/// An answer the service `ended` as finished, rather than cut off or without saying, can have its
+/// closing brackets miscounted; one that may have been cut off cannot be completed.
+pub fn parse<T: Output>(text: &str, ended: bool) -> Result<T, String> {
     let mut text = model::output::thinking_blocks(text.trim())?;
     if let Some(rest) = model::output::fence_content(text).map_err(|_| "缺少 JSON 内容")? {
         text = rest.trim_end().strip_suffix("```").unwrap_or(rest).trim();
     }
     let output: T = serde_json::from_str(text)
         .or_else(|e| {
-            closed(text)
+            (ended.then(|| closed(text)).flatten())
                 .and_then(|t| serde_json::from_str(&t).ok())
                 .ok_or(e)
         })
@@ -646,10 +648,11 @@ mod tests {
     fn routes_allow_an_unclosed_fence_but_require_exact_json() {
         let route = parse::<Route>(
             "<think>one</think><think>two</think>```json\n{\"kind\":\"list\",\"next\":[]}",
+            true,
         )
         .unwrap();
         assert!(matches!(route.kind, Kind::List));
-        assert!(parse::<Route>("说明：{\"kind\":\"list\",\"next\":[]}").is_err());
+        assert!(parse::<Route>("说明：{\"kind\":\"list\",\"next\":[]}", true).is_err());
     }
 
     #[test]
@@ -657,6 +660,7 @@ mod tests {
         let people = parse::<People>(
             r#"{"people":[{"n":"张三","t":"教授","p":12,"o":"人工智能大楼225室"},
             {"n":"李四","e":["li@x.edu"],"r":["机器学习","数据挖掘"]},{"n":"王五"}]}"#,
+            true,
         )
         .unwrap()
         .people;
@@ -669,7 +673,7 @@ mod tests {
         assert_eq!(people[1].emails, ["li@x.edu"]);
         assert_eq!(people[1].research.as_deref(), Some("机器学习；数据挖掘"));
         assert!(people[2].title.is_none() && people[2].profile.is_none());
-        assert!(parse::<People>(r#"{"people":[{"t":"教授","p":12}]}"#).is_err());
+        assert!(parse::<People>(r#"{"people":[{"t":"教授","p":12}]}"#, true).is_err());
     }
 
     #[test]
@@ -681,15 +685,15 @@ mod tests {
                 "papers":[],"names":["宋丽"],"next":[]}}"#
             )
         };
-        let t = parse::<Targeted>(&answer(r#"["44"]"#)).unwrap();
+        let t = parse::<Targeted>(&answer(r#"["44"]"#), true).unwrap();
         assert_eq!(t.details.homepages, [44]);
         assert_eq!(
             t.details.research.as_deref(),
             Some("光电器件的制备与机理研究；新型半导体发光器件")
         );
-        assert!(parse::<Targeted>(&answer(r#"["http://zenglab.fzu.edu.cn/"]"#)).is_err());
+        assert!(parse::<Targeted>(&answer(r#"["http://zenglab.fzu.edu.cn/"]"#), true).is_err());
         assert_eq!(
-            parse::<Route>(r#"{"kind":"list","next":["3",4]}"#)
+            parse::<Route>(r#"{"kind":"list","next":["3",4]}"#, true)
                 .unwrap()
                 .next,
             [3, 4]
@@ -698,7 +702,7 @@ mod tests {
 
     #[test]
     fn brackets_miscounted_at_an_answer_s_end_are_made_those_it_opened() {
-        let people = |answer| parse::<People>(answer).map(|p| p.people.len());
+        let people = |answer| parse::<People>(answer, true).map(|p| p.people.len());
         assert_eq!(
             people(r#"{"people":[{"n":"李莹玉","t":"特任副教授","p":96}]"#),
             Ok(1)
@@ -707,9 +711,12 @@ mod tests {
             people(r#"{"people":[{"n":"张俊威","e":["z@x.edu"]}}"#),
             Ok(1)
         );
-        assert!(parse::<Route>(r#"{"kind":"list","next":[1,2]]}"#).is_ok());
+        assert!(parse::<Route>(r#"{"kind":"list","next":[1,2]]}"#, true).is_ok());
         assert!(people(r#"{"people":[{"n":"张三","r":"机器学习"#).is_err());
         assert!(people(r#"{"people":[{"n":"张三"]},{"n":"李四"}]}"#).is_err());
+        // Without the service saying it ended, an answer may have been cut off after its 12 of 123.
+        let cut = r#"{"people":[{"n":"张三","p":12"#;
+        assert!(people(cut).is_ok() && parse::<People>(cut, false).is_err());
     }
 
     #[test]

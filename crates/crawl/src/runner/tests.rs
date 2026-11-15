@@ -799,8 +799,11 @@ fn segments_preserve_blocks_and_external_output_is_checked() {
     );
     assert_eq!(extract::segments(&m), [0..1, 1..2, 2..3]);
     assert!(
-        extract::parse::<extract::Route>(r#"{"kind":"list","next":["https://evil.example"]}"#)
-            .is_err()
+        extract::parse::<extract::Route>(
+            r#"{"kind":"list","next":["https://evil.example"]}"#,
+            true
+        )
+        .is_err()
     );
     let people = extract::listed(
         &m,
