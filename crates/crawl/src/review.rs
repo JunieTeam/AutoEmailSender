@@ -623,14 +623,16 @@ pub async fn set_unit(
 /// site differed in eleven lines or more.
 const COPY_LINES: usize = 3;
 
-/// The addresses among `emails` that another candidate of the crawl sharing a name with `id` has,
-/// when a page read for them is a copy of the one `extract::written` writes as `text`: by the
-/// rule `save` follows, the two are one person. A copy differs in a few lines and gives the same
+/// The addresses among `emails`, those a page read for `id` gives outside its footers and menus,
+/// that another candidate of the crawl sharing a name with `id` has, when they have every one and
+/// a page read for them is a copy of the one `extract::written` writes as `text`: by the rule
+/// `save` follows, the two are one person. A copy differs in a few lines and gives the same
 /// addresses in the same order, written or behind a link, each on the same line after the same
 /// line: a teacher of the name gives their own where the other's page gave that one's, though both
 /// pages may give both elsewhere, as in a menu, and a line can tell whose an address is, as 本人's
-/// or 助理's, on it, before it or after the one before. One whose research no page gave may find it
-/// in another version of their page.
+/// or 助理's, on it, before it or after the one before. A heading further up can tell it too,
+/// which matters only to one not given them all; a footer or menu gives the site's on each page.
+/// One whose research no page gave may find it in another version of their page.
 pub(crate) async fn known(
     db: impl sqlx::SqliteExecutor<'_>,
     crawl: i64,
@@ -683,6 +685,9 @@ pub(crate) async fn known(
             page.difference(&other).count() <= COPY_LINES
                 && other.difference(&page).count() <= COPY_LINES
                 && addresses(&r.text) == given
+                && emails
+                    .iter()
+                    .all(|e| (r.emails.0.iter()).any(|a| a.eq_ignore_ascii_case(&e.address)))
         })
         .flat_map(|r| r.emails.0)
         .filter(|a| emails.iter().any(|e| e.address.eq_ignore_ascii_case(a)))

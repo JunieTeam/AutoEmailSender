@@ -1642,7 +1642,8 @@ async fn a_page_giving_its_own_address_where_one_read_before_gave_another_is_rea
     // both pages writing their group's contacts, which are the two of them; beside a menu linking
     // both; beside a menu giving both in lines just like its own; in a block writing both; giving
     // both in the same order, the two swapping whose is 本人's and whose 助理's, said on the line of
-    // each address, or in a block of its own before or after it, in the same words or in others.
+    // each address, in a block of its own before or after it, in the same words or in others, or in
+    // a heading over a label both addresses follow.
     for page in [
         "<p>课题组联系人 a@school.example.edu b@school.example.edu</p>\
         <div class='footer'><a href='mailto:OWN@school.example.edu'>联系本人</a></div>",
@@ -1660,6 +1661,8 @@ async fn a_page_giving_its_own_address_where_one_read_before_gave_another_is_rea
         <dt>联系B</dt><dd>b@school.example.edu</dd></dl>",
         "<p>a@school.example.edu</p><p>联系A</p><p>b@school.example.edu</p><p>联系B</p>",
         "<dl><dt>甲</dt><dd>a@school.example.edu</dd><dt>乙</dt><dd>b@school.example.edu</dd></dl>",
+        "<section><h3>联系A</h3><p>电子邮件</p><p>a@school.example.edu</p></section>\
+        <section><h3>联系B</h3><p>电子邮件</p><p>b@school.example.edu</p></section>",
     ] {
         let (dir, db) = test_fixtures::db::open().await.unwrap();
         let site = columns().await;
