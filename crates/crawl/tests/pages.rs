@@ -541,6 +541,23 @@ fn a_pager_offering_only_to_jump_to_a_page_needs_no_browser() {
 }
 
 #[test]
+fn a_pager_showing_its_one_page_alone_needs_no_browser() {
+    // A list of cs.bit.edu.cn on one page. The site links each page from its page turns, which on
+    // the last page are bare links beside its number.
+    let base = PageUrl::parse("https://cs.bit.edu.cn/szdw/jcrc/ys/index.htm").unwrap();
+    let page = parse(&base, include_str!("pages/bit-ys.html"));
+    assert_eq!(page.needs_browser, None);
+    assert!(page.pagination.urls.is_empty() && page.pagination.buttons.is_empty());
+    // A script's pager offering other pages too goes on to them.
+    let page = parse(
+        &base,
+        r#"<div class="pages"><a class="number on_page">1</a><a class="number">2</a>
+        <a class="next">&gt;</a></div><script>bind('.pages a')</script>"#,
+    );
+    assert_eq!(page.needs_browser, Some(BrowserReason::Pagination));
+}
+
+#[test]
 fn last_page_placeholders_do_not_require_browser_pagination() {
     let base = PageUrl::parse("https://cyber.seu.edu.cn/yjsds_22371/list4.htm").unwrap();
     let html = include_str!("pages/seu.html")
