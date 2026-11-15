@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT kind AS \"kind: PageKind\"\n        FROM crawl_page\n        WHERE crawl_id = ? AND id != ? AND candidate_id IS NULL AND kind IN ('entry', 'list')\n        AND work_state = 'done' AND status = 'success' AND text = ? AND scope_url = ?\n        AND depth <= ? AND (steps = '[]' OR ?) AND (mode = 'http' OR ?)\n        ORDER BY kind = 'list' DESC\n        LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "kind: PageKind",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl_page",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a558a70ae2b3bc6ae84e875f8c81fa39885dc54e36c1e4bd3e2280e8b3e28a5a"
+}

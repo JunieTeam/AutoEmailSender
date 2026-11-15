@@ -926,13 +926,29 @@ async fn a_page_the_browser_finds_moved_to_its_link_does_not_lead_on_to_itself(d
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_category_showing_nothing_new_when_clicked_is_not_read_again(db: SqlitePool) {
-    // As math.nankai.edu.cn's filter groups, which only unfold their options when clicked.
+    // As math.nankai.edu.cn's filter groups, which only unfold their options when clicked, beside
+    // its list paged in the browser: the group's next page shows nothing new either.
     let site = Site::new().await;
-    let list = "<title>在职教师</title><ul><li onclick=\"unfold('dept')\">部门</li></ul>\
-        <p>张三</p>";
-    site.page("/", list);
+    let list = |name: &str, next: &str| {
+        format!(
+            "<title>在职教师</title><ul><li onclick=\"unfold('dept')\">部门</li></ul>\
+            <p>{name}</p><nav><button {next}>下一页</button></nav>"
+        )
+    };
+    let more = "onclick='next()'";
+    site.page("/", &list("张三", more));
     let browser = Arc::new(FakeBrowser::default());
-    browser.page(&site.url("/"), list);
+    // As many as reading on past the group's second page would take.
+    for (name, next) in [
+        ("张三", more),
+        ("张三", more),
+        ("李四", more),
+        ("李四", more),
+        ("王五", "disabled"),
+        ("王五", "disabled"),
+    ] {
+        browser.page(&site.url("/"), &list(name, next));
+    }
     let provider = Provider::start().await.unwrap();
     let model = config(&db, &provider.address).await;
     let routed = route_all(provider, "list");
@@ -944,12 +960,23 @@ async fn a_category_showing_nothing_new_when_clicked_is_not_read_again(db: Sqlit
         recognize: super::recognize,
     };
     drain(&db, &pages).await;
-    let clicked = PageStep {
-        page: None,
-        control: "部门".into(),
+    let step = |control: &str, page| PageStep {
+        page,
+        control: control.into(),
     };
-    assert_eq!(*browser.steps.lock().unwrap(), [vec![clicked]]);
-    assert_eq!(*routed.lock().unwrap(), ["在职教师"]);
+    let (group, next) = (step("部门", None), |page| step("下一页", Some(page)));
+    assert_eq!(
+        *browser.steps.lock().unwrap(),
+        [
+            vec![],
+            vec![group.clone()],
+            vec![next(2)],
+            vec![group, next(2)],
+            vec![next(2), next(3)]
+        ]
+    );
+    // The model reads the list's own pages only.
+    assert_eq!(routed.lock().unwrap().len(), 3);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -1205,6 +1232,88 @@ async fn a_page_reading_as_another_but_for_its_title_is_read(db: SqlitePool) {
         .await
         .unwrap();
     assert_eq!(names, ["张三"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_category_whose_first_page_reads_as_the_list_s_pages_on(db: SqlitePool) {
+    // Its teachers come first in the whole list too, which goes on to another department's.
+    let site = Site::new().await;
+    let list = |name: &str, next: &str| {
+        format!(
+            "<title>名单</title><ul><li onclick=\"dept('phys')\">物理系</li></ul>\
+            <p>{name}</p><nav><button {next}>下一页</button></nav>"
+        )
+    };
+    let more = "onclick='next()'";
+    site.page("/", &list("张三", more));
+    let browser = Arc::new(FakeBrowser::default());
+    for (name, next) in [
+        ("张三", more),
+        ("张三", more),
+        ("李四", "disabled"),
+        ("王五", "disabled"),
+    ] {
+        browser.page(&site.url("/"), &list(name, next));
+    }
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "list");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY name")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三", "李四", "王五"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_reading_over_http_as_one_its_scripts_left_alone_is_read_in_the_browser(
+    db: SqlitePool,
+) {
+    // Both show no teacher over HTTP and link one department; the second's scripts link another.
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>首页</title><p>王五</p><a href='/a'>在职教师</a><a href='/b'>兼职教师</a>",
+    );
+    let list = "<title>名单</title><a href='/dept-a'>化学系</a><div id='list'></div>";
+    site.page("/a", list);
+    site.page("/b", list);
+    site.page("/dept-a", "<title>化学系</title><p>张三</p>");
+    site.page("/dept-b", "<title>物理系</title><p>李四</p>");
+    let browser = Arc::new(FakeBrowser::default());
+    browser.page(&site.url("/a"), list);
+    browser.page(
+        &site.url("/b"),
+        "<title>名单</title><a href='/dept-b'>物理系</a>",
+    );
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "list");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY name")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三", "李四", "王五"]);
+    assert_eq!(
+        *browser.opened.lock().unwrap(),
+        ["/a", "/b"].map(|path| site.url(path).as_str().to_owned())
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

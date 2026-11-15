@@ -670,8 +670,8 @@ async fn read(
         )
         .await;
     }
-    if read_before(db, c, &m).await? {
-        return Ok(Page::nothing(m, PageKind::Entry));
+    if let Some(kind) = read_before(db, c, &m, rendered).await? {
+        return Ok(read_again(c, m, kind));
     }
     let page = interpret(&reader, &scope, m, unit.as_ref()).await?;
     // A list that loads its teachers with scripts gives none over HTTP, though its menu may link
@@ -687,8 +687,8 @@ async fn read(
             // the browser shows it.
             if seen(&material, &scope) == seen(&page.material, &scope) {
                 Ok(Page { material, ..page })
-            } else if read_before(db, c, &material).await? {
-                Ok(Page::nothing(material, PageKind::Entry))
+            } else if let Some(kind) = read_before(db, c, &material, true).await? {
+                Ok(read_again(c, material, kind))
             } else {
                 interpret(&reader, &scope, material, unit.as_ref()).await
             }
@@ -713,34 +713,50 @@ fn seen<'m>(m: &'m Material, scope: &Scope) -> impl PartialEq + 'm {
     (&m.url, extract::links(m), routing, parts)
 }
 
-/// Whether the crawl read a page already that reads as `m` does, as near its start and offering
+/// What the crawl read a page as already that reads as `m` does, as near its start and offering
 /// as much to click, so that this one gives nothing more: a category showing nothing new when
-/// clicked, or a list at another address. One read a link too far did not follow its links.
-async fn read_before(db: &SqlitePool, c: &Claim, m: &Material) -> Result<bool, ReadError> {
+/// clicked, or a list at another address. One read a link too far did not follow its links. Read
+/// over HTTP, `m` is compared only with pages read so: scripts filling in one may fill in the
+/// other otherwise.
+async fn read_before(
+    db: &SqlitePool,
+    c: &Claim,
+    m: &Material,
+    rendered: bool,
+) -> Result<Option<PageKind>, ReadError> {
     let text = compared(c, m);
     let clicked = !c.steps.is_empty();
-    let read = sqlx::query_scalar!(
-        r#"SELECT EXISTS (
-            SELECT 1
-            FROM crawl_page
-            WHERE crawl_id = ? AND id != ? AND candidate_id IS NULL AND kind IN ('entry', 'list')
-            AND work_state = 'done' AND status = 'success' AND text = ? AND scope_url = ?
-            AND depth <= ? AND (steps = '[]' OR ?)
-        ) AS "read!: bool""#,
+    let kind = sqlx::query_scalar!(
+        r#"SELECT kind AS "kind: PageKind"
+        FROM crawl_page
+        WHERE crawl_id = ? AND id != ? AND candidate_id IS NULL AND kind IN ('entry', 'list')
+        AND work_state = 'done' AND status = 'success' AND text = ? AND scope_url = ?
+        AND depth <= ? AND (steps = '[]' OR ?) AND (mode = 'http' OR ?)
+        ORDER BY kind = 'list' DESC
+        LIMIT 1"#,
         c.crawl,
         c.id,
         text,
         c.scope,
         c.depth,
-        clicked
+        clicked,
+        rendered
     )
-    .fetch_one(db)
+    .fetch_optional(db)
     .await
     .map_err(database("read pages read", READ_FAILED))?;
-    if read {
+    if kind.is_some() {
         tracing::info!(url = c.url.as_str(), "page read before");
     }
-    Ok(read)
+    Ok(kind)
+}
+
+/// A page reading as one the crawl read as `kind`: it gives nothing that one did not, but a list
+/// pages on as itself, as what a click turns it to depends on how it was reached: a category whose
+/// first page reads as the whole list's goes on to its own. Reached paging on, it ends the pages.
+fn read_again(c: &Claim, m: Material, kind: PageKind) -> Page {
+    let paged = c.steps.last().is_some_and(|s| s.page.is_some());
+    Page::nothing(m, if paged { PageKind::Entry } else { kind })
 }
 
 /// The school and college a crawl from a website found its pages to belong to.
