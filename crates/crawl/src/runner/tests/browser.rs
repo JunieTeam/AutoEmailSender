@@ -177,22 +177,25 @@ async fn browser_extracts_people_and_replays_each_list_page(db: SqlitePool) {
 
 /// Reads every page the crawl queues, saving each.
 async fn drain(db: &SqlitePool, pages: &Pages) {
-    let net = net::Net::new(vec![]).unwrap();
-    let turns = Turns::default();
     while let Some(claim) = queue::next(db).await.unwrap() {
-        let outcome = process(
-            db,
-            &net,
-            pages,
-            &turns,
-            &claim,
-            &Cooldown::new(Arc::default()),
-        )
-        .await
-        .unwrap();
-        assert!(matches!(outcome, Outcome::Done(_)));
-        assert!(save(db, &claim, &outcome).await.unwrap());
+        finish(db, pages, &claim).await;
     }
+}
+
+/// Reads the page claimed, saving it.
+async fn finish(db: &SqlitePool, pages: &Pages, claim: &queue::Claim) {
+    let outcome = process(
+        db,
+        &net::Net::new(vec![]).unwrap(),
+        pages,
+        &Turns::default(),
+        claim,
+        &Cooldown::new(Arc::default()),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(outcome, Outcome::Done(_)));
+    assert!(save(db, claim, &outcome).await.unwrap());
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -924,6 +927,162 @@ async fn a_category_showing_nothing_new_when_clicked_is_not_read_again(db: Sqlit
     };
     assert_eq!(*browser.steps.lock().unwrap(), [vec![clicked]]);
     assert_eq!(*routed.lock().unwrap(), ["在职教师"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_at_another_address_is_read_once(db: SqlitePool) {
+    // As math.nankai.edu.cn's teachers in post at /33156/list.htm and /_t1017/33156/list.htm.
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>首页</title><a href='/szdw'>在职教师</a><a href='/t1/szdw'>教师</a>",
+    );
+    let list = "<title>在职教师</title><p>张三</p>";
+    site.page("/szdw", list);
+    site.page("/t1/szdw", list);
+    let browser = Arc::new(FakeBrowser::default());
+    (browser.results.lock().unwrap()).push_back(Err(BrowserError::TimedOut));
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let routed = route_all(provider, "entry");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    assert_eq!(*routed.lock().unwrap(), ["首页", "在职教师"]);
+    // It gives nothing to read in the browser either: the one read before showed whether to.
+    assert!(browser.opened.lock().unwrap().is_empty());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_page_reading_as_another_but_leading_elsewhere_is_read(db: SqlitePool) {
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>首页</title><a href='/a'>化学系</a><a href='/b'>物理系</a>",
+    );
+    for dept in ["a", "b"] {
+        site.page(
+            &format!("/{dept}"),
+            &format!("<title>系</title><a href='/{dept}/szdw'>师资队伍</a>"),
+        );
+    }
+    site.page("/a/szdw", "<title>师资队伍</title><p>张三</p>");
+    site.page("/b/szdw", "<title>师资队伍</title><p>李四</p>");
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "entry");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY name")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三", "李四"]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_reading_as_another_but_for_the_addresses_its_links_give_is_read(db: SqlitePool) {
+    // Two teachers named 张三, each list linking its one's address.
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>首页</title><a href='/a'>化学系</a><a href='/b'>物理系</a>",
+    );
+    for dept in ["a", "b"] {
+        site.page(
+            &format!("/{dept}"),
+            &format!(
+                "<title>教师名录</title>\
+                <p>张三 <a href='mailto:{dept}@school.example.edu'>邮箱</a></p>"
+            ),
+        );
+    }
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let data = request.body["messages"][1]["content"].as_str().unwrap();
+            let output = if system.starts_with("你整理学院") {
+                let data: Value = serde_json::from_str(data).unwrap();
+                let next: Vec<_> = offered(&data).into_iter().map(|(_, n)| n).collect();
+                json!({"kind": "entry", "next": next})
+            } else {
+                let people: Vec<_> = (["a@school.example.edu", "b@school.example.edu"].into_iter())
+                    .filter(|address| data.contains(address))
+                    .map(|address| listed("张三", None, vec![address]))
+                    .collect();
+                json!({ "people": people })
+            };
+            (request.respond)
+                .send(Response::answer(&output.to_string()))
+                .ok();
+        }
+    });
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let emails: Vec<String> = sqlx::query_scalar("SELECT emails FROM candidate ORDER BY emails")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        emails,
+        [r#"["a@school.example.edu"]"#, r#"["b@school.example.edu"]"#]
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_page_read_before_a_link_too_far_is_read_again_nearer_the_start(db: SqlitePool) {
+    // Its copy two links from the start was read while it was, so did not follow its link.
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>首页</title><a href='/near'>师资</a><a href='/dept'>学院</a>",
+    );
+    let entry = "<title>入口</title><a href='/teachers'>教师名录</a>";
+    site.page("/near", entry);
+    site.page("/dept", "<title>学院</title><a href='/far'>师资</a>");
+    site.page("/far", entry);
+    site.page("/teachers", "<title>教师名录</title><p>张三</p>");
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "entry");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    let start = queue::next(&db).await.unwrap().unwrap();
+    finish(&db, &pages, &start).await;
+    let near = queue::next(&db).await.unwrap().unwrap();
+    assert_eq!(near.url, site.url("/near"));
+    drain(&db, &pages).await;
+    finish(&db, &pages, &near).await;
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三"]);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

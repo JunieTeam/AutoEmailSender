@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (\n            SELECT 1\n            FROM crawl_page\n            WHERE crawl_id = ? AND id != ? AND candidate_id IS NULL AND kind IN ('entry', 'list')\n            AND work_state = 'done' AND status = 'success' AND text = ? AND scope_url = ?\n            AND depth <= ? AND (steps = '[]' OR ?)\n        ) AS \"read!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "read!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b6157ba06e794fe29f23cb028fc6186d2130a0c399366a150f3f9191870a801a"
+}

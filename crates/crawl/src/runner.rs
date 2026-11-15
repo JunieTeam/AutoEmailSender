@@ -74,7 +74,7 @@ async fn save_material(
     m: &Material,
     method: PageMethod,
 ) -> Result<(), ReadError> {
-    let text = extract::written(m);
+    let text = compared(c, m);
     let reason = (m.needs_browser.as_ref()).map(|r| Json(Failure::new(browser(r))));
     let status = if reason.is_some() {
         PageStatus::NeedsBrowser
@@ -670,6 +670,9 @@ async fn read(
         )
         .await;
     }
+    if read_before(db, c, &m).await? {
+        return Ok(Page::nothing(m, PageKind::Entry));
+    }
     let page = interpret(&reader, &scope, m, unit.as_ref()).await?;
     // A list that loads its teachers with scripts gives none over HTTP, though its menu may link
     // other lists. Another page is read again only when it leads nowhere, as an entry links to
@@ -684,6 +687,8 @@ async fn read(
             // the browser shows it.
             if seen(&material, &scope) == seen(&page.material, &scope) {
                 Ok(Page { material, ..page })
+            } else if read_before(db, c, &material).await? {
+                Ok(Page::nothing(material, PageKind::Entry))
             } else {
                 interpret(&reader, &scope, material, unit.as_ref()).await
             }
@@ -706,6 +711,36 @@ fn seen<'m>(m: &'m Material, scope: &Scope) -> impl PartialEq + 'm {
         .collect();
     let routing = extract::routing(m, scope, &m.controls);
     (&m.url, extract::links(m), routing, parts)
+}
+
+/// Whether the crawl read a page already that reads as `m` does, as near its start and offering
+/// as much to click, so that this one gives nothing more: a category showing nothing new when
+/// clicked, or a list at another address. One read a link too far did not follow its links.
+async fn read_before(db: &SqlitePool, c: &Claim, m: &Material) -> Result<bool, ReadError> {
+    let text = compared(c, m);
+    let clicked = !c.steps.is_empty();
+    let read = sqlx::query_scalar!(
+        r#"SELECT EXISTS (
+            SELECT 1
+            FROM crawl_page
+            WHERE crawl_id = ? AND id != ? AND candidate_id IS NULL AND kind IN ('entry', 'list')
+            AND work_state = 'done' AND status = 'success' AND text = ? AND scope_url = ?
+            AND depth <= ? AND (steps = '[]' OR ?)
+        ) AS "read!: bool""#,
+        c.crawl,
+        c.id,
+        text,
+        c.scope,
+        c.depth,
+        clicked
+    )
+    .fetch_one(db)
+    .await
+    .map_err(database("read pages read", READ_FAILED))?;
+    if read {
+        tracing::info!(url = c.url.as_str(), "page read before");
+    }
+    Ok(read)
 }
 
 /// The school and college a crawl from a website found its pages to belong to.
@@ -736,27 +771,6 @@ async fn interpret(
     unit: Option<&Affiliation>,
 ) -> Result<Page, ReadError> {
     let c = reader.claim;
-    // A page reading as one the crawl read already gives nothing more: a category that shows
-    // nothing new when clicked, or a list at another address.
-    let text = extract::written(&m);
-    if sqlx::query_scalar!(
-        r#"SELECT EXISTS (
-            SELECT 1
-            FROM crawl_page
-            WHERE crawl_id = ? AND id != ? AND candidate_id IS NULL AND kind IN ('entry', 'list')
-            AND work_state = 'done' AND status = 'success' AND text = ?
-        ) AS "read!: bool""#,
-        c.crawl,
-        c.id,
-        text
-    )
-    .fetch_one(reader.db)
-    .await
-    .map_err(database("read pages read", READ_FAILED))?
-    {
-        tracing::info!(url = c.url.as_str(), "page read before");
-        return Ok(Page::nothing(m, PageKind::Entry));
-    }
     // Clicks are replayed on the page as it opens, so only that page offers its controls.
     let controls: &[String] = if c.steps.is_empty() { &m.controls } else { &[] };
     let route = reader
@@ -881,6 +895,16 @@ fn targeted(kind: PageKind) -> bool {
     )
 }
 
+/// The page as the crawl compares it with the others of its kind, and saves it: one read for a
+/// candidate with the other versions of their page, any other with the pages read for lists.
+fn compared(c: &Claim, m: &Material) -> String {
+    if targeted(c.kind) {
+        extract::written(m)
+    } else {
+        extract::compared(m)
+    }
+}
+
 /// Settles once the claim is no longer this worker's, as after a pause; a long read stops then.
 async fn invalidated(db: &SqlitePool, c: &Claim) -> ReadError {
     loop {
@@ -955,7 +979,7 @@ async fn read_for_candidate(
     // each time. Once one copy was read, another adds nothing.
     if c.kind == PageKind::Profile {
         let emails: Vec<_> = m.units.iter().flat_map(|u| &u.emails).collect();
-        let known = review::known(reader.db, c.crawl, id, &extract::written(&m), &emails)
+        let known = review::known(reader.db, c.crawl, id, &compared(c, &m), &emails)
             .await
             .map_err(database("read page candidate", CANDIDATE_READ_FAILED))?;
         if !known.is_empty() {
@@ -1128,7 +1152,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
     }
     match outcome {
         Outcome::Done(p) => {
-            let text = extract::written(&p.material);
+            let text = compared(c, &p.material);
             let (status, reason) = match (&p.material.needs_browser, &p.failure) {
                 (Some(r), _) => (PageStatus::NeedsBrowser, Some(Failure::new(browser(r)))),
                 (None, Some(failure)) => (PageStatus::Failed, Some(failure.clone())),
