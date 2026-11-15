@@ -237,6 +237,28 @@ fn mailto_and_cloudflare_have_attribute_evidence() {
 }
 
 #[test]
+fn only_what_leads_to_a_page_links_one() {
+    // A component's stylesheet linked in the body, as chem.fzu.edu.cn's pages do, is nothing to
+    // read; an address written where a link goes, as seit.sysu.edu.cn's “邮箱：caoh28@…” and
+    // math.nankai.edu.cn's “xjwang At nankai Dot edu Dot cn”, gives the address, not a page.
+    let page = parse(
+        &url(),
+        "<p>张三<link rel='stylesheet' href='/style/format4.css'>\
+        <a href='邮箱：zhang@school.edu.cn'>邮箱</a>\
+        <a href='li At school Dot edu Dot cn'>李四的邮箱</a>\
+        <a href='/zhang/'>个人主页</a></p>",
+    );
+    let links: Vec<_> = (page.units.iter().flat_map(|u| &u.links))
+        .map(|l| l.url.as_str())
+        .collect();
+    assert_eq!(links, ["https://cs.pku.edu.cn/zhang/"]);
+    let addresses: Vec<_> = (page.units.iter().flat_map(|u| &u.emails))
+        .map(|e| e.address.as_str())
+        .collect();
+    assert_eq!(addresses, ["zhang@school.edu.cn", "li@school.edu.cn"]);
+}
+
+#[test]
 fn a_mailto_link_counts_only_when_it_shows_something() {
     // A page copied from a colleague's keeps the colleague's address in a link that shows nothing.
     let base = PageUrl::parse("https://xingong.muc.edu.cn/info/1051/3815.htm").unwrap();

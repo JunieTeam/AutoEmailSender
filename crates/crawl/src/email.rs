@@ -108,13 +108,15 @@ impl Emails {
         if let Some((_, encoded)) = href.split_once("/cdn-cgi/l/email-protection#") {
             return cloudflare(encoded).map(evidence).into_iter().collect();
         }
-        let Some((scheme, rest)) = href.split_once(':') else {
-            return Vec::new();
+        let addresses = match href.split_once(':') {
+            Some((scheme, rest)) if scheme.eq_ignore_ascii_case("mailto") => {
+                rest.split('?').next().unwrap_or_default()
+            }
+            // Written with no mailto:, as “邮箱：a@b.edu.cn”, an address is still one; with a
+            // path, one is part of a page's.
+            None if !href.contains('/') => href,
+            _ => return Vec::new(),
         };
-        if !scheme.eq_ignore_ascii_case("mailto") {
-            return Vec::new();
-        }
-        let addresses = rest.split('?').next().unwrap_or_default();
         let addresses = percent_encoding::percent_decode_str(addresses).decode_utf8_lossy();
         self.text(&addresses)
             .into_iter()

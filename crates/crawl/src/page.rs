@@ -574,14 +574,18 @@ fn parse_page(
                     current.text.push('\n');
                     current.line_starts.push(current.text.len());
                 }
-                let href = element.value().attr("href");
-                if let Some(href) = href {
-                    let found = emails.mailto(href, element_index, current.text.len());
-                    // A page copied from a colleague's can keep the colleague's address in a link
-                    // that shows nothing.
-                    if !found.is_empty() && shows_something(element) {
-                        current.emails.extend(found);
-                    }
+                // A stylesheet linked in the body leads to nothing to read.
+                let href = (element.value().attr("href"))
+                    .filter(|_| matches!(element.value().name(), "a" | "area"));
+                let found = (href
+                    .map(|href| emails.mailto(href, element_index, current.text.len())))
+                .unwrap_or_default();
+                // An address where a link goes leads to no page.
+                let addressed = !found.is_empty();
+                // A page copied from a colleague's can keep the colleague's address in a link that
+                // shows nothing.
+                if addressed && shows_something(element) {
+                    current.emails.extend(found);
                 }
                 if let Some(encoded) = element.value().attr("data-cfemail")
                     && let Some(address) = cloudflare(encoded)
@@ -641,7 +645,9 @@ fn parse_page(
                 {
                     documents.push(document);
                 }
-                let direct = href.and_then(|h| linked(h, base, url));
+                let direct = href
+                    .filter(|_| !addressed)
+                    .and_then(|h| linked(h, base, url));
                 let link = direct
                     .or_else(|| {
                         element
