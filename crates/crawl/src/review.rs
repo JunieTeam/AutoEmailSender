@@ -1,6 +1,6 @@
 //! Candidate review uses the very same intake calculation and writes as table imports.
 use crate::{
-    EmailEvidence, EmailLocation, PageUrl, email::EMAILS, extract::Person, queue, store::PageKind,
+    EmailEvidence, PageUrl, email::EMAILS, extract::Person, queue, store::PageKind,
     url::both_schemes,
 };
 use failure::Failure;
@@ -624,9 +624,11 @@ pub async fn set_unit(
 const COPY_LINES: usize = 3;
 
 /// The addresses among `emails` that another candidate of the crawl sharing a name with `id` has,
-/// when a page read for them is a copy of the one whose text is `text` and gives the rest of
-/// `emails` too, written or linked as it does: by the rule `save` follows, the two are one person.
-/// One whose research no page gave may find it in another version of their page.
+/// when a page read for them is a copy of the one `extract::written` writes as `text`: by the
+/// rule `save` follows, the two are one person. The lines a copy differs in give none but theirs,
+/// written or behind a link: a teacher of the name gives their own where the other's page gave
+/// that one's, or in a part of their own. One whose research no page gave may find it in another
+/// version of their page.
 pub(crate) async fn known(
     db: impl sqlx::SqliteExecutor<'_>,
     crawl: i64,
@@ -635,8 +637,7 @@ pub(crate) async fn known(
     emails: &[&EmailEvidence],
 ) -> Result<Vec<String>, sqlx::Error> {
     let read = sqlx::query!(
-        r#"SELECT c.emails AS "emails!: Json<Vec<String>>", p.text AS "text!",
-            p.linked_emails AS "linked: Json<Vec<String>>"
+        r#"SELECT c.emails AS "emails!: Json<Vec<String>>", p.text AS "text!"
         FROM candidate c
         JOIN crawl_page p ON p.target_id = c.id
         WHERE c.crawl_id = ?1 AND p.crawl_id = ?1 AND c.id != ?2 AND c.emails IS NOT NULL
@@ -661,20 +662,14 @@ pub(crate) async fn known(
     Ok((read.into_iter())
         .filter(|r| {
             let other = lines(&r.text);
-            let written: Vec<_> = (EMAILS.text(&r.text).into_iter())
-                .map(|e| e.address)
-                .collect();
-            page.difference(&other).count() <= COPY_LINES
+            let added: Vec<_> = page.difference(&other).collect();
+            added.len() <= COPY_LINES
                 && other.difference(&page).count() <= COPY_LINES
-                && emails.iter().all(|e| {
+                && (added.iter().flat_map(|line| EMAILS.text(line))).all(|e| {
                     r.emails
                         .0
                         .iter()
                         .any(|a| a.eq_ignore_ascii_case(&e.address))
-                        || match e.location {
-                            EmailLocation::Text { .. } => written.contains(&e.address),
-                            EmailLocation::Attribute { .. } => r.linked.0.contains(&e.address),
-                        }
                 })
         })
         .flat_map(|r| r.emails.0)

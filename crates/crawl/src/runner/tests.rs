@@ -1677,6 +1677,47 @@ async fn a_page_writing_the_same_with_another_address_behind_its_link_is_read() 
 }
 
 #[tokio::test]
+async fn a_page_linking_its_own_address_is_read_though_its_menu_links_both() {
+    // Two teachers named 张三 of two departments, each page linking its own address, and its menu
+    // both of theirs.
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = columns().await;
+    for (path, department, address) in [
+        ("/info/1/7.htm", "化学系", "a"),
+        ("/info/2/8.htm", "物理系", "b"),
+    ] {
+        site.page(
+            path,
+            &format!(
+                "<title>张三</title><p>张三 {department}教授</p><p>研究方向：机器学习</p>\
+                <p><a href='mailto:{address}@school.example.edu'>联系本人</a></p>\
+                <nav><a href='mailto:a@school.example.edu'>化学系 张三</a>\
+                <a href='mailto:b@school.example.edu'>物理系 张三</a></nav>"
+            ),
+        );
+    }
+    let read = read_for_zhang(&db, &site, vec![], |data| {
+        targeted(if data.to_string().contains("物理系教授") {
+            "b@school.example.edu"
+        } else {
+            "a@school.example.edu"
+        })
+    })
+    .await;
+    assert_eq!(read, 2);
+    let emails: Vec<String> = sqlx::query_scalar("SELECT emails FROM candidate ORDER BY id")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        emails,
+        [r#"["a@school.example.edu"]"#, r#"["b@school.example.edu"]"#]
+    );
+    db.close().await;
+    dir.close().unwrap();
+}
+
+#[tokio::test]
 async fn a_copy_writing_an_address_found_only_within_another_before_is_read() {
     // Another version of his page adds li@, which the one read before writes only inside weili@.
     let (dir, db) = test_fixtures::db::open().await.unwrap();

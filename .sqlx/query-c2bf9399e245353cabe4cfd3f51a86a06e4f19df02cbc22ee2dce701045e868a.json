@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT c.emails AS \"emails!: Json<Vec<String>>\", p.text AS \"text!\"\n        FROM candidate c\n        JOIN crawl_page p ON p.target_id = c.id\n        WHERE c.crawl_id = ?1 AND p.crawl_id = ?1 AND c.id != ?2 AND c.emails IS NOT NULL\n        AND c.research IS NOT NULL AND p.work_state = 'done' AND p.status = 'success'\n        AND EXISTS (\n            SELECT 1\n            FROM json_each(c.match_names) a\n            JOIN json_each((SELECT match_names FROM candidate WHERE id = ?2)) b ON a.value = b.value\n        )",
+  "describe": {
+    "columns": [
+      {
+        "name": "emails!: Json<Vec<String>>",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate",
+            "name": "emails"
+          }
+        }
+      },
+      {
+        "name": "text!",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl_page",
+            "name": "text"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "c2bf9399e245353cabe4cfd3f51a86a06e4f19df02cbc22ee2dce701045e868a"
+}

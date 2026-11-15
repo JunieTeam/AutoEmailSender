@@ -1,6 +1,6 @@
 //! Background page/model work. Page results and newly discovered work commit together.
 use crate::{
-    EmailLocation, Material, PageTarget, PageUrl, Scope,
+    Material, PageTarget, PageUrl, Scope,
     browser::{Browser, BrowserError},
     embedded, enrich,
     extract::{self, Kind, Person},
@@ -74,7 +74,7 @@ async fn save_material(
     m: &Material,
     method: PageMethod,
 ) -> Result<(), ReadError> {
-    let text = m.text();
+    let text = extract::written(m);
     let reason = (m.needs_browser.as_ref()).map(|r| Json(Failure::new(browser(r))));
     let status = if reason.is_some() {
         PageStatus::NeedsBrowser
@@ -738,7 +738,7 @@ async fn interpret(
     let c = reader.claim;
     // A page reading as one the crawl read already gives nothing more: a category that shows
     // nothing new when clicked, or a list at another address.
-    let text = m.text();
+    let text = extract::written(&m);
     if sqlx::query_scalar!(
         r#"SELECT EXISTS (
             SELECT 1
@@ -955,7 +955,7 @@ async fn read_for_candidate(
     // each time. Once one copy was read, another adds nothing.
     if c.kind == PageKind::Profile {
         let emails: Vec<_> = m.units.iter().flat_map(|u| &u.emails).collect();
-        let known = review::known(reader.db, c.crawl, id, &m.text(), &emails)
+        let known = review::known(reader.db, c.crawl, id, &extract::written(&m), &emails)
             .await
             .map_err(database("read page candidate", CANDIDATE_READ_FAILED))?;
         if !known.is_empty() {
@@ -1128,27 +1128,21 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
     }
     match outcome {
         Outcome::Done(p) => {
-            let text = p.material.text();
+            let text = extract::written(&p.material);
             let (status, reason) = match (&p.material.needs_browser, &p.failure) {
                 (Some(r), _) => (PageStatus::NeedsBrowser, Some(Failure::new(browser(r)))),
                 (None, Some(failure)) => (PageStatus::Failed, Some(failure.clone())),
                 (None, None) => (PageStatus::Success, None),
             };
             let reason = reason.map(Json);
-            let linked: Vec<_> = (p.material.units.iter().flat_map(|u| &u.emails))
-                .filter(|e| matches!(e.location, EmailLocation::Attribute { .. }))
-                .map(|e| e.address.as_str())
-                .collect();
             sqlx::query!(
                 r#"UPDATE crawl_page
-                SET work_state = 'done', kind = ?, status = ?, error = ?, text = ?,
-                    linked_emails = ?, fetched_at = ?
+                SET work_state = 'done', kind = ?, status = ?, error = ?, text = ?, fetched_at = ?
                 WHERE id = ?"#,
                 p.kind,
                 status,
                 reason,
                 text,
-                Json(&linked),
                 now(),
                 c.id
             )
