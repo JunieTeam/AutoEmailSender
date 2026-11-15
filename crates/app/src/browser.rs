@@ -236,6 +236,9 @@ fn render(
         .parse()
         .map_err(|_| failed("网页地址无法使用"))?;
     let window = WebviewWindowBuilder::new(app, label, WebviewUrl::External(url))
+        // A desktop's: narrower, sites fold their menus away, out of reach of a click, as
+        // math.nankai.edu.cn hides its categories under 1000 pixels.
+        .inner_size(1920.0, 1080.0)
         .visible(false)
         .focused(false)
         .incognito(true)
