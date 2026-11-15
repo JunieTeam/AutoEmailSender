@@ -9,6 +9,7 @@ use mentor::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{SqliteConnection, SqlitePool, types::Json};
+use std::collections::BTreeSet;
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
@@ -614,22 +615,30 @@ pub async fn set_unit(
     Ok(UnitChange::Set)
 }
 
-/// Returns whether this person added a candidate rather than merging into existing candidates.
+/// The lines a copy of a teacher's page can differ in: a site publishing one under each column that
+/// lists them names the column in its heading and breadcrumbs. Different teachers' pages on one
+/// site differed in eleven lines or more.
+const COPY_LINES: usize = 3;
+
 /// The addresses among `addresses` that another candidate of the crawl sharing a name with `id`
-/// already has: by the rule `save` follows, the two are one person.
+/// has, when a page read for them is a copy of the one whose text is `text`: by the rule `save`
+/// follows, the two are one person, and the copy has nothing more to give.
 pub(crate) async fn known(
     db: impl sqlx::SqliteExecutor<'_>,
     crawl: i64,
     id: i64,
+    text: &str,
     addresses: &[&str],
 ) -> Result<Vec<String>, sqlx::Error> {
-    let others = sqlx::query_scalar!(
-        r#"SELECT emails AS "emails!: Json<Vec<String>>"
-        FROM candidate
-        WHERE crawl_id = ?1 AND id != ?2 AND emails IS NOT NULL
+    let read = sqlx::query!(
+        r#"SELECT c.emails AS "emails!: Json<Vec<String>>", p.text AS "text!"
+        FROM candidate c
+        JOIN crawl_page p ON p.target_id = c.id
+        WHERE c.crawl_id = ?1 AND c.id != ?2 AND c.emails IS NOT NULL
+        AND p.work_state = 'done' AND p.status = 'success'
         AND EXISTS (
             SELECT 1
-            FROM json_each(match_names) a
+            FROM json_each(c.match_names) a
             JOIN json_each((SELECT match_names FROM candidate WHERE id = ?2)) b ON a.value = b.value
         )"#,
         crawl,
@@ -637,11 +646,25 @@ pub(crate) async fn known(
     )
     .fetch_all(db)
     .await?;
-    Ok((others.into_iter().flat_map(|Json(emails)| emails))
+    let lines = |text: &str| -> BTreeSet<String> {
+        (text.lines().map(str::trim))
+            .filter(|l| !l.is_empty())
+            .map(str::to_owned)
+            .collect()
+    };
+    let page = lines(text);
+    Ok((read.into_iter())
+        .filter(|r| {
+            let other = lines(&r.text);
+            page.difference(&other).count() <= COPY_LINES
+                && other.difference(&page).count() <= COPY_LINES
+        })
+        .flat_map(|r| r.emails.0)
         .filter(|e| addresses.iter().any(|a| a.eq_ignore_ascii_case(e)))
         .collect())
 }
 
+/// Returns whether this person added a candidate rather than merging into existing candidates.
 pub(crate) async fn save(
     conn: &mut SqliteConnection,
     crawl: i64,

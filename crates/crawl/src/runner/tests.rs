@@ -1376,11 +1376,9 @@ async fn a_teacher_s_page_linked_over_http_and_https_is_one_candidate(db: Sqlite
     assert_eq!(candidates, 1);
 }
 
-#[tokio::test]
-async fn a_copy_of_a_teacher_s_page_read_before_is_not_read_again() {
-    // As chem.fzu.edu.cn and www.auto.uestc.edu.cn publish a teacher's page under each column that
-    // lists them, at another address each time.
-    let (dir, db) = test_fixtures::db::open().await.unwrap();
+/// A site whose `/` lists 张三 at `/info/1/7.htm` and links `/boshi`, which lists him again at
+/// `/info/2/8.htm`.
+async fn columns() -> Site {
     let site = Site::new().await;
     site.page(
         "/",
@@ -1390,14 +1388,20 @@ async fn a_copy_of_a_teacher_s_page_read_before_is_not_read_again() {
         "/boshi",
         "<title>博士生导师</title><p><a href='/info/2/8.htm'>张三</a></p>",
     );
-    for path in ["/info/1/7.htm", "/info/2/8.htm"] {
-        site.page(
-            path,
-            "<title>张三</title><p>张三 a@school.example.edu 机器学习</p>",
-        );
-    }
+    site
+}
+
+/// Crawls `site` from `/`, its first list giving 张三 `emails` and the second giving him once a
+/// candidate has `a@school.example.edu`; the model says of each page read for him what `answer`
+/// does. Gives how many such pages the model read.
+async fn read_for_zhang(
+    db: &SqlitePool,
+    site: &Site,
+    emails: Vec<&'static str>,
+    answer: fn(&Value) -> Value,
+) -> usize {
     let mut provider = Provider::start().await.unwrap();
-    let id = config(&db, &provider.address).await;
+    let id = config(db, &provider.address).await;
     let (saved, seen) = watch::channel(());
     let read = Arc::new(Mutex::new(0));
     let model = {
@@ -1405,6 +1409,7 @@ async fn a_copy_of_a_teacher_s_page_read_before_is_not_read_again() {
         tokio::spawn(async move {
             while let Some(r) = provider.requests.recv().await {
                 let (db, read, mut seen) = (db.clone(), read.clone(), seen.clone());
+                let emails = emails.clone();
                 tokio::spawn(async move {
                     let system = r.body["messages"][0]["content"].as_str().unwrap();
                     let data: Value =
@@ -1416,30 +1421,30 @@ async fn a_copy_of_a_teacher_s_page_read_before_is_not_read_again() {
                             .map(|(_, n)| n)
                             .collect();
                         json!({"kind": "list", "next": next})
+                    } else if data["title"] == "教授" {
+                        json!({"people": [listed("张三", Some(1), emails)]})
                     } else if system.starts_with("你从教师") {
-                        // The second list gives its copy once the first has given the address.
-                        while data["title"] == "博士生导师"
-                            && sqlx::query_scalar::<_, i64>(
-                                "SELECT count(*) FROM candidate WHERE emails LIKE '%a@school%'",
-                            )
-                            .fetch_one(&db)
-                            .await
-                            .unwrap()
-                                == 0
+                        while sqlx::query_scalar::<_, i64>(
+                            "SELECT count(*) FROM candidate WHERE emails LIKE '%a@school%'",
+                        )
+                        .fetch_one(&db)
+                        .await
+                        .unwrap()
+                            == 0
                         {
                             seen.changed().await.unwrap();
                         }
                         json!({"people": [listed("张三", Some(1), vec![])]})
                     } else {
                         *read.lock().unwrap() += 1;
-                        targeted("a@school.example.edu")
+                        answer(&data)
                     };
                     r.respond.send(Response::answer(&answer.to_string())).ok();
                 });
             }
         })
     };
-    let crawl = queue::start(&db, &[site.url("/")], id, 1).await.unwrap();
+    let crawl = queue::start(db, &[site.url("/")], id, 1).await.unwrap();
     let (tx, mut events) = mpsc::unbounded_channel();
     let task = tokio::spawn(run_with_pages(
         db.clone(),
@@ -1453,16 +1458,97 @@ async fn a_copy_of_a_teacher_s_page_read_before_is_not_read_again() {
         },
         |_| {},
     ));
-    changed_until(&db, crawl, &mut events, "done").await;
-    assert_eq!(*read.lock().unwrap(), 1);
+    changed_until(db, crawl, &mut events, "done").await;
+    task.abort();
+    model.abort();
+    *read.lock().unwrap()
+}
+
+#[tokio::test]
+async fn a_copy_of_a_teacher_s_page_read_before_is_not_read_again() {
+    // As chem.fzu.edu.cn and jidian.cug.edu.cn publish a teacher's page under each column that
+    // lists them, at another address each time, naming the column on it.
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = columns().await;
+    for (path, column) in [("/info/1/7.htm", "教授"), ("/info/2/8.htm", "博士生导师")] {
+        site.page(
+            path,
+            &format!(
+                "<title>张三</title><h2>{column}</h2><p>张三 a@school.example.edu 机器学习</p>"
+            ),
+        );
+    }
+    let read = read_for_zhang(&db, &site, vec![], |_| targeted("a@school.example.edu")).await;
+    assert_eq!(read, 1);
     let ids = candidate_ids(&db).await;
     assert_eq!(ids.len(), 1);
     let (_, profiles) = links(&db, ids[0]).await;
     let profiles: Vec<_> = profiles.iter().map(|(url, _)| url.as_str()).collect();
     let copies = [site.url("/info/1/7.htm"), site.url("/info/2/8.htm")];
     assert_eq!(profiles, copies.each_ref().map(PageUrl::as_str));
-    task.abort();
-    model.abort();
+    db.close().await;
+    dir.close().unwrap();
+}
+
+#[tokio::test]
+async fn a_teacher_s_page_is_read_when_the_one_known_before_was_not() {
+    // The first list gives his address, but its link to his page is broken.
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = columns().await;
+    site.page(
+        "/",
+        "<title>教授</title><p><a href='/info/1/7.htm'>张三</a> a@school.example.edu</p>\
+        <a href='/boshi'>博士生导师</a>",
+    );
+    site.page(
+        "/info/2/8.htm",
+        "<title>张三</title><p>张三 a@school.example.edu</p><p>研究方向：机器学习</p>",
+    );
+    let read = read_for_zhang(&db, &site, vec!["a@school.example.edu"], |_| {
+        targeted("a@school.example.edu")
+    })
+    .await;
+    assert_eq!(read, 1);
+    let research: Vec<Option<String>> = sqlx::query_scalar("SELECT research FROM candidate")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(research, [Some("机器学习".to_owned())]);
+    db.close().await;
+    dir.close().unwrap();
+}
+
+#[tokio::test]
+async fn a_page_showing_the_address_of_a_teacher_of_the_same_name_is_read() {
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = columns().await;
+    site.page(
+        "/info/1/7.htm",
+        "<title>张三</title><p>张三</p><p>化学系 教授</p><p>a@school.example.edu</p>\
+        <p>办公室：化学楼 101</p><p>研究方向：催化</p>",
+    );
+    site.page(
+        "/info/2/8.htm",
+        "<title>张三</title><p>张三</p><p>物理系 副教授</p><p>b@school.example.edu</p>\
+        <p>办公室：物理楼 202</p><p>研究方向：凝聚态物理</p><p>化学系 张三 a@school.example.edu</p>",
+    );
+    let read = read_for_zhang(&db, &site, vec![], |data| {
+        targeted(if data.to_string().contains("物理系") {
+            "b@school.example.edu"
+        } else {
+            "a@school.example.edu"
+        })
+    })
+    .await;
+    assert_eq!(read, 2);
+    let emails: Vec<String> = sqlx::query_scalar("SELECT emails FROM candidate ORDER BY id")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        emails,
+        [r#"["a@school.example.edu"]"#, r#"["b@school.example.edu"]"#]
+    );
     db.close().await;
     dir.close().unwrap();
 }
