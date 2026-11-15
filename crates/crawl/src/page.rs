@@ -75,6 +75,9 @@ pub struct Pagination {
     pub urls: Vec<PageUrl>,
     pub needs_browser: bool,
     pub buttons: Vec<ButtonPage>,
+    /// It counts pages after this one, and offers only to jump to the page written in a box, which
+    /// no click replays.
+    pub jump_only: bool,
 }
 
 #[derive(Debug, Clone)]

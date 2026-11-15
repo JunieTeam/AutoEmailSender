@@ -324,15 +324,15 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
             if link.website() == url.website() && link != url && !pagination.urls.contains(link) {
                 pagination.urls.push(link.clone());
             }
-        } else if !matches!(control.kind, Kind::Backward | Kind::First | Kind::Jump)
+        } else if matches!(control.kind, Kind::Jump) {
+            // Past the check for its last page above, a pager counting its pages has more.
+            pagination.jump_only |= counted.is_some();
+        } else if !matches!(control.kind, Kind::Backward | Kind::First)
             && scripted(control.element, has_scripts)
             // A site writing each page to its own file links the next from its page turns,
             // leaving them bare where there is none, as beside a list's one page number.
             && !(bare(control.element) && context.is_some_and(|c| c.alone))
         {
-            // A jump goes to the page written in the box beside it, which no click replays: a
-            // pager with more pages offers the next one too, and one offering nothing else has
-            // none.
             pagination.needs_browser = true;
             let page = match control.kind {
                 Kind::Number(n) => Some(n),
@@ -349,6 +349,9 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
             }
         }
     }
+    // A jump goes to the page written in the box beside it, which no click replays: the pages
+    // only it leads to stay unread.
+    pagination.jump_only &= pagination.urls.is_empty() && pagination.buttons.is_empty();
     pagination
 }
 

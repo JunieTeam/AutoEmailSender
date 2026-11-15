@@ -1317,6 +1317,38 @@ async fn a_list_reading_over_http_as_one_its_scripts_left_alone_is_read_in_the_b
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_paging_on_only_by_a_jump_notes_its_later_pages_unread(db: SqlitePool) {
+    // Its pager counts two pages, and only jumps to the one written in its box.
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>名单</title><p>张三</p><div class='pager'><span>1/2</span>\
+        <input type='text' value='2'><button onclick='go()'>跳转</button></div>",
+    );
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "list");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三"]);
+    let limits: String = sqlx::query_scalar("SELECT limits FROM crawl")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(limits, r#"["有的名单只能输入页码跳转，后面的页没有读"]"#);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_list_read_again_as_it_was_but_for_controls_is_routed_again(db: SqlitePool) {
     // Its scripts make the category written over HTTP one to click.
     let site = Site::new().await;

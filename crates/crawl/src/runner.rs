@@ -1316,6 +1316,10 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                         .await?;
                     }
                 }
+                if p.kind == PageKind::List && p.material.pagination.jump_only {
+                    queue::limit(&mut tx, c.crawl, "有的名单只能输入页码跳转，后面的页没有读")
+                        .await?;
+                }
                 let target = match c.kind {
                     PageKind::Profile if !p.people.is_empty() => target(&mut tx, c.id).await?,
                     _ => None,
