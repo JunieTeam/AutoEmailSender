@@ -1580,6 +1580,62 @@ async fn a_page_showing_the_address_of_a_teacher_of_the_same_name_is_read() {
 }
 
 #[tokio::test]
+async fn a_site_read_over_http_after_https_failed_reads_its_start_once() {
+    // Its pages link back to the start over http.
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = Site::new().await;
+    site.page("/", "<title>首页</title><a href='/faculty'>师资队伍</a>");
+    site.page(
+        "/faculty",
+        "<title>师资队伍</title><p>张三</p><a href='/'>首页</a>",
+    );
+    let mut provider = Provider::start().await.unwrap();
+    let id = config(&db, &provider.address).await;
+    let model = tokio::spawn(async move {
+        while let Some(r) = provider.requests.recv().await {
+            let system = r.body["messages"][0]["content"].as_str().unwrap();
+            let data: Value =
+                serde_json::from_str(r.body["messages"][1]["content"].as_str().unwrap()).unwrap();
+            let answer = if system.starts_with("你整理学院") {
+                let next: Vec<_> = offered(&data).into_iter().map(|(_, n)| n).collect();
+                json!({"kind": "entry", "next": next})
+            } else if data["title"] == "师资队伍" {
+                json!({"people": [{"n": "张三"}]})
+            } else {
+                json!({"people": []})
+            };
+            r.respond.send(Response::answer(&answer.to_string())).ok();
+        }
+    });
+    let https = PageUrl::parse(&format!("https://school.example.edu:{}/", site.port)).unwrap();
+    let crawl = queue::start(&db, std::slice::from_ref(&https), id, 1)
+        .await
+        .unwrap();
+    let (tx, mut events) = mpsc::unbounded_channel();
+    let task = tokio::spawn(run_with_pages(
+        db.clone(),
+        net::Net::new(vec![]).unwrap(),
+        Arc::new(Pages::local(site.port)),
+        Crawler::default(),
+        Turns::default(),
+        move || {
+            tx.send(()).ok();
+        },
+        |_| {},
+    ));
+    changed_until(&db, crawl, &mut events, "done").await;
+    let urls: Vec<String> = sqlx::query_scalar("SELECT url FROM crawl_page ORDER BY id")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(urls, [https.as_str(), site.url("/faculty").as_str()]);
+    task.abort();
+    model.abort();
+    db.close().await;
+    dir.close().unwrap();
+}
+
+#[tokio::test]
 async fn a_list_routing_takes_for_a_teacher_s_page_is_read_as_a_list() {
     // As sse.sysu.edu.cn's list of off-campus supervisors, whose head shows its first teacher.
     let (dir, db) = test_fixtures::db::open().await.unwrap();

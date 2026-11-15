@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id\n        FROM crawl_page\n        WHERE crawl_id = ? AND url = ? AND steps = ? AND candidate_id IS NULL",
+  "query": "SELECT id\n        FROM crawl_page\n        WHERE crawl_id = ? AND url IN (SELECT value FROM json_each(?)) AND steps = ?\n        AND candidate_id IS NULL",
   "describe": {
     "columns": [
       {
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "34b8fd9129acb14f3c7dd6035ccbf10acc9bb39b2ab6cf9fd10fa58d55ec376f"
+  "hash": "8ebe0884c9db44457caa6ff117e8497d751b7dfbdc0506820f317918b8ef2b5a"
 }

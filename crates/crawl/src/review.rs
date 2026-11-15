@@ -1,5 +1,5 @@
 //! Candidate review uses the very same intake calculation and writes as table imports.
-use crate::{PageUrl, extract::Person, queue, store::PageKind};
+use crate::{PageUrl, extract::Person, queue, store::PageKind, url::both_schemes};
 use failure::Failure;
 use mentor::{
     MentorFields,
@@ -994,6 +994,7 @@ pub(crate) async fn mismatched(
     urls: &[&str],
     at: i64,
 ) -> Result<(), sqlx::Error> {
+    // What a page proves holds for its link over either scheme.
     let urls = both_schemes(urls);
     sqlx::query!(
         r#"UPDATE candidate_profile
@@ -1071,19 +1072,6 @@ async fn clear_mismatch(
     .execute(conn)
     .await?;
     Ok(())
-}
-
-/// The pages at `urls` as either scheme writes them: one site can link a teacher's page over http
-/// from one list and over https from another, and what one link proves holds for the other.
-fn both_schemes(urls: &[&str]) -> Vec<String> {
-    (urls.iter())
-        .flat_map(|url| {
-            let other = (url.strip_prefix("https://"))
-                .map(|rest| format!("http://{rest}"))
-                .or_else(|| (url.strip_prefix("http://")).map(|rest| format!("https://{rest}")));
-            std::iter::once((*url).to_owned()).chain(other)
-        })
-        .collect()
 }
 
 /// Keeps the candidate's profile unless its page proved to be someone else's; otherwise one of

@@ -117,6 +117,19 @@ impl PageUrl {
     }
 }
 
+/// The pages at `urls` as either scheme writes them: one site can link a page over http from one
+/// page and over https from another.
+pub(crate) fn both_schemes(urls: &[&str]) -> Vec<String> {
+    (urls.iter())
+        .flat_map(|url| {
+            let other = (url.strip_prefix("https://"))
+                .map(|rest| format!("http://{rest}"))
+                .or_else(|| (url.strip_prefix("http://")).map(|rest| format!("https://{rest}")));
+            std::iter::once((*url).to_owned()).chain(other)
+        })
+        .collect()
+}
+
 fn public_v4(ip: Ipv4Addr) -> bool {
     let [a, b, _, _] = ip.octets();
     !ip.is_private()

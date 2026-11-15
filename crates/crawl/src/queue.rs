@@ -2,6 +2,7 @@
 use crate::{
     PageUrl, Scope, now,
     store::{PageKind, PageMethod, PageStatus, PageStep},
+    url::both_schemes,
 };
 use failure::Failure;
 use serde::Serialize;
@@ -125,12 +126,21 @@ pub(crate) async fn enqueue_steps(
     steps: &[PageStep],
 ) -> Result<(), sqlx::Error> {
     let steps = Json(steps);
+    // A site read over http after its https address failed links its pages back over http. A
+    // teacher's page stays at the link a list gave: read for someone it proved not to be, it is
+    // read again for the one another link gives it to.
+    let urls = if kind == PageKind::Profile {
+        vec![url.as_str().to_owned()]
+    } else {
+        both_schemes(&[url.as_str()])
+    };
     if sqlx::query_scalar!(
         r#"SELECT id
         FROM crawl_page
-        WHERE crawl_id = ? AND url = ? AND steps = ? AND candidate_id IS NULL"#,
+        WHERE crawl_id = ? AND url IN (SELECT value FROM json_each(?)) AND steps = ?
+        AND candidate_id IS NULL"#,
         crawl,
-        url,
+        Json(&urls),
         steps
     )
     .fetch_optional(&mut *conn)
