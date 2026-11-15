@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE crawl_page\n                SET work_state = 'done', kind = ?, status = ?, error = ?, text = ?,\n                    linked_emails = ?, fetched_at = ?\n                WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "52ad50843ba379d14c37e1f2286cd0fdc286ec1da89f0ecdadb47b6975e44004"
+}

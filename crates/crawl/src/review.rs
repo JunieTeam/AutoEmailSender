@@ -624,9 +624,9 @@ pub async fn set_unit(
 const COPY_LINES: usize = 3;
 
 /// The addresses among `emails` that another candidate of the crawl sharing a name with `id` has,
-/// when a page read for them is a copy of the one whose text is `text` and writes the rest of
-/// `emails` too: by the rule `save` follows, the two are one person. One whose research no page
-/// gave may find it in another version of their page.
+/// when a page read for them is a copy of the one whose text is `text` and gives the rest of
+/// `emails` too, written or linked as it does: by the rule `save` follows, the two are one person.
+/// One whose research no page gave may find it in another version of their page.
 pub(crate) async fn known(
     db: impl sqlx::SqliteExecutor<'_>,
     crawl: i64,
@@ -635,7 +635,8 @@ pub(crate) async fn known(
     emails: &[&EmailEvidence],
 ) -> Result<Vec<String>, sqlx::Error> {
     let read = sqlx::query!(
-        r#"SELECT c.emails AS "emails!: Json<Vec<String>>", p.text AS "text!"
+        r#"SELECT c.emails AS "emails!: Json<Vec<String>>", p.text AS "text!",
+            p.linked_emails AS "linked: Json<Vec<String>>"
         FROM candidate c
         JOIN crawl_page p ON p.target_id = c.id
         WHERE c.crawl_id = ?1 AND p.crawl_id = ?1 AND c.id != ?2 AND c.emails IS NOT NULL
@@ -665,11 +666,15 @@ pub(crate) async fn known(
                 .collect();
             page.difference(&other).count() <= COPY_LINES
                 && other.difference(&page).count() <= COPY_LINES
-                // The text read shows none of the addresses behind its links.
                 && emails.iter().all(|e| {
-                    r.emails.0.iter().any(|a| a.eq_ignore_ascii_case(&e.address))
-                        || (matches!(e.location, EmailLocation::Text { .. })
-                            && written.contains(&e.address))
+                    r.emails
+                        .0
+                        .iter()
+                        .any(|a| a.eq_ignore_ascii_case(&e.address))
+                        || match e.location {
+                            EmailLocation::Text { .. } => written.contains(&e.address),
+                            EmailLocation::Attribute { .. } => r.linked.0.contains(&e.address),
+                        }
                 })
         })
         .flat_map(|r| r.emails.0)

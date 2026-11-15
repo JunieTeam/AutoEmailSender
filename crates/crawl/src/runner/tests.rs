@@ -1638,8 +1638,8 @@ async fn a_page_showing_the_address_of_a_teacher_of_the_same_name_is_read() {
 
 #[tokio::test]
 async fn a_page_writing_the_same_with_another_address_behind_its_link_is_read() {
-    // Two teachers named 张三 of two departments, each linking their own address, both pages
-    // writing their group's contacts, which are the two of them.
+    // Two teachers named 张三 of two departments, each linking their own address in the footer,
+    // both pages writing their group's contacts, which are the two of them.
     let (dir, db) = test_fixtures::db::open().await.unwrap();
     let site = columns().await;
     for (path, department, address) in [
@@ -1650,8 +1650,8 @@ async fn a_page_writing_the_same_with_another_address_behind_its_link_is_read() 
             path,
             &format!(
                 "<title>张三</title><p>张三 {department}</p>\
-                <p><a href='mailto:{address}@school.example.edu'>发送邮件</a></p>\
-                <p>课题组联系人 a@school.example.edu b@school.example.edu</p>"
+                <p>课题组联系人 a@school.example.edu b@school.example.edu</p>\
+                <div class='footer'><a href='mailto:{address}@school.example.edu'>联系本人</a></div>"
             ),
         );
     }

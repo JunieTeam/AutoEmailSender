@@ -1,6 +1,6 @@
 //! Background page/model work. Page results and newly discovered work commit together.
 use crate::{
-    Material, PageTarget, PageUrl, Scope,
+    EmailLocation, Material, PageTarget, PageUrl, Scope,
     browser::{Browser, BrowserError},
     embedded, enrich,
     extract::{self, Kind, Person},
@@ -929,10 +929,7 @@ async fn read_for_candidate(
     // A site can publish a teacher's page under each column that lists them, at another address
     // each time. Once one copy was read, another adds nothing.
     if c.kind == PageKind::Profile {
-        // A footer's or a menu's addresses are the site's, on each of its pages alike.
-        let emails: Vec<_> = (m.units.iter().filter(|u| u.footer_or_nav.is_none()))
-            .flat_map(|u| &u.emails)
-            .collect();
+        let emails: Vec<_> = m.units.iter().flat_map(|u| &u.emails).collect();
         let known = review::known(reader.db, c.crawl, id, &m.text(), &emails)
             .await
             .map_err(database("read page candidate", CANDIDATE_READ_FAILED))?;
@@ -1113,15 +1110,20 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                 (None, None) => (PageStatus::Success, None),
             };
             let reason = reason.map(Json);
+            let linked: Vec<_> = (p.material.units.iter().flat_map(|u| &u.emails))
+                .filter(|e| matches!(e.location, EmailLocation::Attribute { .. }))
+                .map(|e| e.address.as_str())
+                .collect();
             sqlx::query!(
                 r#"UPDATE crawl_page
                 SET work_state = 'done', kind = ?, status = ?, error = ?, text = ?,
-                    fetched_at = ?
+                    linked_emails = ?, fetched_at = ?
                 WHERE id = ?"#,
                 p.kind,
                 status,
                 reason,
                 text,
+                Json(&linked),
                 now(),
                 c.id
             )
