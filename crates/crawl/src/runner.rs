@@ -715,10 +715,10 @@ fn seen<'m>(m: &'m Material, scope: &Scope) -> impl PartialEq + 'm {
 
 /// What the crawl read a page as already that reads as `m` does, as near its start and offering
 /// as much to click, so that this one gives nothing more: a category showing nothing new when
-/// clicked, or a list at another address. One read a link too far did not follow its links, and
-/// where they lead does not tell one this far from another: a list's other address can link its
-/// site's pages at others too. Read over HTTP, `m` is compared only with pages read so: scripts
-/// filling in one may fill in the other otherwise.
+/// clicked, or a list at another address. One read a link too far follows only the links to its
+/// teachers' pages, and where the others lead does not tell one this far from another: a list's
+/// other address can link its site's pages at others too. Read over HTTP, `m` is compared only
+/// with pages read so: scripts filling in one may fill in the other otherwise.
 async fn read_before(
     db: &SqlitePool,
     c: &Claim,
@@ -728,15 +728,23 @@ async fn read_before(
     let text = compared(c, m);
     let clicked = !c.steps.is_empty();
     let last = c.depth >= queue::LIST_DEPTH;
-    // Pages saved before their text was written as JSON are compared as they are.
+    // Pages saved before their text was written as JSON are compared as they are. Where a link that
+    // was a teacher's page on the other leads elsewhere, this one gives another page of theirs.
     let kind = sqlx::query_scalar!(
         r#"SELECT kind AS "kind: PageKind"
         FROM crawl_page
         WHERE crawl_id = ?1 AND id != ?2 AND candidate_id IS NULL AND kind IN ('entry', 'list')
         AND work_state = 'done' AND status = 'success' AND scope_url = ?4
         AND depth <= ?5 AND (steps = '[]' OR ?6) AND (mode = 'http' OR ?7)
-        AND (text = ?3 OR ?8 AND CASE WHEN json_valid(text) THEN json_remove(text, '$.links') END
-            = json_remove(?3, '$.links'))
+        AND (text = ?3 OR ?8 AND CASE WHEN json_valid(text) THEN
+            json_remove(text, '$.links') = json_remove(?3, '$.links') AND NOT EXISTS (
+                SELECT 1
+                FROM json_each(text, '$.links') old
+                JOIN json_each(?3, '$.links') new ON new.key = old.key
+                WHERE new.value != old.value
+                AND old.value IN (SELECT url FROM candidate_profile WHERE crawl_id = ?1)
+            )
+        END)
         ORDER BY kind = 'list' DESC
         LIMIT 1"#,
         c.crawl,
