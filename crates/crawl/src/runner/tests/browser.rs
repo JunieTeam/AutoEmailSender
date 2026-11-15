@@ -506,6 +506,14 @@ async fn pause_and_cancel_drop_browser_and_reject_late_results(db: SqlitePool) {
                 .unwrap();
         assert_eq!(before, after);
         assert_eq!(blocks(&after.2), ["HTTP 已读文字"]);
+        if action == "cancel" {
+            // Cut short reading it in the browser, it shows as canceled, not as needing a browser.
+            let error: Value = serde_json::from_str(&after.1.unwrap()).unwrap();
+            assert_eq!(
+                (after.0.as_str(), &error["message"]),
+                ("failed", &json!("已取消，页面资料尚未整理完成"))
+            );
+        }
         if action == "pause" {
             queue::control(&db, id, "cancel", 3).await.unwrap();
         }

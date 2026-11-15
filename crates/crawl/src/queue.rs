@@ -378,11 +378,13 @@ pub async fn control(db: &SqlitePool, id: i64, action: &str, at: i64) -> Result<
         )
         .execute(&mut *tx)
         .await?;
+        // What a page read over HTTP needs a browser for is saved before the browser reads it.
         sqlx::query!(
             r#"UPDATE crawl_page
             SET work_state = 'done',
-                status = CASE WHEN status = 'success' THEN 'failed'
-            ELSE status END, error = CASE WHEN status = 'success' THEN ? ELSE error END
+                status = CASE WHEN status IN ('success', 'needs_browser') THEN 'failed'
+            ELSE status END,
+                error = CASE WHEN status IN ('success', 'needs_browser') THEN ? ELSE error END
             WHERE crawl_id = ? AND work_state != 'done'"#,
             Json(Failure::new("已取消，页面资料尚未整理完成")),
             id
