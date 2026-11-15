@@ -1525,6 +1525,46 @@ async fn a_category_whose_first_page_reads_as_the_list_s_pages_on(db: SqlitePool
     assert_eq!(names, ["张三", "李四", "王五"]);
 }
 
+#[tokio::test]
+async fn a_page_turn_showing_the_page_it_turned_from_fails() {
+    // Its pager still says 1/3, as when the click did nothing; counting no pages, it ends them, as
+    // a carousel's next does.
+    for (count, failed) in [("<span>1/3</span>", 1), ("", 0)] {
+        let (dir, db) = test_fixtures::db::open().await.unwrap();
+        let site = Site::new().await;
+        let list = format!(
+            "<title>名单</title><p>张三</p>\
+            <div class='pager'>{count}<button onclick='next()'>下一页</button></div>"
+        );
+        site.page("/", &list);
+        let browser = Arc::new(FakeBrowser::default());
+        for _ in 0..2 {
+            browser.page(&site.url("/"), &list);
+        }
+        let provider = Provider::start().await.unwrap();
+        let model = config(&db, &provider.address).await;
+        route_all(provider, "list");
+        queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+        let pages = Pages {
+            writes: db::Writes::default(),
+            http: Fetcher::local(site.port),
+            browser: Some(browser.clone()),
+            recognize: super::recognize,
+        };
+        drain(&db, &pages).await;
+        let failures: Vec<String> = sqlx::query_scalar(
+            "SELECT json_extract(error, '$.message') FROM crawl_page WHERE status = 'failed'",
+        )
+        .fetch_all(&db)
+        .await
+        .unwrap();
+        assert_eq!(failures.len(), failed, "{count}");
+        assert_eq!(browser.opened.lock().unwrap().len(), 2, "{count}");
+        db.close().await;
+        dir.close().unwrap();
+    }
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_list_reading_over_http_as_one_its_scripts_left_alone_is_read_in_the_browser(
     db: SqlitePool,

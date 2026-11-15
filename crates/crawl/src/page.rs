@@ -78,6 +78,8 @@ pub struct Pagination {
     /// It counts pages after this one, and leads on to them only by a jump to the page written in
     /// a box, which no click replays.
     pub jump_only: bool,
+    /// The page its pager says this is.
+    pub page: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

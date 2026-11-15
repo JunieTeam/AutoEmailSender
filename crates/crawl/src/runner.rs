@@ -767,10 +767,20 @@ async fn read_before(
 
 /// A page reading as one the crawl read as `kind`: it gives nothing that one did not, but a list
 /// pages on as itself, as what a click turns it to depends on how it was reached: a category whose
-/// first page reads as the whole list's goes on to its own. Reached paging on, it ends the pages.
+/// first page reads as the whole list's goes on to its own. Reached paging on, it ends the pages,
+/// unless its pager says it is still on one before: the turn did not happen, as when a click needs
+/// a person's own, and the pages after are left unread.
 fn read_again(c: &Claim, m: Material, kind: PageKind) -> Page {
-    let paged = c.steps.last().is_some_and(|s| s.page.is_some());
-    Page::nothing(m, if paged { PageKind::Entry } else { kind })
+    match c.steps.last().and_then(|s| s.page) {
+        Some(page) if m.pagination.page.is_some_and(|on| on < page) => Page {
+            failure: Some(Failure::new(format!(
+                "名单翻到第 {page} 页时页面没有变化，后面的页没有读"
+            ))),
+            ..Page::nothing(m, PageKind::Entry)
+        },
+        Some(_) => Page::nothing(m, PageKind::Entry),
+        None => Page::nothing(m, kind),
+    }
 }
 
 /// The school and college a crawl from a website found its pages to belong to.

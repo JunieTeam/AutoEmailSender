@@ -378,7 +378,7 @@ fn render(
             // Clicked, the category a list opens on shows nothing new, and so does a page turn
             // with no page after, as a carousel's: no settled change in the time a slow site gets
             // to load another takes what shows, once it settles, for what was asked for. A page
-            // reading as the one before ends the pages.
+            // reading as the one before ends the pages, unless its pager says it was not turned.
             Err(BrowserError::TimedOut) => {
                 tracing::info!(page = step.page, "browser step showed nothing new");
                 wait(&window, state, None, TIMEOUT)

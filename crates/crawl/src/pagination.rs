@@ -307,6 +307,7 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
         }
         let context = context.map(|i| &contexts[i]);
         let counted = counted.and_then(|i| contexts[i].counts);
+        pagination.page = pagination.page.or(counted.map(|(page, _)| page));
         let is_page = match control.kind {
             Kind::Forward | Kind::Last | Kind::Backward | Kind::Jump => true,
             Kind::First => {
