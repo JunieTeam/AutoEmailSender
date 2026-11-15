@@ -370,8 +370,9 @@ fn render(
             }));
         }
         match wait(&window, state, Some(&before), TIMEOUT) {
-            // Clicked, the category a list opens on shows nothing new: what still shows after the
-            // time a slow site gets to load another is taken to be what was asked for.
+            // Clicked, the category a list opens on shows nothing new: no settled change in the
+            // time a slow site gets to load another takes what shows, once it settles, for what
+            // was asked for.
             Err(BrowserError::TimedOut) if step.page.is_none() => {
                 wait(&window, state, None, TIMEOUT)
             }

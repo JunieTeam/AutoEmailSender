@@ -405,7 +405,8 @@ const PART_CHARS: usize = 2500;
 const PART_BLOCKS: usize = 100;
 
 /// The parts a list is read in. Each is cut in its second half where the blocks on either side
-/// share the fewest enclosing elements: between one person's card and the next, not inside one.
+/// share the fewest enclosing elements, so between one person's card and the next rather than
+/// inside one, unless a card is longer than that half.
 pub fn segments(m: &Material) -> Vec<std::ops::Range<usize>> {
     let all = links(m);
     let sizes: Vec<usize> = m
