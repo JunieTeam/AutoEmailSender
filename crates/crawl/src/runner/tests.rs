@@ -1637,84 +1637,57 @@ async fn a_page_showing_the_address_of_a_teacher_of_the_same_name_is_read() {
 }
 
 #[tokio::test]
-async fn a_page_writing_the_same_with_another_address_behind_its_link_is_read() {
-    // Two teachers named 张三 of two departments, each linking their own address in the footer,
-    // both pages writing their group's contacts, which are the two of them.
-    let (dir, db) = test_fixtures::db::open().await.unwrap();
-    let site = columns().await;
-    for (path, department, address) in [
-        ("/info/1/7.htm", "化学系", "a"),
-        ("/info/2/8.htm", "物理系", "b"),
+async fn a_page_giving_its_own_address_where_one_read_before_gave_another_is_read() {
+    // Two teachers named 张三 of two departments, each page linking its own address: in its footer,
+    // both pages writing their group's contacts, which are the two of them; beside a menu linking
+    // both; beside a menu giving both in lines just like its own; in a block writing both.
+    for page in [
+        "<p>课题组联系人 a@school.example.edu b@school.example.edu</p>\
+        <div class='footer'><a href='mailto:OWN@school.example.edu'>联系本人</a></div>",
+        "<p><a href='mailto:OWN@school.example.edu'>联系本人</a></p>\
+        <nav><a href='mailto:a@school.example.edu'>化学系 张三</a>\
+        <a href='mailto:b@school.example.edu'>物理系 张三</a></nav>",
+        "<p><a href='mailto:OWN@school.example.edu'>联系本人</a></p>\
+        <nav><p>化学系 张三</p><p><a href='mailto:a@school.example.edu'>联系本人</a></p>\
+        <p>物理系 张三</p><p><a href='mailto:b@school.example.edu'>联系本人</a></p></nav>",
+        "<p><a href='mailto:OWN@school.example.edu'>联系本人</a> 课题组联系人 \
+        化学系 a@school.example.edu 物理系 b@school.example.edu</p>",
     ] {
-        site.page(
-            path,
-            &format!(
-                "<title>张三</title><p>张三 {department}</p>\
-                <p>课题组联系人 a@school.example.edu b@school.example.edu</p>\
-                <div class='footer'><a href='mailto:{address}@school.example.edu'>联系本人</a></div>"
-            ),
-        );
-    }
-    let read = read_for_zhang(&db, &site, vec![], |data| {
-        targeted(if data.to_string().contains("物理系") {
-            "b@school.example.edu"
-        } else {
-            "a@school.example.edu"
+        let (dir, db) = test_fixtures::db::open().await.unwrap();
+        let site = columns().await;
+        for (path, department, own) in [
+            ("/info/1/7.htm", "化学系", "a"),
+            ("/info/2/8.htm", "物理系", "b"),
+        ] {
+            site.page(
+                path,
+                &format!(
+                    "<title>张三</title><p>张三 {department}教授</p><p>研究方向：机器学习</p>{}",
+                    page.replace("OWN", own)
+                ),
+            );
+        }
+        let read = read_for_zhang(&db, &site, vec![], |data| {
+            targeted(if data.to_string().contains("物理系教授") {
+                "b@school.example.edu"
+            } else {
+                "a@school.example.edu"
+            })
         })
-    })
-    .await;
-    assert_eq!(read, 2);
-    let emails: Vec<String> = sqlx::query_scalar("SELECT emails FROM candidate ORDER BY id")
-        .fetch_all(&db)
-        .await
-        .unwrap();
-    assert_eq!(
-        emails,
-        [r#"["a@school.example.edu"]"#, r#"["b@school.example.edu"]"#]
-    );
-    db.close().await;
-    dir.close().unwrap();
-}
-
-#[tokio::test]
-async fn a_page_linking_its_own_address_is_read_though_its_menu_links_both() {
-    // Two teachers named 张三 of two departments, each page linking its own address, and its menu
-    // both of theirs.
-    let (dir, db) = test_fixtures::db::open().await.unwrap();
-    let site = columns().await;
-    for (path, department, address) in [
-        ("/info/1/7.htm", "化学系", "a"),
-        ("/info/2/8.htm", "物理系", "b"),
-    ] {
-        site.page(
-            path,
-            &format!(
-                "<title>张三</title><p>张三 {department}教授</p><p>研究方向：机器学习</p>\
-                <p><a href='mailto:{address}@school.example.edu'>联系本人</a></p>\
-                <nav><a href='mailto:a@school.example.edu'>化学系 张三</a>\
-                <a href='mailto:b@school.example.edu'>物理系 张三</a></nav>"
-            ),
+        .await;
+        assert_eq!(read, 2, "{page}");
+        let emails: Vec<String> = sqlx::query_scalar("SELECT emails FROM candidate ORDER BY id")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+        assert_eq!(
+            emails,
+            [r#"["a@school.example.edu"]"#, r#"["b@school.example.edu"]"#],
+            "{page}"
         );
+        db.close().await;
+        dir.close().unwrap();
     }
-    let read = read_for_zhang(&db, &site, vec![], |data| {
-        targeted(if data.to_string().contains("物理系教授") {
-            "b@school.example.edu"
-        } else {
-            "a@school.example.edu"
-        })
-    })
-    .await;
-    assert_eq!(read, 2);
-    let emails: Vec<String> = sqlx::query_scalar("SELECT emails FROM candidate ORDER BY id")
-        .fetch_all(&db)
-        .await
-        .unwrap();
-    assert_eq!(
-        emails,
-        [r#"["a@school.example.edu"]"#, r#"["b@school.example.edu"]"#]
-    );
-    db.close().await;
-    dir.close().unwrap();
 }
 
 #[tokio::test]

@@ -1,5 +1,5 @@
 //! The model sees numbered page data. Only the program can turn a number into a URL.
-use crate::{Link, Material, PageUrl, Scope, Unit, owns_email};
+use crate::{EmailLocation, Link, Material, PageUrl, Scope, Unit, owns_email};
 use mentor::{Affiliation, MentorFields, MentorForm, intake::comparable};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -452,12 +452,12 @@ pub fn data(m: &Material, range: std::ops::Range<usize>) -> Value {
         "blocks": m.units[range].iter().map(|u| block(u, &all)).collect::<Vec<_>>(),
     })
 }
-/// A teacher's page as compared with another version of it: its text, with the addresses its
+/// A teacher's page as compared with another version of it: its text, with every address its
 /// links give in their blocks. Where its links go is left out: a site's menus can link one page
 /// at another address in each version, as chem.fzu.edu.cn's do.
 pub fn written(m: &Material) -> String {
     (m.units.iter())
-        .map(|u| marked(u, |l| l.text.clone()))
+        .map(|u| marked(u, |l| l.text.clone(), true))
         .collect::<Vec<_>>()
         .join("\n\n")
 }
@@ -466,7 +466,7 @@ pub fn written(m: &Material) -> String {
 /// which decide what reading the page gives.
 pub fn compared(m: &Material) -> String {
     let blocks: Vec<_> = (m.units.iter())
-        .map(|u| marked(u, |l| format!("[{}]({})", l.text, l.url.as_str())))
+        .map(|u| marked(u, |l| format!("[{}]({})", l.text, l.url.as_str()), true))
         .collect();
     let pages = &m.pagination;
     json!({
@@ -480,18 +480,24 @@ pub fn compared(m: &Material) -> String {
 }
 /// A block as the model reads it: a link written `[text](number)`, by the number `all` gives it.
 fn block(u: &Unit, all: &[(&str, &PageUrl)]) -> String {
-    marked(u, |l| {
-        let n = 1 + all
-            .iter()
-            .position(|(_, url)| *url == &l.url)
-            .unwrap_or_else(|| unreachable!("all of the page's links are numbered"));
-        format!("[{}]({n})", l.text)
-    })
+    marked(
+        u,
+        |l| {
+            let n = 1 + all
+                .iter()
+                .position(|(_, url)| *url == &l.url)
+                .unwrap_or_else(|| unreachable!("all of the page's links are numbered"));
+            format!("[{}]({n})", l.text)
+        },
+        false,
+    )
 }
 /// A block's text with each link written as `mark` writes it where its text is, an address the
 /// text does not write added as `<address>`. Written as objects with their links and addresses
-/// beside the text, a list took three and a half times the characters.
-fn marked(u: &Unit, mark: impl Fn(&Link) -> String) -> String {
+/// beside the text, a list took three and a half times the characters. To compare the block
+/// with others, `every` adds each address a link or another attribute gives, in order: the text
+/// can write one where a link gives another.
+fn marked(u: &Unit, mark: impl Fn(&Link) -> String, every: bool) -> String {
     let (mut written, mut rest, mut after) = (String::new(), u.text.as_str(), vec![]);
     for l in &u.links {
         let mark = mark(l);
@@ -508,7 +514,12 @@ fn marked(u: &Unit, mark: impl Fn(&Link) -> String) -> String {
     let text = u.text.to_lowercase();
     for e in &u.emails {
         let mark = format!("<{}>", e.address);
-        if !text.contains(&e.address.to_lowercase()) && !after.contains(&mark) {
+        let added = if every {
+            matches!(e.location, EmailLocation::Attribute { .. })
+        } else {
+            !text.contains(&e.address.to_lowercase()) && !after.contains(&mark)
+        };
+        if added {
             after.push(mark);
         }
     }
