@@ -525,10 +525,12 @@ pub fn listed(
                 .filter(|a| owns_email(m, &names, &[name], a))
                 .collect();
             // A link given to someone else too is a list's or a group's, which as their page
-            // would make them one person.
+            // would make them one person, and so is the list's own.
             let profile = linked(p)
                 .filter(|u| {
                     !(people.iter()).any(|o| linked(o) == Some(*u) && !same(&o.name, &p.name))
+                        && !u.is_normalization_of(&m.url)
+                        && !m.url.is_normalization_of(u)
                 })
                 .filter(|u| scope.linked_profile(m, u).is_ok())
                 .cloned();
@@ -769,11 +771,11 @@ mod tests {
 
     #[test]
     fn a_link_given_to_teachers_of_different_names_is_none_of_theirs() {
-        // As cse.csu.edu.cn's list was read, each of its 60 teachers given its link to itself.
-        let url = PageUrl::parse("https://cse.example.edu/szdw/jsml.htm").unwrap();
+        // As ie.ncu.edu.cn's list was read, 13 of its teachers given one system's home page.
+        let url = PageUrl::parse("https://ie.example.edu/szdw/fwtd.htm").unwrap();
         let page = crate::parse(
             &url,
-            "<a href='/szdw/jsml.htm'>教师名录</a><p>张三</p><p>李四</p>\
+            "<a href='/system'>办公系统</a><p>张三</p><p>李四</p>\
             <p><a href='/t/wang'>王五</a></p><p>王 五</p>",
         );
         let people = parse::<People>(
@@ -788,8 +790,20 @@ mod tests {
             .into_iter()
             .map(|p| p.profile.map(|u| u.as_str().to_owned()))
             .collect();
-        let wang = Some("https://cse.example.edu/t/wang".to_owned());
+        let wang = Some("https://ie.example.edu/t/wang".to_owned());
         assert_eq!(profiles, [None, None, wang.clone(), wang]);
+    }
+
+    #[test]
+    fn a_list_s_link_to_itself_is_no_one_s_page() {
+        // As cse.csu.edu.cn's list gave one of its teachers.
+        let url = PageUrl::parse("https://cse.example.edu/szdw/jsml.htm").unwrap();
+        let page = crate::parse(&url, "<a href='/szdw/jsml.htm'>教师名录</a><p>张三</p>");
+        let people = parse::<People>(r#"{"people":[{"n":"张三","p":1}]}"#, true)
+            .unwrap()
+            .people;
+        let listed = listed(&page, people, &Scope::new(&url), None).unwrap();
+        assert_eq!(listed[0].profile, None);
     }
 
     #[test]
