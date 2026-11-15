@@ -1315,6 +1315,76 @@ async fn a_page_reading_as_another_but_for_where_an_address_sits_is_read(db: Sql
     assert_eq!(emails, [r#"["a@school.example.edu"]"#]);
 }
 
+/// Answers routing a page writing 研究方向 as a profile, any other naming 张三 or 李四 as a list and
+/// the rest as an entry, either following all it offers; reads a profile as 张三's, and lists the
+/// two as `answer` does.
+fn route_profiles(mut provider: Provider) {
+    tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let data = request.body["messages"][1]["content"].as_str().unwrap();
+            let data: Value = serde_json::from_str(data).unwrap();
+            let output = if system.starts_with("你整理一位导师") {
+                super::person("张三", "a@school.example.edu")
+            } else if !system.starts_with("你整理学院") {
+                let text = data.to_string();
+                let people: Vec<_> = (["张三", "李四"].into_iter())
+                    .filter(|name| text.contains(name))
+                    .map(|name| listed(name, None, vec![]))
+                    .collect();
+                json!({ "people": people })
+            } else if data.to_string().contains("研究方向") {
+                json!({"kind": "profile", "next": []})
+            } else {
+                let text = data.to_string();
+                let named = text.contains("张三") || text.contains("李四");
+                let next: Vec<_> = offered(&data).into_iter().map(|(_, n)| n).collect();
+                json!({"kind": if named { "list" } else { "entry" }, "next": next})
+            };
+            request
+                .respond
+                .send(Response::answer(&output.to_string()))
+                .ok();
+        }
+    });
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_category_showing_one_teacher_s_page_is_not_where_their_page_is(db: SqlitePool) {
+    // As scst.suda.edu.cn's teachers under one initial: the address is the whole list's.
+    let site = Site::new().await;
+    let menu = "<title>教师名录</title><ul><li onclick=\"show('phys')\">物理系</li></ul>";
+    site.page("/", &format!("{menu}<p>李四</p>"));
+    let browser = Arc::new(FakeBrowser::default());
+    browser.page(
+        &site.url("/"),
+        &format!("{menu}<p>张三</p><p>研究方向：机器学习</p><p>a@school.example.edu</p>"),
+    );
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_profiles(provider);
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: Some(browser.clone()),
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let read: Vec<(String, Option<String>, String)> =
+        sqlx::query_as("SELECT name, profile_url, homepages FROM candidate ORDER BY name")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    let none = |name: &str| (name.into(), None, "[]".into());
+    assert_eq!(read, [none("张三"), none("李四")]);
+    let profiles: i64 = sqlx::query_scalar("SELECT count(*) FROM candidate_profile")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(profiles, 0);
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_category_whose_first_page_reads_as_the_list_s_pages_on(db: SqlitePool) {
     // Its teachers come first in the whole list too, which goes on to another department's.

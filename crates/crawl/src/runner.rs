@@ -823,7 +823,12 @@ async fn interpret(
                     if let Some(unit) = unit {
                         extract::fill(&mut p.fields.affiliations, unit);
                     }
-                    p.profile = Some(c.url.clone());
+                    // Clicked open, the page is at the address of what it was before: a category of
+                    // a list showing one teacher is at the list's, which is no page of theirs.
+                    p.profile = c.steps.is_empty().then(|| c.url.clone());
+                    if p.profile.is_none() {
+                        p.fields.homepages.retain(|url| url != m.url.as_str());
+                    }
                     Some(p)
                 }
                 None => None,
@@ -902,7 +907,7 @@ async fn interpret(
         people,
         next,
         clicks,
-        own: kind == PageKind::Profile,
+        own: kind == PageKind::Profile && c.steps.is_empty(),
         filled: unit.cloned(),
         unit: found,
         failure: None,
