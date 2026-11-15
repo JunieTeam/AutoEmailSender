@@ -1235,6 +1235,56 @@ async fn a_page_reading_as_another_but_for_its_title_is_read(db: SqlitePool) {
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_page_reading_as_another_but_for_where_an_address_sits_is_read(db: SqlitePool) {
+    // One gives the address in its menu, which is no one's in particular, the other below the name.
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>首页</title><a href='/a'>名录</a><a href='/b'>名单</a>",
+    );
+    let list = |part| {
+        format!("<title>教师名录</title><p>张三</p><{part}><p>a@school.example.edu</p></{part}>")
+    };
+    site.page("/a", &list("nav"));
+    site.page("/b", &list("div"));
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let data = request.body["messages"][1]["content"].as_str().unwrap();
+            let data: Value = serde_json::from_str(data).unwrap();
+            let output = if !system.starts_with("你整理学院") {
+                json!({"people": [{"n": "张三", "e": ["a@school.example.edu"]}]})
+            } else if data["title"] == "首页" {
+                let next: Vec<_> = offered(&data).into_iter().map(|(_, n)| n).collect();
+                json!({"kind": "entry", "next": next})
+            } else {
+                json!({"kind": "list", "next": []})
+            };
+            request
+                .respond
+                .send(Response::answer(&output.to_string()))
+                .ok();
+        }
+    });
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let emails: Vec<String> =
+        sqlx::query_scalar("SELECT emails FROM candidate WHERE emails != '[]' ORDER BY id")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(emails, [r#"["a@school.example.edu"]"#]);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_category_whose_first_page_reads_as_the_list_s_pages_on(db: SqlitePool) {
     // Its teachers come first in the whole list too, which goes on to another department's.
     let site = Site::new().await;

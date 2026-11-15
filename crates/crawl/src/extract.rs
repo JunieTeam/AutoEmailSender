@@ -415,12 +415,9 @@ pub fn segments(m: &Material) -> Vec<std::ops::Range<usize>> {
     let sizes: Vec<usize> = m
         .units
         .iter()
-        .map(|u| block(u, &all).chars().count())
+        .map(|u| block(u, &all, false).chars().count())
         .collect();
-    let shared = |n: usize| {
-        let (a, b) = (&m.units[n - 1].path, &m.units[n].path);
-        a.iter().zip(b).take_while(|(a, b)| a == b).count()
-    };
+    let shared = |n: usize| shared(&m.units[n - 1], &m.units[n]);
     let mut result = Vec::new();
     let mut start = 0;
     while start < sizes.len() {
@@ -445,11 +442,17 @@ pub fn segments(m: &Material) -> Vec<std::ops::Range<usize>> {
     }
     result
 }
+/// The elements two blocks are both in.
+fn shared(a: &Unit, b: &Unit) -> usize {
+    (a.path.iter().zip(&b.path))
+        .take_while(|(a, b)| a == b)
+        .count()
+}
 pub fn data(m: &Material, range: std::ops::Range<usize>) -> Value {
     let all = links(m);
     json!({
         "title": m.title,
-        "blocks": m.units[range].iter().map(|u| block(u, &all)).collect::<Vec<_>>(),
+        "blocks": m.units[range].iter().map(|u| block(u, &all, false)).collect::<Vec<_>>(),
     })
 }
 /// A teacher's page as compared with another version of it: its text, with every address its
@@ -461,17 +464,34 @@ pub fn written(m: &Material) -> String {
         .collect::<Vec<_>>()
         .join("\n\n")
 }
-/// A page found looking for lists as compared with the crawl's others: its title, its blocks as
-/// `written` writes them with where each link goes, the controls it shows and how it pages on,
-/// which decide what reading the page gives.
+/// A page found looking for lists as compared with the crawl's others, by what decides what reading
+/// it gives: its title; its blocks as the model reads them, with every address a link or another
+/// attribute gives, and where the links numbered in them lead; how the blocks nest, which decides
+/// the parts a list is read in and whose an address is; the controls it shows and how it pages on.
 pub fn compared(m: &Material) -> String {
-    let blocks: Vec<_> = (m.units.iter())
-        .map(|u| marked(u, |l| format!("[{}]({})", l.text, l.url.as_str()), true))
+    let all = links(m);
+    // Each block's depth, the elements it shares with the one before, at what depth it is in a
+    // footer or menu, where its lines start and where the addresses behind its links are: element
+    // ordinals change with an element more anywhere before.
+    let nesting: Vec<_> = (m.units.iter().enumerate())
+        .map(|(n, u)| {
+            let after = n.checked_sub(1).map_or(0, |p| shared(&m.units[p], u));
+            let menu = (u.footer_or_nav).map(|o| u.path.iter().take_while(|&&p| p != o).count());
+            let behind: Vec<_> = (u.emails.iter())
+                .filter_map(|e| match e.location {
+                    EmailLocation::Attribute { offset, .. } => Some(offset),
+                    EmailLocation::Text { .. } => None,
+                })
+                .collect();
+            json!([u.path.len(), after, menu, u.line_starts, behind])
+        })
         .collect();
     let pages = &m.pagination;
     json!({
         "title": m.title,
-        "blocks": blocks,
+        "blocks": m.units.iter().map(|u| block(u, &all, true)).collect::<Vec<_>>(),
+        "links": all.iter().map(|(_, url)| url.as_str()).collect::<Vec<_>>(),
+        "nesting": nesting,
         "controls": m.controls,
         "pages": pages.urls.iter().map(PageUrl::as_str).collect::<Vec<_>>(),
         "buttons": (pages.buttons.iter()).map(|b| (&b.control, b.page)).collect::<Vec<_>>(),
@@ -479,7 +499,8 @@ pub fn compared(m: &Material) -> String {
     .to_string()
 }
 /// A block as the model reads it: a link written `[text](number)`, by the number `all` gives it.
-fn block(u: &Unit, all: &[(&str, &PageUrl)]) -> String {
+/// `every` writes addresses as `marked` does to compare the block.
+fn block(u: &Unit, all: &[(&str, &PageUrl)], every: bool) -> String {
     marked(
         u,
         |l| {
@@ -489,7 +510,7 @@ fn block(u: &Unit, all: &[(&str, &PageUrl)]) -> String {
                 .unwrap_or_else(|| unreachable!("all of the page's links are numbered"));
             format!("[{}]({n})", l.text)
         },
-        false,
+        every,
     )
 }
 /// A block's text with each link written as `mark` writes it where its text is, an address the
@@ -704,6 +725,18 @@ pub fn profile(m: &Material, name: String, p: Details) -> Result<Person, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_page_compares_as_another_whose_blocks_nest_alike() {
+        let url = PageUrl::parse("https://www.school.example.edu/list").unwrap();
+        let compared = |html: &str| compared(&crate::page::parse(&url, html));
+        let cards = "<div><p>张三</p><p>教授</p></div><div><p>李四</p><p>讲师</p></div>";
+        // An element more only renumbers the others.
+        assert_eq!(compared(cards), compared(&format!("<span></span>{cards}")));
+        // Grouped otherwise, the list is read in other parts and an address can be another's.
+        let rows = "<div><p>张三</p></div><div><p>教授</p><p>李四</p></div><div><p>讲师</p></div>";
+        assert_ne!(compared(cards), compared(rows));
+    }
 
     #[test]
     fn routes_allow_an_unclosed_fence_but_require_exact_json() {
