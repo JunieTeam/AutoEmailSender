@@ -1640,8 +1640,9 @@ async fn a_page_showing_the_address_of_a_teacher_of_the_same_name_is_read() {
 async fn a_page_giving_its_own_address_where_one_read_before_gave_another_is_read() {
     // Two teachers named 张三 of two departments, each page linking its own address: in its footer,
     // both pages writing their group's contacts, which are the two of them; beside a menu linking
-    // both; beside a menu giving both in lines just like its own; in a block writing both; in a
-    // line giving both in the same order, the two swapping whose is 本人's and whose 助理's.
+    // both; beside a menu giving both in lines just like its own; in a block writing both; giving
+    // both in the same order, the two swapping whose is 本人's and whose 助理's, said on the line of
+    // each address, or in a block of its own before or after it.
     for page in [
         "<p>课题组联系人 a@school.example.edu b@school.example.edu</p>\
         <div class='footer'><a href='mailto:OWN@school.example.edu'>联系本人</a></div>",
@@ -1655,6 +1656,9 @@ async fn a_page_giving_its_own_address_where_one_read_before_gave_another_is_rea
         化学系 a@school.example.edu 物理系 b@school.example.edu</p>",
         "<p><a href='mailto:a@school.example.edu'>联系A a@school.example.edu</a> \
         <a href='mailto:b@school.example.edu'>联系B b@school.example.edu</a></p>",
+        "<dl><dt>联系A</dt><dd>a@school.example.edu</dd>\
+        <dt>联系B</dt><dd>b@school.example.edu</dd></dl>",
+        "<p>a@school.example.edu</p><p>联系A</p><p>b@school.example.edu</p><p>联系B</p>",
     ] {
         let (dir, db) = test_fixtures::db::open().await.unwrap();
         let site = columns().await;

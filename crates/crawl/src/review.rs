@@ -1,6 +1,6 @@
 //! Candidate review uses the very same intake calculation and writes as table imports.
 use crate::{
-    EmailEvidence, PageUrl, email::EMAILS, extract::Person, queue, store::PageKind,
+    EmailEvidence, EmailLocation, PageUrl, email::EMAILS, extract::Person, queue, store::PageKind,
     url::both_schemes,
 };
 use failure::Failure;
@@ -625,11 +625,13 @@ const COPY_LINES: usize = 3;
 
 /// The addresses among `emails` that another candidate of the crawl sharing a name with `id` has,
 /// when a page read for them is a copy of the one `extract::written` writes as `text`: by the
-/// rule `save` follows, the two are one person. A copy differs in a few lines, which give no
-/// address but the other's, and gives the same addresses in the same order, written or behind a
-/// link: a teacher of the name gives their own where the other's page gave that one's, though both
-/// pages may give both elsewhere, as in a menu, and a line can tell whose an address is, as 本人's
-/// or 助理's. One whose research no page gave may find it in another version of their page.
+/// rule `save` follows, the two are one person. A copy differs in a few lines and gives the same
+/// addresses in the same order, written or behind a link, each on the same line, after the same
+/// line or after one of those the two differ in, as the column heading it: a teacher of the name
+/// gives their own where the other's page gave that one's, though both pages may give both
+/// elsewhere, as in a menu, and a line can tell whose an address is, as 本人's or 助理's, on it,
+/// before it or after the one before. One whose research no page gave may find it in another
+/// version of their page.
 pub(crate) async fn known(
     db: impl sqlx::SqliteExecutor<'_>,
     crawl: i64,
@@ -659,21 +661,32 @@ pub(crate) async fn known(
             .map(str::to_owned)
             .collect()
     };
-    let addresses = |text: &str| -> Vec<String> {
+    // Each address's line, with the line before it.
+    let addresses = |text: &str| -> Vec<[String; 2]> {
         (EMAILS.text(text).into_iter())
-            .map(|e| e.address.to_lowercase())
+            .map(|e| {
+                let at = match e.location {
+                    EmailLocation::Text { start, .. } => start,
+                    EmailLocation::Attribute { offset, .. } => offset,
+                };
+                let start = text[..at].rfind('\n').map_or(0, |n| n + 1);
+                let end = text[at..].find('\n').map_or(text.len(), |n| at + n);
+                let before = text[..start].trim_end();
+                let before = before.rsplit_once('\n').map_or(before, |(_, line)| line);
+                [before, &text[start..end]].map(|line| line.trim().to_owned())
+            })
             .collect()
     };
     let (page, given) = (lines(text), addresses(text));
     Ok((read.into_iter())
         .filter(|r| {
-            let other = lines(&r.text);
-            let added: Vec<_> = page.difference(&other).collect();
-            added.len() <= COPY_LINES
+            let (other, read) = (lines(&r.text), addresses(&r.text));
+            page.difference(&other).count() <= COPY_LINES
                 && other.difference(&page).count() <= COPY_LINES
-                && (added.iter().flat_map(|line| EMAILS.text(line)))
-                    .all(|e| (r.emails.0.iter()).any(|a| a.eq_ignore_ascii_case(&e.address)))
-                && addresses(&r.text) == given
+                && read.len() == given.len()
+                && (read.iter().zip(&given)).all(|([b, l], [before, line])| {
+                    l == line && (b == before || !page.contains(b) && !other.contains(before))
+                })
         })
         .flat_map(|r| r.emails.0)
         .filter(|a| emails.iter().any(|e| e.address.eq_ignore_ascii_case(a)))
