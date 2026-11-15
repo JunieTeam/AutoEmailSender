@@ -419,8 +419,10 @@ impl Reader<'_> {
         &self,
         step: &'static str,
         system: &str,
-        data: serde_json::Value,
+        data: impl serde::Serialize,
     ) -> Result<T, ReadError> {
+        let data = serde_json::to_string(&data)
+            .unwrap_or_else(|_| unreachable!("page data is text, numbers and lists"));
         let mut rules = system.to_owned();
         for attempt in 0..2 {
             let turn = loop {
@@ -461,7 +463,7 @@ impl Reader<'_> {
             };
             let round = self.cooldown.round(&self.claim.crawl);
             let started = Instant::now();
-            let answer = model::ask(self.net, &turn, &rules, &data.to_string(), true)
+            let answer = model::ask(self.net, &turn, &rules, &data, true)
                 .await
                 .map_err(|e| {
                     let category = match &e {

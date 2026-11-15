@@ -1,7 +1,7 @@
 //! The model sees numbered page data. Only the program can turn a number into a URL.
 use crate::{Material, PageUrl, Scope, Unit, owns_email};
 use mentor::{Affiliation, MentorFields, MentorForm, intake::comparable};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::cmp::Reverse;
 
@@ -360,21 +360,27 @@ pub fn links(m: &Material) -> Vec<(&str, &PageUrl)> {
 /// The words of a page's head and foot given with its links, where it names its school and college.
 const EDGE: usize = 150;
 
+/// What routing reads of a page, its links first: a site's pages share their menus, so a request
+/// then starts as the site's earlier ones did, which the model service can reuse.
+#[derive(Debug, Serialize)]
+pub struct Routing<'a> {
+    pub links: Vec<String>,
+    pub foot: String,
+    pub head: String,
+    pub title: Option<&'a str>,
+}
 /// `controls` are numbered after all of the page's links. The head and foot leave out blocks that
 /// are only a link's text: the links give those, and a site's menus could fill both, hiding the
 /// footer that names the school.
-pub fn routing(m: &Material, scope: &Scope, controls: &[String]) -> Value {
+pub fn routing<'a>(m: &'a Material, scope: &Scope, controls: &[String]) -> Routing<'a> {
     let prose: Vec<&str> = (m.units.iter())
         .filter(|u| !u.text.is_empty() && !u.links.iter().any(|l| l.text == u.text))
         .map(|u| u.text.as_str())
         .collect();
     let text: Vec<char> = prose.join("\n\n").chars().collect();
     let links = links(m);
-    json!({
-        "title": m.title,
-        "head": text[..text.len().min(EDGE)].iter().collect::<String>(),
-        "foot": text[text.len().saturating_sub(EDGE)..].iter().collect::<String>(),
-        "links": links
+    Routing {
+        links: links
             .iter()
             .enumerate()
             .filter(|(_, (_, url))| {
@@ -383,10 +389,13 @@ pub fn routing(m: &Material, scope: &Scope, controls: &[String]) -> Value {
             .map(|(n, (text, _))| format!("[{text}]({})", n + 1))
             .chain(
                 (controls.iter().enumerate())
-                    .map(|(n, text)| format!("[{text}]({})", links.len() + n + 1))
+                    .map(|(n, text)| format!("[{text}]({})", links.len() + n + 1)),
             )
-            .collect::<Vec<_>>()
-    })
+            .collect(),
+        foot: text[text.len().saturating_sub(EDGE)..].iter().collect(),
+        head: text[..text.len().min(EDGE)].iter().collect(),
+        title: m.title.as_deref(),
+    }
 }
 /// The characters and blocks a list is read in at once at most, unless one block is longer: answers
 /// listing a hundred people or more at once came back with people left out, and took half a minute.
@@ -739,7 +748,7 @@ mod tests {
             <a>无机化学</a><script>bind()</script>",
         );
         let routing = routing(&page, &Scope::new(&url), &page.controls);
-        assert_eq!(routing["links"], json!(["[新闻](1)", "[无机化学](3)"]));
+        assert_eq!(routing.links, ["[新闻](1)", "[无机化学](3)"]);
     }
 
     #[test]
@@ -750,7 +759,7 @@ mod tests {
             "<a href='/t/1'><img src='1.jpg'></a><p>张三</p><a href='/t/1'>了解更多</a>",
         );
         let routing = routing(&page, &Scope::new(&url), &[]);
-        assert_eq!(routing["links"], json!(["[了解更多](1)"]));
+        assert_eq!(routing.links, ["[了解更多](1)"]);
     }
 
     #[test]
@@ -768,10 +777,10 @@ mod tests {
         );
         let routing = routing(&page, &Scope::new(&url), &[]);
         assert_eq!(
-            (routing["head"].as_str(), routing["foot"].as_str()),
+            (routing.head.as_str(), routing.foot.as_str()),
             (
-                Some("副教授\n\nCopyright 中山大学电子与信息工程学院"),
-                Some("副教授\n\nCopyright 中山大学电子与信息工程学院")
+                "副教授\n\nCopyright 中山大学电子与信息工程学院",
+                "副教授\n\nCopyright 中山大学电子与信息工程学院"
             )
         );
     }
