@@ -1333,7 +1333,7 @@ async fn a_run_with_only_failed_pages_can_retry_without_losing_its_page(db: Sqli
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn a_teacher_s_page_linked_over_http_and_https_is_one_candidate(db: SqlitePool) {
+async fn a_teacher_s_page_linked_over_http_and_https_is_one_page(db: SqlitePool) {
     // As cse.csu.edu.cn's lists of teachers and of supervisors link the same pages.
     let url = PageUrl::parse("https://cse.csu.edu.cn/szdw/jsml.htm").unwrap();
     let config = config(&db, "http://127.0.0.1:1").await;
@@ -1341,39 +1341,62 @@ async fn a_teacher_s_page_linked_over_http_and_https_is_one_candidate(db: Sqlite
         .await
         .unwrap();
     let page = queue::next(&db).await.unwrap().unwrap();
-    let mut tx = db.begin_with("BEGIN IMMEDIATE").await.unwrap();
-    for scheme in ["http", "https"] {
-        let profile = PageUrl::parse(&format!(
+    let profile = |scheme: &str| {
+        PageUrl::parse(&format!(
             "{scheme}://faculty.csu.edu.cn/heshiwen/zh_CN/index.htm"
         ))
-        .unwrap();
-        let fields = MentorFields {
-            name: "何世文".into(),
-            homepages: vec![profile.as_str().into()],
+        .unwrap()
+    };
+    let person = |name: &str, scheme: &str| Person {
+        fields: MentorFields {
+            name: name.into(),
+            homepages: vec![profile(scheme).as_str().into()],
             ..Default::default()
-        };
-        let person = Person {
-            fields,
-            papers: vec![],
-            profile: Some(profile),
-            recognized: vec![],
-        };
-        review::save(
+        },
+        papers: vec![],
+        profile: Some(profile(scheme)),
+        recognized: vec![],
+    };
+    let mut tx = db.begin_with("BEGIN IMMEDIATE").await.unwrap();
+    for scheme in ["http", "https"] {
+        let source = review::Source::List { id: page.id };
+        (review::save(
             &mut tx,
             crawl,
-            review::Source::List { id: page.id },
+            source,
             url.as_str(),
-            person,
+            person("何世文", scheme),
         )
-        .await
-        .unwrap();
+        .await)
+            .unwrap();
     }
-    tx.commit().await.unwrap();
-    let candidates: i64 = sqlx::query_scalar("SELECT count(*) FROM candidate")
-        .fetch_one(&db)
+    let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM candidate")
+        .fetch_all(&mut *tx)
         .await
         .unwrap();
-    assert_eq!(candidates, 1);
+    let [he] = ids[..] else {
+        panic!("one candidate for both links: {ids:?}")
+    };
+    // The page read over https proves not to be his, and the next list links it to its teacher.
+    review::mismatched(&mut tx, he, &[profile("https").as_str()], 2)
+        .await
+        .unwrap();
+    let source = review::Source::List { id: page.id };
+    (review::save(
+        &mut tx,
+        crawl,
+        source,
+        url.as_str(),
+        person("贺文", "https"),
+    )
+    .await)
+        .unwrap();
+    tx.commit().await.unwrap();
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY id")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["何世文", "贺文"]);
 }
 
 /// A site whose `/` lists 张三 at `/info/1/7.htm` and links `/boshi`, which lists him again at

@@ -680,19 +680,7 @@ pub(crate) async fn save(
         Source::Agent { note } => (None, None, profile == Some(url), None, note.as_deref()),
     };
     let identities: Vec<_> = profile.into_iter().chain(reached).collect();
-    // One site can link a teacher's page over http from one list and over https from another.
-    let addresses: Vec<String> = (identities.iter())
-        .flat_map(|url| {
-            let other = (url
-                .strip_prefix("https://")
-                .map(|rest| format!("http://{rest}")))
-            .or_else(|| {
-                url.strip_prefix("http://")
-                    .map(|rest| format!("https://{rest}"))
-            });
-            std::iter::once((*url).to_owned()).chain(other)
-        })
-        .collect();
+    let addresses = both_schemes(&identities);
     let (target, proved) = match &source {
         Source::Profile { own, target, .. } => (*target, *own),
         _ => (None, false),
@@ -1006,13 +994,14 @@ pub(crate) async fn mismatched(
     urls: &[&str],
     at: i64,
 ) -> Result<(), sqlx::Error> {
+    let urls = both_schemes(urls);
     sqlx::query!(
         r#"UPDATE candidate_profile
         SET mismatched_at = ?
         WHERE candidate_id = ? AND url IN (SELECT value FROM json_each(?))"#,
         at,
         candidate,
-        Json(urls)
+        Json(&urls)
     )
     .execute(&mut *conn)
     .await?;
@@ -1025,7 +1014,7 @@ pub(crate) async fn mismatched(
     .map(|Json(homepages)| {
         homepages
             .into_iter()
-            .filter(|h| !urls.contains(&h.as_str()))
+            .filter(|h| !urls.contains(h))
             .collect::<Vec<_>>()
     });
     sqlx::query!(
@@ -1077,11 +1066,24 @@ async fn clear_mismatch(
         WHERE candidate_id IN (SELECT value FROM json_each(?))
         AND url IN (SELECT value FROM json_each(?))"#,
         Json(candidates),
-        Json(urls)
+        Json(both_schemes(urls))
     )
     .execute(conn)
     .await?;
     Ok(())
+}
+
+/// The pages at `urls` as either scheme writes them: one site can link a teacher's page over http
+/// from one list and over https from another, and what one link proves holds for the other.
+fn both_schemes(urls: &[&str]) -> Vec<String> {
+    (urls.iter())
+        .flat_map(|url| {
+            let other = (url.strip_prefix("https://"))
+                .map(|rest| format!("http://{rest}"))
+                .or_else(|| (url.strip_prefix("http://")).map(|rest| format!("https://{rest}")));
+            std::iter::once((*url).to_owned()).chain(other)
+        })
+        .collect()
 }
 
 /// Keeps the candidate's profile unless its page proved to be someone else's; otherwise one of
