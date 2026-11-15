@@ -125,30 +125,10 @@ pub(crate) async fn enqueue_steps(
     kind: PageKind,
     steps: &[PageStep],
 ) -> Result<(), sqlx::Error> {
-    let steps = Json(steps);
-    // A site read over http after its https address failed links its pages back over http. A
-    // teacher's page stays at the link a list gave: read for someone it proved not to be, it is
-    // read again for the one another link gives it to.
-    let urls = if kind == PageKind::Profile {
-        vec![url.as_str().to_owned()]
-    } else {
-        both_schemes(&[url.as_str()])
-    };
-    if sqlx::query_scalar!(
-        r#"SELECT id
-        FROM crawl_page
-        WHERE crawl_id = ? AND url IN (SELECT value FROM json_each(?)) AND steps = ?
-        AND candidate_id IS NULL"#,
-        crawl,
-        Json(&urls),
-        steps
-    )
-    .fetch_optional(&mut *conn)
-    .await?
-    .is_some()
-    {
+    if queued(conn, crawl, url, kind, steps).await? {
         return Ok(());
     }
+    let steps = Json(steps);
     if kind != PageKind::Profile
         && sqlx::query_scalar!(
             "SELECT count(*) FROM crawl_page WHERE crawl_id = ? AND kind IN ('entry','list')",
@@ -179,6 +159,35 @@ pub(crate) async fn enqueue_steps(
     .execute(conn)
     .await?;
     Ok(())
+}
+/// Whether the crawl has the page `url` opens to after `steps` already, as a `kind` page would be.
+pub(crate) async fn queued(
+    conn: &mut SqliteConnection,
+    crawl: i64,
+    url: &PageUrl,
+    kind: PageKind,
+    steps: &[PageStep],
+) -> Result<bool, sqlx::Error> {
+    // A site read over http after its https address failed links its pages back over http. A
+    // teacher's page stays at the link a list gave: read for someone it proved not to be, it is
+    // read again for the one another link gives it to.
+    let urls = if kind == PageKind::Profile {
+        vec![url.as_str().to_owned()]
+    } else {
+        both_schemes(&[url.as_str()])
+    };
+    Ok(sqlx::query_scalar!(
+        r#"SELECT id
+        FROM crawl_page
+        WHERE crawl_id = ? AND url IN (SELECT value FROM json_each(?)) AND steps = ?
+        AND candidate_id IS NULL"#,
+        crawl,
+        Json(&urls),
+        Json(steps)
+    )
+    .fetch_optional(conn)
+    .await?
+    .is_some())
 }
 /// What a page waiting its turn says.
 pub(crate) const NOT_READ: &str = "尚未读取";

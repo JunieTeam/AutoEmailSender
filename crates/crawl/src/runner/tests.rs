@@ -1702,14 +1702,15 @@ async fn a_copy_is_read_for_research_the_one_read_before_did_not_give() {
 
 #[tokio::test]
 async fn a_site_read_over_http_after_https_failed_reads_its_start_once() {
-    // Its pages link back to the start over http.
+    // Its pages link back to the start over http, a page a link too far too.
     let (dir, db) = test_fixtures::db::open().await.unwrap();
     let site = Site::new().await;
     site.page("/", "<title>首页</title><a href='/faculty'>师资队伍</a>");
     site.page(
         "/faculty",
-        "<title>师资队伍</title><p>张三</p><a href='/'>首页</a>",
+        "<title>师资队伍</title><p>张三</p><a href='/'>首页</a><a href='/dept'>数学系</a>",
     );
+    site.page("/dept", "<title>数学系</title><a href='/'>首页</a>");
     let mut provider = Provider::start().await.unwrap();
     let id = config(&db, &provider.address).await;
     let model = tokio::spawn(async move {
@@ -1749,7 +1750,14 @@ async fn a_site_read_over_http_after_https_failed_reads_its_start_once() {
         .fetch_all(&db)
         .await
         .unwrap();
-    assert_eq!(urls, [https.as_str(), site.url("/faculty").as_str()]);
+    let pages = ["/faculty", "/dept"].map(|path| site.url(path));
+    assert_eq!(urls, [https.as_str(), pages[0].as_str(), pages[1].as_str()]);
+    let limits: String = sqlx::query_scalar("SELECT limits FROM crawl WHERE id = ?")
+        .bind(crawl)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(limits, "[]");
     task.abort();
     model.abort();
     db.close().await;

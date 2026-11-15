@@ -1168,19 +1168,8 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                             PageKind::Entry,
                         )
                         .await?;
-                    } else {
-                        let target = url.as_str();
-                        if !sqlx::query_scalar!(
-                            r#"SELECT EXISTS (SELECT 1 FROM crawl_page WHERE crawl_id = ?
-                                AND url = ?) AS "found!: bool""#,
-                            c.crawl,
-                            target
-                        )
-                        .fetch_one(&mut *tx)
-                        .await?
-                        {
-                            queue::limit(&mut tx, c.crawl, "寻找名单已达到两层链接范围").await?;
-                        }
+                    } else if !queue::queued(&mut tx, c.crawl, url, PageKind::Entry, &[]).await? {
+                        queue::limit(&mut tx, c.crawl, "寻找名单已达到两层链接范围").await?;
                     }
                 }
                 // A part shown by a click counts as one more link away.
@@ -1200,15 +1189,8 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                             &steps,
                         )
                         .await?;
-                    } else if !sqlx::query_scalar!(
-                        r#"SELECT EXISTS (SELECT 1 FROM crawl_page WHERE crawl_id = ?
-                            AND url = ? AND steps = ?) AS "found!: bool""#,
-                        c.crawl,
-                        c.url,
-                        Json(&steps[..])
-                    )
-                    .fetch_one(&mut *tx)
-                    .await?
+                    } else if !queue::queued(&mut tx, c.crawl, &c.url, PageKind::Entry, &steps)
+                        .await?
                     {
                         queue::limit(&mut tx, c.crawl, "寻找名单已达到两层链接范围").await?;
                     }
