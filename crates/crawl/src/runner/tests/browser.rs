@@ -1611,7 +1611,8 @@ async fn a_list_reading_over_http_as_one_its_scripts_left_alone_is_read_in_the_b
 #[tokio::test]
 async fn a_list_paging_on_only_by_a_jump_notes_its_later_pages_unread() {
     // Its pager counts the pages and only jumps on, to the page written in its box: counting two;
-    // writing the page it is on and how many there are apart; on the second of five, going back.
+    // writing the page it is on and how many there are apart; on the second of five, going back
+    // by 上一页 or by a link naming the page it leads to.
     for (start, pagers) in [
         ("/", vec![("/", "<span>1/2</span>")]),
         ("/", vec![("/", "<span>第 1 页</span><span>共 5 页</span>")]),
@@ -1626,6 +1627,13 @@ async fn a_list_paging_on_only_by_a_jump_notes_its_later_pages_unread() {
             "/?page=2",
             vec![
                 ("/?page=2", "<a href='/?page=1'>上一页</a><span>2/5</span>"),
+                ("/?page=1", "<span>1/5</span><a href='/?page=2'>下一页</a>"),
+            ],
+        ),
+        (
+            "/?page=2",
+            vec![
+                ("/?page=2", "<a href='/?page=1'>返回</a><span>2/5</span>"),
                 ("/?page=1", "<span>1/5</span><a href='/?page=2'>下一页</a>"),
             ],
         ),

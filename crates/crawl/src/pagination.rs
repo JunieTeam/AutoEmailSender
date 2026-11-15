@@ -95,10 +95,10 @@ fn page_key(key: &str) -> bool {
     )
 }
 
-fn query_page(url: &PageUrl) -> bool {
-    url.parsed()
-        .query_pairs()
-        .any(|(key, value)| page_key(&key) && value.parse::<u32>().is_ok())
+/// The page its query names, as ?page=2.
+fn query_page(url: &PageUrl) -> Option<u32> {
+    (url.parsed().query_pairs())
+        .find_map(|(key, value)| page_key(&key).then(|| value.parse().ok())?)
 }
 
 fn same_list_url(current: &PageUrl, target: &PageUrl) -> bool {
@@ -136,7 +136,7 @@ fn same_list_url(current: &PageUrl, target: &PageUrl) -> bool {
                 .collect::<Vec<_>>()
         };
         return current != target
-            && (query_page(current) || query_page(target))
+            && (query_page(current).is_some() || query_page(target).is_some())
             && other_query(current) == other_query(target);
     }
     let current_path = current.parsed().path();
@@ -314,6 +314,7 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
         let context = context.map(|i| &contexts[i]);
         let counted = counted.and_then(|i| contexts[i].counts);
         pagination.page = pagination.page.or(counted.map(|(page, _)| page));
+        let named = control.link.as_ref().and_then(query_page);
         let is_page = match control.kind {
             Kind::Forward | Kind::Last | Kind::Backward | Kind::Jump => true,
             Kind::First => {
@@ -330,7 +331,7 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                         .as_ref()
                         .is_some_and(|link| same_list_url(url, link))
             }
-            Kind::Other => control.link.as_ref().is_some_and(query_page),
+            Kind::Other => named.is_some(),
         };
         if !is_page
             || (matches!(control.kind, Kind::Forward | Kind::Last | Kind::Jump)
@@ -341,6 +342,9 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
         let onward = match control.kind {
             Kind::Backward | Kind::First => false,
             Kind::Number(n) => counted.is_none_or(|(page, _)| n > page),
+            // Labelled otherwise, as 返回, a link leads on only to a page after the one this is,
+            // the first where no page is named.
+            Kind::Other => named.is_some_and(|n| n > query_page(url).unwrap_or(1)),
             _ => true,
         };
         if let Some(link) = &control.link {
