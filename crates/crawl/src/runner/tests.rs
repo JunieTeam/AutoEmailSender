@@ -1640,7 +1640,8 @@ async fn a_page_showing_the_address_of_a_teacher_of_the_same_name_is_read() {
 async fn a_page_giving_its_own_address_where_one_read_before_gave_another_is_read() {
     // Two teachers named 张三 of two departments, each page linking its own address: in its footer,
     // both pages writing their group's contacts, which are the two of them; beside a menu linking
-    // both; beside a menu giving both in lines just like its own; in a block writing both.
+    // both; beside a menu giving both in lines just like its own; in a block writing both; in a
+    // line giving both in the same order, the two swapping whose is 本人's and whose 助理's.
     for page in [
         "<p>课题组联系人 a@school.example.edu b@school.example.edu</p>\
         <div class='footer'><a href='mailto:OWN@school.example.edu'>联系本人</a></div>",
@@ -1652,18 +1653,22 @@ async fn a_page_giving_its_own_address_where_one_read_before_gave_another_is_rea
         <p>物理系 张三</p><p><a href='mailto:b@school.example.edu'>联系本人</a></p></nav>",
         "<p><a href='mailto:OWN@school.example.edu'>联系本人</a> 课题组联系人 \
         化学系 a@school.example.edu 物理系 b@school.example.edu</p>",
+        "<p><a href='mailto:a@school.example.edu'>联系A a@school.example.edu</a> \
+        <a href='mailto:b@school.example.edu'>联系B b@school.example.edu</a></p>",
     ] {
         let (dir, db) = test_fixtures::db::open().await.unwrap();
         let site = columns().await;
-        for (path, department, own) in [
-            ("/info/1/7.htm", "化学系", "a"),
-            ("/info/2/8.htm", "物理系", "b"),
+        for (path, department, own, [a, b]) in [
+            ("/info/1/7.htm", "化学系", "a", ["本人", "助理"]),
+            ("/info/2/8.htm", "物理系", "b", ["助理", "本人"]),
         ] {
+            let page = (page.replace("OWN", own))
+                .replace("联系A", &format!("联系{a}"))
+                .replace("联系B", &format!("联系{b}"));
             site.page(
                 path,
                 &format!(
-                    "<title>张三</title><p>张三 {department}教授</p><p>研究方向：机器学习</p>{}",
-                    page.replace("OWN", own)
+                    "<title>张三</title><p>张三 {department}教授</p><p>研究方向：机器学习</p>{page}"
                 ),
             );
         }
