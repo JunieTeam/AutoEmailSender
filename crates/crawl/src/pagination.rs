@@ -1,7 +1,10 @@
 use regex::Regex;
 use scraper::{ElementRef, Selector};
 
-use crate::{PageUrl, Pagination, page::visible_text};
+use crate::{
+    PageUrl, Pagination,
+    page::{visible_text, visible_words},
+};
 use std::sync::LazyLock;
 
 #[derive(Clone, Copy)]
@@ -262,7 +265,7 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                     let marked = marked_container(element);
                     let counts = (marked || group)
                         .then(|| {
-                            let text = visible_text(element);
+                            let text = visible_words(element);
                             let found = |pattern: &Regex| pattern.captures(&text)?[1].parse().ok();
                             let page = number(&CURRENT).or_else(|| found(&PAGE));
                             page.zip(number(&TOTAL).or_else(|| found(&PAGES)))

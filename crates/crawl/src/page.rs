@@ -362,6 +362,16 @@ fn navigation(script: &str, pattern: &Regex, base: &PageUrl, page: &PageUrl) -> 
 }
 
 pub(crate) fn visible_text(element: ElementRef<'_>) -> String {
+    shown(element, false)
+}
+
+/// Its visible text with each of its texts apart, as numbers a script draws side by side read: a
+/// pager's "1" beside its "1/3" is not "11/3".
+pub(crate) fn visible_words(element: ElementRef<'_>) -> String {
+    shown(element, true)
+}
+
+fn shown(element: ElementRef<'_>, apart: bool) -> String {
     if element
         .ancestors()
         .filter_map(ElementRef::wrap)
@@ -383,6 +393,9 @@ pub(crate) fn visible_text(element: ElementRef<'_>) -> String {
                 } else if suppressed == 0
                     && let Node::Text(value) = node.value()
                 {
+                    if apart {
+                        text.push(' ');
+                    }
                     text.push_str(value);
                 }
             }

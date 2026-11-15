@@ -558,6 +558,20 @@ fn a_pager_showing_its_one_page_alone_needs_no_browser() {
 }
 
 #[test]
+fn a_pager_s_numbers_drawn_side_by_side_are_read_apart() {
+    // A script draws its pager with nothing between the page it is on and the count beside it,
+    // which read "11/3" together.
+    let base = PageUrl::parse("https://www.school.example.edu/list?page=1").unwrap();
+    let page = parse(
+        &base,
+        r#"<div class="pages"><a class="current_page">1</a><span>1/3</span>
+        <a href="/list?page=2">下一页</a></div>"#,
+    );
+    let urls: Vec<_> = page.pagination.urls.iter().map(PageUrl::as_str).collect();
+    assert_eq!(urls, ["https://www.school.example.edu/list?page=2"]);
+}
+
+#[test]
 fn last_page_placeholders_do_not_require_browser_pagination() {
     let base = PageUrl::parse("https://cyber.seu.edu.cn/yjsds_22371/list4.htm").unwrap();
     let html = include_str!("pages/seu.html")
