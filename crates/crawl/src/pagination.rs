@@ -195,11 +195,6 @@ static CURRENT: LazyLock<Selector> = LazyLock::new(|| {
     Selector::parse(".curr_page, .current_page, .current-page, .current, [aria-current='page']")
         .unwrap_or_else(|_| unreachable!("fixed current page selector is valid"))
 });
-/// What marks a page, not any other choice, as the one shown.
-static CURRENT_PAGE: LazyLock<Selector> = LazyLock::new(|| {
-    Selector::parse(".curr_page, .current_page, .current-page, [aria-current='page']")
-        .unwrap_or_else(|_| unreachable!("fixed current page selector is valid"))
-});
 static TOTAL: LazyLock<Selector> = LazyLock::new(|| {
     Selector::parse(".all_pages, .total_pages, .total-pages")
         .unwrap_or_else(|_| unreachable!("fixed total pages selector is valid"))
@@ -268,34 +263,35 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                             .and_then(|e| visible_text(e).parse::<u32>().ok())
                     };
                     let marked = marked_container(element);
-                    // `.current` marks other choices too, as of the rows a page shows: one is the
-                    // page only beside a page before or after it.
-                    let current = number(&CURRENT_PAGE).or_else(|| {
-                        (element.select(&CURRENT))
-                            .filter_map(|e| visible_text(e).parse::<u32>().ok())
-                            .find(|n| numbers.iter().any(|m| n.abs_diff(*m) == 1))
-                    });
+                    // The numbers marked current, which `.current` can mark of other choices too,
+                    // as of the rows a page shows.
+                    let current: Vec<u32> = (element.select(&CURRENT))
+                        .filter_map(|e| visible_text(e).parse().ok())
+                        .collect();
                     let counts = |text: &str| {
                         let found = |pattern: &Regex| pattern.captures(text)?[1].parse().ok();
-                        let page = current.or_else(|| found(&PAGE));
-                        page.zip(number(&TOTAL).or_else(|| found(&PAGES)))
-                            .or_else(|| {
-                                let found = PAGE_COUNTS.captures(text)?;
-                                Some((found[1].parse().ok()?, found[2].parse().ok()?))
-                            })
-                            .filter(|&(page, _)| current.is_none_or(|c| c == page))
+                        let total = number(&TOTAL).or_else(|| found(&PAGES));
+                        let page = (current.iter().copied())
+                            .find(|&page| total.is_none_or(|total| page <= total))
+                            .or_else(|| found(&PAGE));
+                        page.zip(total).or_else(|| {
+                            let found = PAGE_COUNTS.captures(text)?;
+                            Some((found[1].parse().ok()?, found[2].parse().ok()?))
+                        })
                     };
                     // Read apart, a pager's "1" beside its "1/3" is not "11/3", but a number drawn
                     // in parts, as "1" and "0" of 10, is not 1. A reading past its own count is
-                    // none, and so is one of a page other than that marked current; two others
-                    // differing tell nothing, as "3/3" beside the 50 rows a page shows reads
-                    // "3/350" together.
+                    // none; of two others, the one of a page marked current is the pager's, as
+                    // "1/12" beside the 1 marked is, not "11/12". Differing otherwise they tell
+                    // nothing, as "3/3" beside the 50 rows a page shows reads "3/350" together.
                     let counts = (marked || group)
                         .then(|| {
                             let [apart, joined] = [visible_words(element), visible_text(element)]
                                 .map(|text| counts(&text).filter(|(page, total)| page <= total));
                             match (apart, joined) {
-                                (Some(apart), Some(joined)) => (apart == joined).then_some(apart),
+                                (Some(apart), Some(joined)) if apart != joined => [apart, joined]
+                                    .into_iter()
+                                    .find(|(page, _)| current.contains(page)),
                                 (apart, joined) => apart.or(joined),
                             }
                         })
