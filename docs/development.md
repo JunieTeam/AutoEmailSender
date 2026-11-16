@@ -53,7 +53,7 @@
 | `pnpm dev` | 启动开发版，界面改了自动刷新 |
 | `pnpm preview` | 在普通浏览器里预览界面，终端打印带令牌的网址 |
 | `cargo xtask fake` | 启动本机的[假邮箱和假模型](#假邮箱和假模型)，给开发版从头试用 |
-| `pnpm check` | 提交前的全部检查：格式、clippy、测试，生成的类型和查询元数据是否最新，界面的类型检查、lint 和测试 |
+| `pnpm check` | 推送前的全部检查：格式、clippy、测试，生成的类型和查询元数据是否最新，界面的类型检查、lint 和测试 |
 | `pnpm fmt` | 格式化 Rust 和界面的代码 |
 | `pnpm sqlx` | 改了 SQL 或迁移后，重新生成 `.sqlx` 里的查询元数据 |
 | `cargo xtask types` | 改了操作或它们的类型后，重新生成 `ui/src/api/types.ts` |
