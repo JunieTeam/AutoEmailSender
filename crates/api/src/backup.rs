@@ -222,7 +222,7 @@ async fn scrub(conn: &mut SqliteConnection) -> Result<()> {
         DELETE FROM phone;
         UPDATE profile SET phone_access = 0, phone_room = NULL, phone_room_account = NULL;
         UPDATE crawl_page
-        SET text = CASE WHEN status = 'success' THEN '' END;
+        SET text = CASE WHEN status = 'success' THEN '' END, given_links = NULL;
         VACUUM;"#,
     )
     .execute(conn)

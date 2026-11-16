@@ -313,6 +313,9 @@ struct Page {
     filled: Option<Affiliation>,
     /// Why the page was not read in full, though what it gave is kept.
     failure: Option<Failure>,
+    /// The numbers of the links the model gave its people as their pages, as it gave them, when
+    /// it read the page for lists.
+    given: Option<Vec<usize>>,
 }
 impl Page {
     fn nothing(material: Material, kind: PageKind) -> Self {
@@ -326,6 +329,7 @@ impl Page {
             unit: None,
             filled: None,
             failure: None,
+            given: None,
         }
     }
 }
@@ -729,27 +733,22 @@ async fn read_before(
     let text = compared(c, m);
     let clicked = !c.steps.is_empty();
     let last = c.depth >= queue::LIST_DEPTH;
-    // Pages saved before their text was written as JSON are compared as they are. Where a link that
-    // was a teacher's page on the other leads elsewhere, this one gives another page of theirs, and
-    // so may one there leading to that page itself, which is nobody's, unless this one does too.
-    // Each link is paired with this page's by its number: joining the two `json_each` would
-    // compare every pair.
+    // Pages the model did not read for lists are compared as they are, and so are those read before
+    // the links it gave were kept, whose text may not be JSON. A number it gave leading elsewhere
+    // here, or leading nowhere on one of the two, gives other pages, as a block's text can write
+    // `[name](2)` where the other page links one.
     let kind = sqlx::query_scalar!(
         r#"SELECT kind AS "kind: PageKind"
         FROM crawl_page
         WHERE crawl_id = ?1 AND id != ?2 AND candidate_id IS NULL AND kind IN ('entry', 'list')
         AND work_state = 'done' AND status = 'success' AND scope_url = ?4
         AND depth <= ?5 AND (steps = '[]' OR ?6) AND (mode = 'http' OR ?7)
-        AND (text = ?3 OR ?8 AND CASE WHEN json_valid(text) THEN
+        AND (text = ?3 OR ?8 AND CASE WHEN given_links IS NOT NULL THEN
             json_remove(text, '$.links') = json_remove(?3, '$.links') AND NOT EXISTS (
                 SELECT 1
-                FROM (
-                    SELECT value AS old, json_extract(?3, '$.links[' || key || ']') AS new
-                    FROM json_each(text, '$.links')
-                )
-                WHERE new != old
-                AND (old IN (SELECT url FROM candidate_profile WHERE crawl_id = ?1)
-                    OR old = crawl_page.url AND new != ?9)
+                FROM json_each(given_links) given
+                WHERE json_extract(text, '$.links[' || (given.value - 1) || ']')
+                    IS NOT json_extract(?3, '$.links[' || (given.value - 1) || ']')
             )
         END)
         ORDER BY kind = 'list' DESC
@@ -761,8 +760,7 @@ async fn read_before(
         c.depth,
         clicked,
         rendered,
-        last,
-        m.url.as_str()
+        last
     )
     .fetch_optional(db)
     .await
@@ -862,9 +860,9 @@ async fn interpret(
         }
         Kind::List | Kind::Entry | Kind::Other => None,
     };
-    let (kind, people) = match (person, &route.kind) {
-        (Some(p), _) => (PageKind::Profile, vec![p]),
-        (None, Kind::Other) => (PageKind::Entry, vec![]),
+    let (kind, people, given) = match (person, &route.kind) {
+        (Some(p), _) => (PageKind::Profile, vec![p], None),
+        (None, Kind::Other) => (PageKind::Entry, vec![], Some(vec![])),
         // Routing sees only a page's edges and links, which do not show names written as plain
         // text: an entry can list teachers too, and a list whose head shows its first teacher reads
         // as that teacher's page.
@@ -894,6 +892,12 @@ async fn interpret(
             if let Some(e) = failure {
                 return Err(e);
             }
+            let mut given: Vec<_> = (all.iter())
+                .filter_map(|p| p.profile)
+                .filter(|&n| n > 0)
+                .collect();
+            given.sort_unstable();
+            given.dedup();
             let people = extract::listed(&m, all, scope, unit).map_err(|reason| {
                 tracing::info!(reason = "invalid_people", "page extraction failed");
                 ReadError::Failed(Failure::new(reason))
@@ -903,7 +907,7 @@ async fn interpret(
             } else {
                 PageKind::Entry
             };
-            (kind, people)
+            (kind, people, Some(given))
         }
     };
     let mut next: Vec<PageUrl> = Vec::new();
@@ -945,6 +949,7 @@ async fn interpret(
         filled: unit.cloned(),
         unit: found,
         failure: None,
+        given,
     })
 }
 
@@ -1186,6 +1191,7 @@ async fn read_for_candidate(
         unit: None,
         filled: unit.cloned(),
         failure: None,
+        given: None,
     })
 }
 /// Whom a list's profile page is read for, or whom they have merged into since; none when it is
@@ -1220,15 +1226,18 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                 (None, None) => (PageStatus::Success, None),
             };
             let reason = reason.map(Json);
+            let given = p.given.as_ref().map(Json);
             sqlx::query!(
                 r#"UPDATE crawl_page
-                SET work_state = 'done', kind = ?, status = ?, error = ?, text = ?, fetched_at = ?
+                SET work_state = 'done', kind = ?, status = ?, error = ?, text = ?, fetched_at = ?,
+                    given_links = ?
                 WHERE id = ?"#,
                 p.kind,
                 status,
                 reason,
                 text,
                 now(),
+                given,
                 c.id
             )
             .execute(&mut *tx)

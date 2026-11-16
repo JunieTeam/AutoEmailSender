@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT kind AS \"kind: PageKind\"\n        FROM crawl_page\n        WHERE crawl_id = ?1 AND id != ?2 AND candidate_id IS NULL AND kind IN ('entry', 'list')\n        AND work_state = 'done' AND status = 'success' AND scope_url = ?4\n        AND depth <= ?5 AND (steps = '[]' OR ?6) AND (mode = 'http' OR ?7)\n        AND (text = ?3 OR ?8 AND CASE WHEN given_links IS NOT NULL THEN\n            json_remove(text, '$.links') = json_remove(?3, '$.links') AND NOT EXISTS (\n                SELECT 1\n                FROM json_each(given_links) given\n                WHERE json_extract(text, '$.links[' || (given.value - 1) || ']')\n                    IS NOT json_extract(?3, '$.links[' || (given.value - 1) || ']')\n            )\n        END)\n        ORDER BY kind = 'list' DESC\n        LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "kind: PageKind",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl_page",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "de1958dba62144dd9f9a6a0d9ed353f96532a01845e0d1942eae6c98004ebab3"
+}

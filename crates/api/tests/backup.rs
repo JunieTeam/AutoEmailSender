@@ -68,6 +68,10 @@ async fn round_trip_strips_private_data_preserves_approval_and_installs_on_start
     .execute(&db)
     .await
     .unwrap();
+    sqlx::query("UPDATE crawl_page SET given_links = '[1]'")
+        .execute(&db)
+        .await
+        .unwrap();
     let target = dir.path().join("backup.zip");
     backup::export(&db, dir.path(), &target, NOW).await.unwrap();
     assert_eq!(
@@ -123,11 +127,11 @@ async fn round_trip_strips_private_data_preserves_approval_and_installs_on_start
     assert_eq!(account.0, "student@example.invalid");
     assert!(account.1.is_none());
     assert_eq!(
-        sqlx::query_scalar::<_, String>("SELECT text FROM crawl_page")
+        sqlx::query_as::<_, (String, Option<String>)>("SELECT text, given_links FROM crawl_page")
             .fetch_one(&mut conn)
             .await
             .unwrap(),
-        ""
+        (String::new(), None)
     );
     assert_eq!(
         sqlx::query_scalar::<_, String>("SELECT state FROM email ORDER BY id")

@@ -1050,7 +1050,8 @@ async fn a_list_a_link_too_far_at_another_address_is_read_once_though_its_menu_l
 #[tokio::test]
 async fn a_list_a_link_too_far_linking_its_teacher_s_page_elsewhere_is_read() {
     // Its teachers' pages are read from it, a link too far or not, whether the list read before
-    // linked another page of theirs or none, linking back to itself, and whether the link names
+    // linked another page of theirs or none, linking back to itself as it is written or with a
+    // slash more, or showing as text what this one writes for a link; and whether the link names
     // them or not, as a card's 个人主页 under their name, or names them spaced out.
     let cards = [
         ("<p><a href='PROFILE'>张三</a></p>", "张三"),
@@ -1060,21 +1061,27 @@ async fn a_list_a_link_too_far_linking_its_teacher_s_page_elsewhere_is_read() {
         ),
         ("<p><a href='PROFILE'>张 三</a></p>", "张 三"),
     ];
-    let lists: [(&str, &[&str]); 2] = [("/old", &["/new", "/old"]), ("/szdw", &["/new"])];
-    for (&(card, label), &(old, read)) in
-        (cards.iter()).flat_map(|card| lists.iter().map(move |list| (card, list)))
-    {
+    let lists: [(&str, &[&str]); 3] = [
+        ("/old", &["/new", "/old"]),
+        ("/szdw", &["/new"]),
+        ("/szdw/", &["/new"]),
+    ];
+    let mut cases = Vec::new();
+    for (card, label) in cards {
+        for (old, read) in lists {
+            cases.push((card.replace("PROFILE", old), card, label, read));
+        }
+    }
+    cases.push(("<p>[张三](2)</p>".to_owned(), cards[0].0, "张三", &["/new"]));
+    for (first, card, label, read) in cases {
         let (dir, db) = test_fixtures::db::open().await.unwrap();
         let site = Site::new().await;
         site.page("/", "<title>首页</title><a href='/szdw'>在职教师</a>");
-        let list = |profile| {
-            format!(
-                "<title>在职教师</title><a href='/t1/szdw'>全体教师</a>{}",
-                card.replace("PROFILE", profile)
-            )
+        let list = |teacher: &str| {
+            format!("<title>在职教师</title><a href='/t1/szdw'>全体教师</a>{teacher}")
         };
-        site.page("/szdw", &list(old));
-        site.page("/t1/szdw", &list("/new"));
+        site.page("/szdw", &list(&first));
+        site.page("/t1/szdw", &list(&card.replace("PROFILE", "/new")));
         for path in ["/old", "/new"] {
             site.page(path, "<title>张三</title><p>张三 a@school.example.edu</p>");
         }
@@ -1128,7 +1135,7 @@ async fn a_list_a_link_too_far_linking_its_teacher_s_page_elsewhere_is_read() {
             .iter()
             .map(|p| site.url(p).as_str().to_owned())
             .collect();
-        assert_eq!(urls, read, "{card} {old}");
+        assert_eq!(urls, read, "{first}");
         db.close().await;
         dir.close().unwrap();
     }
