@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.text AS \"text!\"\n        FROM crawl_page p\n        JOIN candidate c ON c.id = p.target_id\n        WHERE p.crawl_id = ?1 AND p.work_state = 'done' AND p.status = 'success'\n        AND instr(p.text, ?3) AND NOT EXISTS (\n            SELECT 1\n            FROM json_each(c.match_names) a\n            JOIN json_each((SELECT match_names FROM candidate WHERE id = ?2)) b ON a.value = b.value\n        )\n        LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "text!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "crawl_page",
+            "name": "text"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "c4765858dcabf4281f874a8efb586d4f1588af7c3bbe3659e4352e7035656a85"
+}

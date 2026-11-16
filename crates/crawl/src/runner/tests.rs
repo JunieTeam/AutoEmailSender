@@ -1471,9 +1471,10 @@ async fn columns() -> Site {
     site
 }
 
-/// Crawls `site` from `/`, its first list giving 张三 `emails` and the second giving him once a
-/// candidate has `a@school.example.edu`; the model says of each page read for him what `answer`
-/// does. Gives how many such pages the model read.
+/// Crawls `site` from `/`, its first list giving 张三 `emails`, and 李四 after him where it lists
+/// him too, and the second giving 张三 once a candidate has `a@school.example.edu` and the pages
+/// read for the first's are done; the model says of each page read for them what `answer` does.
+/// Gives how many such pages the model read.
 async fn read_for_zhang(
     db: &SqlitePool,
     site: &Site,
@@ -1502,10 +1503,17 @@ async fn read_for_zhang(
                             .collect();
                         json!({"kind": "list", "next": next})
                     } else if data["title"] == "教授" {
-                        json!({"people": [listed("张三", Some(1), emails)]})
+                        let mut people = vec![listed("张三", Some(1), emails)];
+                        if data.to_string().contains("李四") {
+                            people.push(listed("李四", Some(2), vec![]));
+                        }
+                        json!({ "people": people })
                     } else if system.starts_with("你从教师") {
                         while sqlx::query_scalar::<_, i64>(
-                            "SELECT count(*) FROM candidate WHERE emails LIKE '%a@school%'",
+                            "SELECT EXISTS (SELECT 1 FROM candidate WHERE emails LIKE '%a@school%')
+                            AND NOT EXISTS (
+                                SELECT 1 FROM crawl_page WHERE kind = 'profile' AND work_state != 'done'
+                            )",
                         )
                         .fetch_one(&db)
                         .await
@@ -1548,23 +1556,41 @@ async fn read_for_zhang(
 async fn a_copy_of_a_teacher_s_page_read_before_is_not_read_again() {
     // As chem.fzu.edu.cn and jidian.cug.edu.cn publish a teacher's page under each column that
     // lists them, at another address each time, naming the column on it, though not right above
-    // an address; the former's footer gives the college's address and links its dean's.
+    // an address; the former's footer gives the college's address and links its dean's, as each
+    // of its teachers' pages does.
     let (dir, db) = test_fixtures::db::open().await.unwrap();
     let site = columns().await;
+    site.page(
+        "/",
+        "<title>教授</title><p><a href='/info/1/7.htm'>张三</a></p>\
+        <p><a href='/info/3/9.htm'>李四</a></p><a href='/boshi'>博士生导师</a>",
+    );
+    let footer = "<div class='footer'><p>邮箱：office@school.example.edu</p>\
+        <p><a href='mailto:dean@school.example.edu'>院长信箱</a></p></div>";
     for (path, column) in [("/info/1/7.htm", "教授"), ("/info/2/8.htm", "博士生导师")] {
         site.page(
             path,
             &format!(
                 "<title>张三</title><h2>{column}</h2><p>张三</p><p>a@school.example.edu 机器学习</p>\
-                <div class='footer'><p>邮箱：office@school.example.edu</p>\
-                <p><a href='mailto:dean@school.example.edu'>院长信箱</a></p></div>"
+                {footer}"
             ),
         );
     }
-    let read = read_for_zhang(&db, &site, vec![], |_| targeted("a@school.example.edu")).await;
-    assert_eq!(read, 1);
+    site.page(
+        "/info/3/9.htm",
+        &format!("<title>李四</title><p>李四</p><p>li@school.example.edu 数据库</p>{footer}"),
+    );
+    let read = read_for_zhang(&db, &site, vec![], |data| {
+        targeted(if data["title"] == "李四" {
+            "li@school.example.edu"
+        } else {
+            "a@school.example.edu"
+        })
+    })
+    .await;
+    assert_eq!(read, 2);
     let ids = candidate_ids(&db).await;
-    assert_eq!(ids.len(), 1);
+    assert_eq!(ids.len(), 2);
     let (_, profiles) = links(&db, ids[0]).await;
     let profiles: Vec<_> = profiles.iter().map(|(url, _)| url.as_str()).collect();
     let copies = [site.url("/info/1/7.htm"), site.url("/info/2/8.htm")];
@@ -1643,7 +1669,7 @@ async fn a_page_giving_its_own_address_where_one_read_before_gave_another_is_rea
     // both; beside a menu giving both in lines just like its own; in a block writing both; giving
     // both in the same order, the two swapping whose is 本人's and whose 助理's, said on the line of
     // each address, in a block of its own before or after it, in the same words or in others, or in
-    // a heading over a label both addresses follow.
+    // a heading over a label both addresses follow, the second in a footer of the page's article.
     for page in [
         "<p>课题组联系人 a@school.example.edu b@school.example.edu</p>\
         <div class='footer'><a href='mailto:OWN@school.example.edu'>联系本人</a></div>",
@@ -1663,6 +1689,8 @@ async fn a_page_giving_its_own_address_where_one_read_before_gave_another_is_rea
         "<dl><dt>甲</dt><dd>a@school.example.edu</dd><dt>乙</dt><dd>b@school.example.edu</dd></dl>",
         "<section><h3>联系A</h3><p>电子邮件</p><p>a@school.example.edu</p></section>\
         <section><h3>联系B</h3><p>电子邮件</p><p>b@school.example.edu</p></section>",
+        "<article><section><h3>联系A</h3><p>电子邮件</p><p>a@school.example.edu</p></section>\
+        <footer><h3>联系B</h3><p>电子邮件</p><p>b@school.example.edu</p></footer></article>",
     ] {
         let (dir, db) = test_fixtures::db::open().await.unwrap();
         let site = columns().await;

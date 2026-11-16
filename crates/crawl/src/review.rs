@@ -623,18 +623,19 @@ pub async fn set_unit(
 /// site differed in eleven lines or more.
 const COPY_LINES: usize = 3;
 
-/// The addresses among `emails`, those a page read for `id` gives outside its footers and menus,
-/// that another candidate of the crawl sharing a name with `id` has, when they have every one and
-/// a page read for them is a copy of the one `extract::written` writes as `text`: by the rule
-/// `save` follows, the two are one person. A copy differs in a few lines and gives the same
-/// addresses in the same order, written or behind a link, each on the same line after the same
-/// line: a teacher of the name gives their own where the other's page gave that one's, though both
-/// pages may give both elsewhere, as in a menu, and a line can tell whose an address is, as 本人's
-/// or 助理's, on it, before it or after the one before. A heading further up can tell it too,
-/// which matters only to one not given them all; a footer or menu gives the site's on each page.
-/// One whose research no page gave may find it in another version of their page.
+/// The addresses among `emails`, those a page read for `id` gives, that another candidate of the
+/// crawl sharing a name with `id` has, when a page read for them is a copy of the one
+/// `extract::written` writes as `text` and the page gives no address but theirs and the site's: by
+/// the rule `save` follows, the two are one person. A copy differs in a few lines and gives the
+/// same addresses in the same order, written or behind a link, each on the same line after the
+/// same line: a teacher of the name gives their own where the other's page gave that one's, though
+/// both pages may give both elsewhere, as in a menu, and a line can tell whose an address is, as
+/// 本人's or 助理's, on it, before it or after the one before. A heading further up can tell it
+/// too, which matters only to one not given them all. A site's address is on its other teachers'
+/// pages too, as in its footer, which can also be an article's, giving the teacher's. One whose
+/// research no page gave may find it in another version of their page.
 pub(crate) async fn known(
-    db: impl sqlx::SqliteExecutor<'_>,
+    db: &SqlitePool,
     crawl: i64,
     id: i64,
     text: &str,
@@ -679,19 +680,58 @@ pub(crate) async fn known(
             .collect()
     };
     let (page, given) = (lines(text), addresses(text));
-    Ok((read.into_iter())
-        .filter(|r| {
-            let other = lines(&r.text);
-            page.difference(&other).count() <= COPY_LINES
-                && other.difference(&page).count() <= COPY_LINES
-                && addresses(&r.text) == given
-                && emails
-                    .iter()
-                    .all(|e| (r.emails.0.iter()).any(|a| a.eq_ignore_ascii_case(&e.address)))
-        })
-        .flat_map(|r| r.emails.0)
-        .filter(|a| emails.iter().any(|e| e.address.eq_ignore_ascii_case(a)))
-        .collect())
+    let mut known = Vec::new();
+    'read: for r in read {
+        let other = lines(&r.text);
+        if page.difference(&other).count() > COPY_LINES
+            || other.difference(&page).count() > COPY_LINES
+            || addresses(&r.text) != given
+        {
+            continue;
+        }
+        let theirs = |address: &str| r.emails.0.iter().any(|a| a.eq_ignore_ascii_case(address));
+        for e in emails.iter().filter(|e| !theirs(&e.address)) {
+            if !on_others_pages(db, crawl, id, &e.address).await? {
+                continue 'read;
+            }
+        }
+        known.extend(
+            (r.emails.0.into_iter())
+                .filter(|a| emails.iter().any(|e| e.address.eq_ignore_ascii_case(a))),
+        );
+    }
+    Ok(known)
+}
+
+/// Whether a page read for a teacher of none of `id`'s names gives `address`, as a site gives its
+/// own on each of its teachers' pages. `instr` finds one within a longer one too, as li@ within
+/// weili@, which the page's addresses tell apart: the first page it finds giving only the longer
+/// one leaves the address no site's, which reads a copy again.
+async fn on_others_pages(
+    db: &SqlitePool,
+    crawl: i64,
+    id: i64,
+    address: &str,
+) -> Result<bool, sqlx::Error> {
+    let text = sqlx::query_scalar!(
+        r#"SELECT p.text AS "text!"
+        FROM crawl_page p
+        JOIN candidate c ON c.id = p.target_id
+        WHERE p.crawl_id = ?1 AND p.work_state = 'done' AND p.status = 'success'
+        AND instr(p.text, ?3) AND NOT EXISTS (
+            SELECT 1
+            FROM json_each(c.match_names) a
+            JOIN json_each((SELECT match_names FROM candidate WHERE id = ?2)) b ON a.value = b.value
+        )
+        LIMIT 1"#,
+        crawl,
+        id,
+        address
+    )
+    .fetch_optional(db)
+    .await?;
+    Ok(text
+        .is_some_and(|t| (EMAILS.text(&t).iter()).any(|e| e.address.eq_ignore_ascii_case(address))))
 }
 
 /// Returns whether this person added a candidate rather than merging into existing candidates.
