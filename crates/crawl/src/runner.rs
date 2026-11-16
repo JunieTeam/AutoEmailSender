@@ -819,13 +819,23 @@ async fn interpret(
     let c = reader.claim;
     // Clicks are replayed on the page as it opens, so only that page offers its controls.
     let controls: &[String] = if c.steps.is_empty() { &m.controls } else { &[] };
-    let route = reader
-        .ask::<extract::Route>(
-            "route",
-            extract::ROUTE,
-            extract::routing(&m, scope, controls),
-        )
-        .await?;
+    // A page turned to is its list's, whose first page chose what else to read.
+    let route = if c.kind == PageKind::List {
+        extract::Route {
+            kind: Kind::List,
+            next: vec![],
+            university: None,
+            school: None,
+        }
+    } else {
+        reader
+            .ask::<extract::Route>(
+                "route",
+                extract::ROUTE,
+                extract::routing(&m, scope, controls),
+            )
+            .await?
+    };
     let found = route.affiliation(&m);
     // The crawl's way of writing its school and college, once one page has named them.
     let unit = unit.or(found.as_ref());

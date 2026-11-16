@@ -983,8 +983,9 @@ async fn a_category_showing_nothing_new_when_clicked_is_not_read_again(db: Sqlit
             vec![next(2), next(3)]
         ]
     );
-    // The model reads the list's own pages only.
-    assert_eq!(routed.lock().unwrap().len(), 3);
+    // The model routes the list's first page only: the group shows nothing new, and the pages
+    // turned to are the list's own.
+    assert_eq!(*routed.lock().unwrap(), ["在职教师"]);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
