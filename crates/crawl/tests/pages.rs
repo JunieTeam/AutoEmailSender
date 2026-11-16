@@ -606,9 +606,10 @@ fn a_pager_s_numbers_drawn_side_by_side_are_read_apart() {
     // A script draws its pager with nothing between the page it is on and the count beside it,
     // which read "11/3" together, past its own count, or "11/12", not the page it marks current,
     // by a class naming a page or a plain `.current`, which it may put on the rows a page shows
-    // too: it is on the first, which a jump alone may lead on from. It may draw a count in parts, "1" and "0" of 10, which read "1/1" apart, or
-    // the rows a page shows beside it, which read "3/350" together: either way the count is not
-    // known, and the page is not taken for its last.
+    // too, as many as the pages: it is on the first, which a jump alone may lead on from. It may
+    // draw a count in parts, "1" and "0" of 10, which read "1/1" apart, the rows a page shows
+    // beside it, which read "3/350" together, or mark both rows and page and write neither: either
+    // way the count is not known, and the page is not taken for its last.
     let base = PageUrl::parse("https://www.school.example.edu/list?page=1").unwrap();
     let pager = |count: &str, turn: &str| {
         parse(&base, &format!(r#"<div class="pages">{count}{turn}</div>"#)).pagination
@@ -629,6 +630,14 @@ fn a_pager_s_numbers_drawn_side_by_side_are_read_apart() {
         (
             r#"<div class="nice-select"><span class="current">50</span></div>条/页<span>1/3</span>"#,
             Some(1),
+        ),
+        (
+            r#"<div class="nice-select"><span class="current">10</span></div>条/页<span>第 <span class="current_page">1</span> 页，共 <span class="total_pages">10</span> 页</span>"#,
+            Some(1),
+        ),
+        (
+            r#"<div class="nice-select"><span class="current">10</span></div>条/页<span class="current_page">1</span><span>共 10 页</span>"#,
+            None,
         ),
         ("第1页/<span>1</span><span>0</span>页", None),
         ("<span>3/3</span><span>50</span>条/页", None),

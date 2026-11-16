@@ -271,9 +271,14 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                     let counts = |text: &str| {
                         let found = |pattern: &Regex| pattern.captures(text)?[1].parse().ok();
                         let total = number(&TOTAL).or_else(|| found(&PAGES));
-                        let page = (current.iter().copied())
-                            .find(|&page| total.is_none_or(|total| page <= total))
-                            .or_else(|| found(&PAGE));
+                        // Rows a page shows, marked too, can be as many as the pages: unwritten, the
+                        // page is the one marked only when no other number marked is within the count.
+                        let mut marked = (current.iter().copied())
+                            .filter(|&page| total.is_none_or(|total| page <= total));
+                        let page = found(&PAGE).or_else(|| {
+                            let page = marked.next()?;
+                            marked.all(|other| other == page).then_some(page)
+                        });
                         page.zip(total).or_else(|| {
                             let found = PAGE_COUNTS.captures(text)?;
                             Some((found[1].parse().ok()?, found[2].parse().ok()?))
