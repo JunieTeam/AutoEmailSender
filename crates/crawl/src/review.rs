@@ -785,7 +785,7 @@ pub(crate) async fn save(
         Source::Profile { own, target, .. } => (*target, *own),
         _ => (None, false),
     };
-    let ids = sqlx::query_scalar!(
+    let mut ids = sqlx::query_scalar!(
         r#"SELECT id
         FROM candidate
         WHERE crawl_id = ?1 AND (id = ?5 OR id IN (
@@ -811,6 +811,11 @@ pub(crate) async fn save(
     )
     .fetch_all(&mut *conn)
     .await?;
+    // A list's teacher with a page still to read waits for it: it may tell them apart.
+    if !matches!(source, Source::List { .. }) || profile.is_none() {
+        let page = !identities.is_empty();
+        ids.extend(namesakes(conn, crawl, &names, &ids, &f.emails, page).await?);
+    }
     let mut old = read(conn, &ids).await?;
     old.sort_by_key(|c| (c.mentor_id.is_none(), c.id));
     let targets: std::collections::BTreeSet<_> = old.iter().filter_map(|c| c.mentor_id).collect();
@@ -1079,6 +1084,70 @@ pub(crate) async fn save(
         .await?;
     }
     Ok(added)
+}
+
+/// The crawl's other candidates of a name in `names` that nothing tells apart from the ones `ids`
+/// and a person with `emails`, and a page of their own if `page`, are, once no page of theirs is
+/// left to read: a teacher listed under several categories, mostly without an address, is one.
+/// Two of a name, as a college can have, are told apart when both have addresses and share none,
+/// or both have a page of their own.
+async fn namesakes(
+    conn: &mut SqliteConnection,
+    crawl: i64,
+    names: &[String],
+    ids: &[i64],
+    emails: &[String],
+    page: bool,
+) -> Result<Vec<i64>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"SELECT id AS "id!", emails AS "emails: Json<Vec<String>>",
+            profile_url IS NOT NULL AS "page!: bool",
+            id IN (SELECT value FROM json_each(?3)) AS "matched!: bool",
+            EXISTS (
+                SELECT 1
+                FROM crawl_page q
+                WHERE q.crawl_id = ?1 AND q.kind = 'profile' AND q.work_state != 'done'
+                AND (q.url = candidate.profile_url OR q.target_id = candidate.id)
+            ) AS "reading!: bool"
+        FROM candidate
+        WHERE crawl_id = ?1 AND (id IN (SELECT value FROM json_each(?3)) OR EXISTS (
+            SELECT 1
+            FROM json_each(match_names) a
+            JOIN json_each(?2) b ON a.value = b.value
+        ))
+        ORDER BY id"#,
+        crawl,
+        Json(names),
+        Json(ids)
+    )
+    .fetch_all(conn)
+    .await?;
+    let (matched, others): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| r.matched);
+    if matched.iter().any(|r| r.reading) {
+        return Ok(vec![]);
+    }
+    let mut known: Vec<String> = emails.to_vec();
+    let mut page = page;
+    for r in matched {
+        known.extend(r.emails.map(|Json(e)| e).unwrap_or_default());
+        page |= r.page;
+    }
+    let mut found = Vec::new();
+    for r in others.into_iter().filter(|r| !r.reading) {
+        let theirs = r.emails.map(|Json(e)| e).unwrap_or_default();
+        let apart = !known.is_empty()
+            && !theirs.is_empty()
+            && !theirs
+                .iter()
+                .any(|e| known.iter().any(|k| k.eq_ignore_ascii_case(e)));
+        if apart || (page && r.page) {
+            continue;
+        }
+        known.extend(theirs);
+        page |= r.page;
+        found.push(r.id);
+    }
+    Ok(found)
 }
 
 /// Pages at `urls`, read for the candidate, proved not to be theirs: the links no longer identify
