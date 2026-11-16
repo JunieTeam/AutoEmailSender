@@ -195,6 +195,11 @@ static CURRENT: LazyLock<Selector> = LazyLock::new(|| {
     Selector::parse(".curr_page, .current_page, .current-page, .current, [aria-current='page']")
         .unwrap_or_else(|_| unreachable!("fixed current page selector is valid"))
 });
+/// What marks a page, not any other choice, as the one shown.
+static CURRENT_PAGE: LazyLock<Selector> = LazyLock::new(|| {
+    Selector::parse(".curr_page, .current_page, .current-page, [aria-current='page']")
+        .unwrap_or_else(|_| unreachable!("fixed current page selector is valid"))
+});
 static TOTAL: LazyLock<Selector> = LazyLock::new(|| {
     Selector::parse(".all_pages, .total_pages, .total-pages")
         .unwrap_or_else(|_| unreachable!("fixed total pages selector is valid"))
@@ -263,7 +268,13 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                             .and_then(|e| visible_text(e).parse::<u32>().ok())
                     };
                     let marked = marked_container(element);
-                    let current = number(&CURRENT);
+                    // `.current` marks other choices too, as of the rows a page shows: one is the
+                    // page only beside a page before or after it.
+                    let current = number(&CURRENT_PAGE).or_else(|| {
+                        (element.select(&CURRENT))
+                            .filter_map(|e| visible_text(e).parse::<u32>().ok())
+                            .find(|n| numbers.iter().any(|m| n.abs_diff(*m) == 1))
+                    });
                     let counts = |text: &str| {
                         let found = |pattern: &Regex| pattern.captures(text)?[1].parse().ok();
                         let page = current.or_else(|| found(&PAGE));
