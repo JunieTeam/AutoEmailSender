@@ -689,11 +689,31 @@ pub fn mentions(m: &Material, names: &[&str]) -> bool {
     ));
     names.iter().any(|name| text.contains(&compact(name)))
 }
+/// Whether `link` is the front page of the site `page` is on, which is the college's or the
+/// system's, not the teacher's, though a page links it in its menu or for “Personal Homepage”. A
+/// teacher's own site read through another of its pages loses its front page, which that one
+/// stands for.
+fn front_page(link: &PageUrl, page: &PageUrl) -> bool {
+    let host = |u: &PageUrl| {
+        let host = u.parsed().host_str().unwrap_or_default();
+        host.strip_prefix("www.").unwrap_or(host).to_owned()
+    };
+    let url = link.parsed();
+    let name = url.path().trim_start_matches('/');
+    let stem = (name.split_once('.').map_or(name, |(stem, _)| stem)).to_ascii_lowercase();
+    host(link) == host(page)
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && (name.is_empty()
+            || !name.contains('/') && matches!(stem.as_str(), "index" | "main" | "default"))
+}
 pub fn profile(m: &Material, name: String, p: Details) -> Result<Person, String> {
     let all = links(m);
     let mut homepages = vec![m.url.as_str().to_owned()];
     for id in p.homepages {
-        if let Some((_, url)) = id.checked_sub(1).and_then(|n| all.get(n)) {
+        if let Some((_, url)) = id.checked_sub(1).and_then(|n| all.get(n))
+            && !front_page(url, &m.url)
+        {
             let value = url.as_str().to_owned();
             if !homepages.contains(&value) {
                 homepages.push(value);
@@ -737,6 +757,36 @@ mod tests {
         // Grouped otherwise, the list is read in other parts and an address can be another's.
         let rows = "<div><p>张三</p></div><div><p>教授</p><p>李四</p></div><div><p>讲师</p></div>";
         assert_ne!(compared(cards), compared(rows));
+    }
+
+    #[test]
+    fn a_teacher_s_homepages_leave_out_the_front_page_of_the_site_their_page_is_on() {
+        // As teacher.bupt.edu.cn links its front page for “Personal Homepage”, and a college's
+        // pages link theirs for 首页.
+        let url = PageUrl::parse("https://www.school.example.edu/info/1/7.htm").unwrap();
+        let m = crate::page::parse(
+            &url,
+            "<p>张三</p><p><a href='/'>Personal Homepage</a> \
+            <a href='https://school.example.edu/main.htm'>首页</a> \
+            <a href='https://lab.example.org/'>课题组主页</a> <a href='/zhang/papers.htm'>论文</a></p>",
+        );
+        let details = Details {
+            aliases: vec![],
+            emails: vec![],
+            affiliations: vec![],
+            homepages: vec![1, 2, 3, 4],
+            research: None,
+            papers: vec![],
+        };
+        let person = profile(&m, "张三".into(), details).unwrap();
+        assert_eq!(
+            person.fields.homepages,
+            [
+                "https://www.school.example.edu/info/1/7.htm",
+                "https://lab.example.org/",
+                "https://www.school.example.edu/zhang/papers.htm"
+            ]
+        );
     }
 
     #[test]
