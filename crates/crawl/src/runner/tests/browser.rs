@@ -1944,3 +1944,49 @@ async fn a_profile_that_shows_no_teacher_over_http_is_read_in_the_browser(db: Sq
     assert_eq!(emails, ["a@school.example.edu"]);
     responder.abort();
 }
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_pages_on_past_the_limit_of_pages_finding_no_one_new(db: SqlitePool) {
+    // The crawl has read as many pages finding no teacher new to it as it reads, as a list misread
+    // might give: a list finding someone new still pages on, and nothing else is read.
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>教师名单</title><p>张三</p><a href='/?page=2'>下一页</a><a href='/dept'>按系</a>",
+    );
+    site.page("/?page=2", "<title>教师名单</title><p>李四</p>");
+    site.page("/dept", "<title>按系</title><p>王五</p>");
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "list");
+    let crawl = queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    for n in 0..queue::LIST_LIMIT {
+        sqlx::query(
+            r#"INSERT INTO crawl_page (crawl_id, url, scope_url, kind, mode, status, text)
+            VALUES (?, ?, ?, 'list', 'http', 'success', '')"#,
+        )
+        .bind(crawl)
+        .bind(site.url(&format!("/read/{n}")).as_str())
+        .bind(site.url("/").as_str())
+        .execute(&db)
+        .await
+        .unwrap();
+    }
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY id")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三", "李四"]);
+    let limits: String = sqlx::query_scalar("SELECT limits FROM crawl")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(limits, r#"["找名单已有 60 页没找到新导师，后面的没有读"]"#);
+}

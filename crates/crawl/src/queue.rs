@@ -116,9 +116,26 @@ pub async fn enqueue(
     depth: i64,
     kind: PageKind,
 ) -> Result<(), sqlx::Error> {
-    enqueue_steps(conn, crawl, url, scope, depth, kind, &[]).await
+    enqueue_steps(
+        conn,
+        crawl,
+        url,
+        scope,
+        depth,
+        kind,
+        &[],
+        kind != PageKind::Profile,
+    )
+    .await
 }
 
+/// Queues the page `url` opens to after `steps`, if it is `limited` only while fewer pages read for
+/// lists found no teacher new to the crawl than the limit: it stops a crawl wandering, not reading
+/// a long list, whose next page follows one that found someone new.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the page as the queue keeps it, and whether the limit holds it back"
+)]
 pub(crate) async fn enqueue_steps(
     conn: &mut SqliteConnection,
     crawl: i64,
@@ -127,21 +144,25 @@ pub(crate) async fn enqueue_steps(
     depth: i64,
     kind: PageKind,
     steps: &[PageStep],
+    limited: bool,
 ) -> Result<(), sqlx::Error> {
     if queued(conn, crawl, url, kind, steps).await? {
         return Ok(());
     }
     let steps = Json(steps);
-    if kind != PageKind::Profile
+    if limited
         && sqlx::query_scalar!(
-            "SELECT count(*) FROM crawl_page WHERE crawl_id = ? AND kind IN ('entry','list')",
+            r#"SELECT count(*)
+            FROM crawl_page p
+            WHERE crawl_id = ? AND kind IN ('entry','list')
+            AND NOT EXISTS (SELECT 1 FROM candidate WHERE list_page_id = p.id)"#,
             crawl
         )
         .fetch_one(&mut *conn)
         .await?
             >= LIST_LIMIT
     {
-        limit(conn, crawl, "找名单已达到 60 页上限").await?;
+        limit(conn, crawl, "找名单已有 60 页没找到新导师，后面的没有读").await?;
         return Ok(());
     }
     sqlx::query!(

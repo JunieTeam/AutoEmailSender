@@ -1301,6 +1301,31 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                     enrich::apply(&mut tx, id, p.material.url.as_str(), person).await?;
                 }
             } else {
+                let target = match c.kind {
+                    PageKind::Profile if !p.people.is_empty() => target(&mut tx, c.id).await?,
+                    _ => None,
+                };
+                // The transaction serializes duplicate detection with all candidate writes. The page
+                // has found whom it gave before the pages it leads to are counted against the limit.
+                let mut found = false;
+                for person in people {
+                    found |= review::save(
+                        &mut tx,
+                        c.crawl,
+                        if p.kind == PageKind::List {
+                            review::Source::List { id: c.id }
+                        } else {
+                            review::Source::Profile {
+                                id: c.id,
+                                own: p.own,
+                                target,
+                            }
+                        },
+                        p.material.url.as_str(),
+                        person,
+                    )
+                    .await?;
+                }
                 for url in &p.next {
                     if c.depth < queue::LIST_DEPTH {
                         queue::enqueue(
@@ -1331,6 +1356,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                             c.depth + 1,
                             PageKind::Entry,
                             &steps,
+                            true,
                         )
                         .await?;
                     } else if !queue::queued(&mut tx, c.crawl, &c.url, PageKind::Entry, &steps)
@@ -1342,13 +1368,15 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                 if p.kind == PageKind::List {
                     for url in &p.material.pagination.urls {
                         if Scope::new(&c.scope).page(url.clone()).is_ok() {
-                            queue::enqueue(
+                            queue::enqueue_steps(
                                 &mut tx,
                                 c.crawl,
                                 url,
                                 &c.scope,
                                 c.depth,
                                 PageKind::List,
+                                &[],
+                                !found,
                             )
                             .await?;
                         }
@@ -1377,6 +1405,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                             c.depth,
                             PageKind::List,
                             &steps,
+                            !found,
                         )
                         .await?;
                     }
@@ -1384,29 +1413,6 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                 if p.kind == PageKind::List && p.material.pagination.jump_only {
                     queue::limit(&mut tx, c.crawl, "有的名单只能输入页码跳转，后面的页没有读")
                         .await?;
-                }
-                let target = match c.kind {
-                    PageKind::Profile if !p.people.is_empty() => target(&mut tx, c.id).await?,
-                    _ => None,
-                };
-                // The transaction serializes duplicate detection with all candidate writes.
-                for person in people {
-                    review::save(
-                        &mut tx,
-                        c.crawl,
-                        if p.kind == PageKind::List {
-                            review::Source::List { id: c.id }
-                        } else {
-                            review::Source::Profile {
-                                id: c.id,
-                                own: p.own,
-                                target,
-                            }
-                        },
-                        p.material.url.as_str(),
-                        person,
-                    )
-                    .await?;
                 }
             }
         }

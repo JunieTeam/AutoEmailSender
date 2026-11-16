@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT count(*) FROM crawl_page WHERE crawl_id = ? AND kind IN ('entry','list')",
+  "query": "SELECT count(*)\n            FROM crawl_page p\n            WHERE crawl_id = ? AND kind IN ('entry','list')\n            AND NOT EXISTS (SELECT 1 FROM candidate WHERE list_page_id = p.id)",
   "describe": {
     "columns": [
       {
@@ -17,5 +17,5 @@
       false
     ]
   },
-  "hash": "9c2b54b534f73d050c4beffb662d6fc3464794083573c3f7c6714a7ff624a57c"
+  "hash": "71c7163aecf49f128815a7974d33401b3f4d5fa5bf3b2e0af3b8ae8a9220a4e2"
 }
