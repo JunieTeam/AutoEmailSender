@@ -315,7 +315,7 @@ struct Page {
     failure: Option<Failure>,
     /// The numbers of the links the model gave its people as their pages, as it gave them, when
     /// it read the page for lists.
-    given: Option<Vec<usize>>,
+    given: Option<Vec<u32>>,
 }
 impl Page {
     fn nothing(material: Material, kind: PageKind) -> Self {
@@ -862,7 +862,7 @@ async fn interpret(
     };
     let (kind, people, given) = match (person, &route.kind) {
         (Some(p), _) => (PageKind::Profile, vec![p], None),
-        (None, Kind::Other) => (PageKind::Entry, vec![], Some(vec![])),
+        (None, Kind::Other) => (PageKind::Entry, vec![], None),
         // Routing sees only a page's edges and links, which do not show names written as plain
         // text: an entry can list teachers too, and a list whose head shows its first teacher reads
         // as that teacher's page.
@@ -892,8 +892,9 @@ async fn interpret(
             if let Some(e) = failure {
                 return Err(e);
             }
-            let mut given: Vec<_> = (all.iter())
-                .filter_map(|p| p.profile)
+            // No page has more links than a `u32` counts, which SQLite also takes as a number.
+            let mut given: Vec<u32> = (all.iter())
+                .filter_map(|p| u32::try_from(p.profile?).ok())
                 .filter(|&n| n > 0)
                 .collect();
             given.sort_unstable();

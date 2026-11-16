@@ -1141,6 +1141,71 @@ async fn a_list_a_link_too_far_linking_its_teacher_s_page_elsewhere_is_read() {
     }
 }
 
+#[tokio::test]
+async fn a_list_a_link_too_far_reading_as_a_page_read_as_no_list_is_read() {
+    // The page read before linked its teacher off the site, which routing does not show, so that
+    // it read as no list; this one links them on the site.
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>首页</title><a href='/a'>信息</a><a href='/nav'>导航</a>",
+    );
+    site.page("/nav", "<title>导航</title><a href='/b'>信息</a>");
+    site.page(
+        "/a",
+        "<title>信息</title><p><a href='https://outside.example.org/zhang'>张三</a></p>",
+    );
+    site.page("/b", "<title>信息</title><p><a href='/p'>张三</a></p>");
+    site.page("/p", "<title>张三</title><p>张三 a@school.example.edu</p>");
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let data = request.body["messages"][1]["content"].as_str().unwrap();
+            let data: Value = serde_json::from_str(data).unwrap();
+            let output = if system.starts_with("你整理学院") {
+                let offered = offered(&data);
+                let kind = match data["title"].as_str() {
+                    Some("首页" | "导航") => "entry",
+                    _ if offered.is_empty() => "other",
+                    _ => "list",
+                };
+                let next: Vec<_> = (offered.into_iter())
+                    .filter(|(text, _)| text != "张三")
+                    .map(|(_, n)| n)
+                    .collect();
+                json!({"kind": kind, "next": next})
+            } else if system.starts_with("你从教师") {
+                json!({"people": [listed("张三", Some(1), vec![])]})
+            } else {
+                super::targeted("a@school.example.edu")
+            };
+            request
+                .respond
+                .send(Response::answer(&output.to_string()))
+                .ok();
+        }
+    });
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let urls: Vec<String> =
+        sqlx::query_scalar("SELECT url FROM crawl_page WHERE target_id IS NOT NULL")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(urls, [site.url("/p").as_str()]);
+    db.close().await;
+    dir.close().unwrap();
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_page_reading_as_another_but_leading_elsewhere_is_read(db: SqlitePool) {
     let site = Site::new().await;
