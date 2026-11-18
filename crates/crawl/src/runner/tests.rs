@@ -4978,6 +4978,7 @@ impl Pages {
             http: Fetcher::local(port),
             browser: None,
             recognize,
+            answered: Default::default(),
         }
     }
 }

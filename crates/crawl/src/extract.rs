@@ -147,7 +147,7 @@ impl Route {
     }
 }
 /// A person as the list prompt writes them, leaving out what the page does not give.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Listed {
     #[serde(rename = "n")]
     pub name: String,
@@ -160,7 +160,7 @@ pub struct Listed {
     #[serde(rename = "r", default, deserialize_with = "points")]
     pub research: Option<String>,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct People {
     pub people: Vec<Listed>,
 }

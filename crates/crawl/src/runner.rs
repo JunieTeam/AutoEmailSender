@@ -66,6 +66,9 @@ struct Pages {
     http: Fetcher,
     browser: Option<Arc<dyn Browser>>,
     recognize: embedded::Recognize,
+    /// What the model answered for the parts of lists the crawls running read, by crawl, the
+    /// address and model answering, and what it was given.
+    answered: tokio::sync::Mutex<HashMap<(i64, String, String, String), extract::People>>,
 }
 
 async fn save_material(
@@ -883,11 +886,30 @@ async fn interpret(
         // as that teacher's page.
         (None, read_as) => {
             let parts = extract::segments(&m).into_iter().map(|range| async {
+                let data = extract::data(&m, range);
+                // A part read already reads as it did: faculty-civileng.tongji.edu.cn shows all its
+                // teachers above each page its list turns to, whose parts would each be read again.
+                let model = &reader.chosen;
+                let key = (
+                    c.crawl,
+                    model.access.base_url.clone(),
+                    model.model.clone(),
+                    data.to_string(),
+                );
+                if let Some(part) = pages.answered.lock().await.get(&key).cloned() {
+                    tracing::info!(step = "list", "model answer reused");
+                    return Ok(part);
+                }
                 let part = reader
-                    .ask::<extract::People>("list", extract::LIST, extract::data(&m, range))
+                    .ask::<extract::People>("list", extract::LIST, data)
                     .await;
-                if part.is_err() {
-                    reader.failed.send_replace(true);
+                match &part {
+                    Ok(part) => {
+                        pages.answered.lock().await.insert(key, part.clone());
+                    }
+                    Err(_) => {
+                        reader.failed.send_replace(true);
+                    }
                 }
                 part
             });
@@ -1842,6 +1864,7 @@ pub async fn run(
                     http: f,
                     browser,
                     recognize: ocr::recognize,
+                    answered: Default::default(),
                 });
             }
             Err(e) => {
@@ -1873,10 +1896,11 @@ async fn run_with_pages(
             changed();
             finished(result);
         }
-        // Crawls that stopped running count afresh when they go on, so drop them.
-        if !limited.is_empty() {
+        // Crawls that stopped running count and read afresh when they go on, so drop them.
+        if !limited.is_empty() || !fetcher.answered.lock().await.is_empty() {
             let running = writes.retry("running crawls", || queue::running(&db)).await;
             limited.retain(|id, _| running.contains(id));
+            (fetcher.answered.lock().await).retain(|(crawl, ..), _| running.contains(crawl));
         }
         let retry_at = cooldown.until();
         let cooling = retry_at.is_some();

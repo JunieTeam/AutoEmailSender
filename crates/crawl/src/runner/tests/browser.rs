@@ -124,6 +124,7 @@ async fn browser_extracts_people_and_replays_each_list_page(db: SqlitePool) {
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     let net = net::Net::new(vec![]).unwrap();
     let turns = Turns::default();
@@ -267,6 +268,7 @@ async fn categories_a_list_loads_when_clicked_are_each_read_in_the_browser(db: S
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let click = |control: &str| PageStep {
@@ -343,6 +345,7 @@ async fn a_page_reached_over_http_opens_there_in_the_browser(db: SqlitePool) {
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     assert_eq!(*browser.opened.lock().unwrap(), [site.url("/").as_str()]);
@@ -371,6 +374,7 @@ async fn browser_failures_preserve_http_text_and_preview_still_needs_browser(db:
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     let mut target = Scope::new(&claim.scope).page(claim.url.clone()).unwrap();
     for (result, reason) in [
@@ -467,6 +471,7 @@ async fn pause_and_cancel_drop_browser_and_reject_late_results(db: SqlitePool) {
             http: Fetcher::local(site.port),
             browser: Some(browser.clone()),
             recognize: super::recognize,
+            answered: Default::default(),
         };
         let mut target = Scope::new(&claim.scope).page(claim.url.clone()).unwrap();
         let cooldown = Cooldown::new(Arc::default());
@@ -551,6 +556,7 @@ async fn page_failures_and_browser_takeover_log_the_crawl_without_private_conten
         http: Fetcher::local(site.port),
         browser: Some(browser),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     let net = net::Net::new(vec![]).unwrap();
     let turns = Turns::default();
@@ -620,6 +626,7 @@ async fn a_profile_the_browser_shows_as_only_a_picture_is_read(db: SqlitePool) {
         http: Fetcher::local(site.port),
         browser: Some(browser),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     let net = net::Net::new(vec![]).unwrap();
     let turns = Turns::default();
@@ -689,6 +696,7 @@ async fn a_list_that_shows_no_teacher_over_http_is_read_in_the_browser(db: Sqlit
         http: Fetcher::local(site.port),
         browser: Some(browser),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     let net = net::Net::new(vec![]).unwrap();
     let turns = Turns::default();
@@ -800,6 +808,7 @@ async fn a_list_filled_in_by_scripts_is_read_in_the_browser_though_it_links_othe
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY name")
@@ -844,6 +853,7 @@ async fn a_page_leading_only_a_link_too_far_is_read_in_the_browser(db: SqlitePoo
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
@@ -888,6 +898,7 @@ async fn a_list_read_again_with_an_address_its_scripts_fill_in_is_read_again(db:
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let emails: Vec<String> = sqlx::query_scalar("SELECT emails FROM candidate")
@@ -919,6 +930,7 @@ async fn a_page_the_browser_finds_moved_to_its_link_does_not_lead_on_to_itself(d
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     assert_eq!(
@@ -966,6 +978,7 @@ async fn a_category_showing_nothing_new_when_clicked_is_not_read_again(db: Sqlit
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let step = |control: &str, page| PageStep {
@@ -1010,6 +1023,7 @@ async fn a_list_at_another_address_is_read_once(db: SqlitePool) {
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     assert_eq!(*routed.lock().unwrap(), ["首页", "在职教师"]);
@@ -1043,6 +1057,7 @@ async fn a_list_a_link_too_far_at_another_address_is_read_once_though_its_menu_l
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     assert_eq!(*routed.lock().unwrap(), ["首页", "在职教师", "退休教师"]);
@@ -1124,6 +1139,7 @@ async fn a_list_a_link_too_far_linking_its_teacher_s_page_elsewhere_is_read() {
             http: Fetcher::local(site.port),
             browser: None,
             recognize: super::recognize,
+            answered: Default::default(),
         };
         drain(&db, &pages).await;
         let urls: Vec<String> = sqlx::query_scalar(
@@ -1195,6 +1211,7 @@ async fn a_list_a_link_too_far_reading_as_a_page_read_as_no_list_is_read() {
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let urls: Vec<String> =
@@ -1231,6 +1248,7 @@ async fn a_page_reading_as_another_but_leading_elsewhere_is_read(db: SqlitePool)
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY name")
@@ -1285,6 +1303,7 @@ async fn a_list_reading_as_another_but_for_the_addresses_its_links_give_is_read(
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let emails: Vec<String> = sqlx::query_scalar("SELECT emails FROM candidate ORDER BY emails")
@@ -1319,6 +1338,7 @@ async fn a_page_read_before_a_link_too_far_is_read_again_nearer_the_start(db: Sq
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     let start = queue::next(&db).await.unwrap().unwrap();
     finish(&db, &pages, &start).await;
@@ -1359,6 +1379,7 @@ async fn a_page_reading_as_another_but_offering_a_category_to_click_is_read(db: 
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
@@ -1392,6 +1413,7 @@ async fn a_list_reading_as_another_but_paging_on_is_read(db: SqlitePool) {
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> =
@@ -1424,6 +1446,7 @@ async fn a_page_reading_as_another_but_for_its_title_is_read(db: SqlitePool) {
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
@@ -1473,6 +1496,7 @@ async fn a_page_reading_as_another_but_for_where_an_address_sits_is_read(db: Sql
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let emails: Vec<String> =
@@ -1537,6 +1561,7 @@ async fn a_category_showing_one_teacher_s_page_is_not_where_their_page_is(db: Sq
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let read: Vec<(String, Option<String>, String)> =
@@ -1582,6 +1607,7 @@ async fn a_list_naming_its_teachers_leaves_its_index_of_initials_alone() {
             http: Fetcher::local(site.port),
             browser: Some(browser.clone()),
             recognize: super::recognize,
+            answered: Default::default(),
         };
         drain(&db, &pages).await;
         let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY name")
@@ -1625,6 +1651,7 @@ async fn a_category_whose_first_page_reads_as_the_list_s_pages_on(db: SqlitePool
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY name")
@@ -1659,6 +1686,7 @@ async fn a_page_turn_showing_the_page_it_turned_from_fails() {
             http: Fetcher::local(site.port),
             browser: Some(browser.clone()),
             recognize: super::recognize,
+            answered: Default::default(),
         };
         drain(&db, &pages).await;
         let failures: Vec<String> = sqlx::query_scalar(
@@ -1704,6 +1732,7 @@ async fn a_list_reading_over_http_as_one_its_scripts_left_alone_is_read_in_the_b
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY name")
@@ -1798,6 +1827,7 @@ async fn a_list_paging_on_only_by_a_jump_notes_its_later_pages_unread() {
             http: Fetcher::local(site.port),
             browser: None,
             recognize: super::recognize,
+            answered: Default::default(),
         };
         drain(&db, &pages).await;
         let read: i64 =
@@ -1837,6 +1867,7 @@ async fn a_list_read_again_as_it_was_but_for_controls_is_routed_again(db: Sqlite
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
@@ -1870,6 +1901,7 @@ async fn a_list_the_browser_fails_to_read_again_still_leads_to_the_others(db: Sq
         http: Fetcher::local(site.port),
         browser: Some(browser.clone()),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate")
@@ -1928,6 +1960,7 @@ async fn a_profile_that_shows_no_teacher_over_http_is_read_in_the_browser(db: Sq
         http: Fetcher::local(site.port),
         browser: Some(browser),
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let profile: (String, String) =
@@ -1985,6 +2018,7 @@ async fn a_list_stops_at_a_page_turned_to_finding_no_one_new(db: SqlitePool) {
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY id")
@@ -2049,6 +2083,7 @@ async fn a_list_stops_at_a_page_turned_to_finding_no_one_new_among_those_queued_
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let visits = site.visits.lock().unwrap().clone();
@@ -2064,6 +2099,95 @@ async fn a_list_stops_at_a_page_turned_to_finding_no_one_new_among_those_queued_
         serde_json::from_str::<Vec<String>>(&limits).unwrap().len(),
         1
     );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_part_of_a_list_read_already_is_not_read_again(db: SqlitePool) {
+    assert_eq!(
+        read_pages_sharing_a_part(&db, false).await,
+        (vec!["张三".into(), "李四".into(), "王五".into()], 3)
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_part_read_by_another_model_is_read_again(db: SqlitePool) {
+    assert_eq!(read_pages_sharing_a_part(&db, true).await.1, 4);
+}
+
+/// Reads a list of two pages, as faculty-civileng.tongji.edu.cn's, each showing all its teachers
+/// above the ten its list turns to, each read in two parts, the first the same on both; the model
+/// the crawl's configuration names changes after the first page if `change`. Gives the teachers
+/// found and the parts the model was asked to read.
+async fn read_pages_sharing_a_part(db: &SqlitePool, change: bool) -> (Vec<String>, usize) {
+    let site = Site::new().await;
+    let blocks = |name: &str, count: usize| -> String {
+        (0..count)
+            .map(|n| format!("<p>{name} 教授 研究方向：材料科学与工程 第 {n} 位</p>"))
+            .collect()
+    };
+    let all = blocks("张三", 70);
+    site.page(
+        "/",
+        &format!(
+            "<title>教师名单</title><div class='all'>{all}</div>\
+            <div class='list'>{}<a href='/?page=2'>下一页</a></div>",
+            blocks("李四", 40)
+        ),
+    );
+    site.page(
+        "/?page=2",
+        &format!(
+            "<title>教师名单</title><div class='all'>{all}</div><div class='list'>{}</div>",
+            blocks("王五", 40)
+        ),
+    );
+    let mut provider = Provider::start().await.unwrap();
+    let model = config(db, &provider.address).await;
+    let lists = Arc::new(AtomicUsize::new(0));
+    let counted = lists.clone();
+    tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let data = request.body["messages"][1]["content"].as_str().unwrap();
+            let output = if system.starts_with("你整理学院") {
+                json!({"kind": "list", "next": []})
+            } else {
+                counted.fetch_add(1, Ordering::Relaxed);
+                let people: Vec<_> = (["张三", "李四", "王五"].into_iter())
+                    .filter(|name| data.contains(name))
+                    .map(|name| listed(name, None, vec![]))
+                    .collect();
+                json!({ "people": people })
+            };
+            request
+                .respond
+                .send(Response::answer(&output.to_string()))
+                .ok();
+        }
+    });
+    queue::start(db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+        answered: Default::default(),
+    };
+    let first = queue::next(db).await.unwrap().unwrap();
+    finish(db, &pages, &first).await;
+    if change {
+        sqlx::query("UPDATE model_config SET model = 'fixture-2' WHERE id = ?")
+            .bind(model)
+            .execute(db)
+            .await
+            .unwrap();
+    }
+    drain(db, &pages).await;
+    let names = sqlx::query_scalar("SELECT name FROM candidate ORDER BY id")
+        .fetch_all(db)
+        .await
+        .unwrap();
+    (names, lists.load(Ordering::Relaxed))
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -2087,6 +2211,7 @@ async fn a_last_page_turned_to_finding_no_one_new_leaves_nothing_unread(db: Sqli
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let limits: String = sqlx::query_scalar("SELECT limits FROM crawl")
@@ -2228,6 +2353,7 @@ async fn a_namesake_waits_for_the_teacher_s_page_that_failed_to_read(db: SqliteP
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     read_all(&db, &pages).await;
     find_later(&db, &site, crawl, "/dept").await;
@@ -2277,6 +2403,7 @@ async fn a_namesake_of_two_told_apart_is_neither(db: SqlitePool) {
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     read_all(&db, &pages).await;
     find_later(&db, &site, crawl, "/all").await;
@@ -2324,6 +2451,7 @@ async fn a_namesake_is_not_another_s_while_a_page_that_can_tell_them_apart_faile
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     read_all(&db, &pages).await;
     find_later(&db, &site, crawl, "/all").await;
@@ -2378,6 +2506,7 @@ async fn a_teacher_s_page_read_takes_no_namesake_who_can_as_well_be_another_s(db
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     read_all(&db, &pages).await;
     for path in ["/all", "/group"] {
@@ -2432,6 +2561,7 @@ async fn a_list_pages_on_past_the_limit_of_pages_finding_no_one_new(db: SqlitePo
         http: Fetcher::local(site.port),
         browser: None,
         recognize: super::recognize,
+        answered: Default::default(),
     };
     drain(&db, &pages).await;
     let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY id")
