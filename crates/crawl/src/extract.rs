@@ -492,7 +492,19 @@ pub fn compared(m: &Material) -> String {
     let pages = &m.pagination;
     json!({
         "title": m.title,
-        "blocks": m.units.iter().map(|u| block(u, &all, true)).collect::<Vec<_>>(),
+        "blocks": (m.units.iter())
+            .map(|u| {
+                let block = block(u, &all, true);
+                // A footer's or menu's numbers count visits or date the last update, and change
+                // from one opening of a page to the next, as faculty-civileng.tongji.edu.cn's
+                // 总访问量 does. Where its links lead is compared apart.
+                if u.footer_or_nav.is_some() {
+                    block.chars().filter(|c| !c.is_ascii_digit()).collect()
+                } else {
+                    block
+                }
+            })
+            .collect::<Vec<_>>(),
         "links": all.iter().map(|(_, url)| url.as_str()).collect::<Vec<_>>(),
         "nesting": nesting,
         "controls": m.controls,
@@ -806,6 +818,30 @@ mod tests {
         // Grouped otherwise, the list is read in other parts and an address can be another's.
         let rows = "<div><p>张三</p></div><div><p>教授</p><p>李四</p></div><div><p>讲师</p></div>";
         assert_ne!(compared(cards), compared(rows));
+    }
+
+    #[test]
+    fn a_page_compares_as_another_whose_footer_counts_another_visit() {
+        // As faculty-civileng.tongji.edu.cn's index.jsp and front page, the same list.
+        let url = PageUrl::parse("https://www.school.example.edu/list").unwrap();
+        let page = |count: u32, total: u32| {
+            crate::page::parse(
+                &url,
+                &format!(
+                    "<div><p>张三</p><p>李四</p><p>共有{total}条</p></div>\
+                    <footer><p>总访问量：{count}</p></footer>"
+                ),
+            )
+        };
+        assert_eq!(
+            compared(&page(17313159, 236)),
+            compared(&page(17313194, 236))
+        );
+        // A category of it counts other teachers.
+        assert_ne!(
+            compared(&page(17313159, 236)),
+            compared(&page(17313159, 82))
+        );
     }
 
     #[test]
