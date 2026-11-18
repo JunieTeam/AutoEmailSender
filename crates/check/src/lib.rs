@@ -90,10 +90,18 @@ pub fn letter(
                 let Some((content, after)) = rest.split_once(close) else {
                     continue;
                 };
-                // A link in the body, [请补充：…](…), which the editor shows as one; it writes the
-                // brackets of plain text escaped.
-                let link =
-                    markdown && open == '[' && !content.ends_with('\\') && after.starts_with('(');
+                // A link in the body, [请补充：…](https://…), which the editor shows as one: to a web or
+                // mail address, with the brackets of plain text written escaped.
+                let link = markdown
+                    && open == '['
+                    && !content.ends_with('\\')
+                    && after.strip_prefix('(').is_some_and(|target| {
+                        let scheme: String = target.trim_start().chars().take(7).collect();
+                        let scheme = scheme.to_ascii_lowercase();
+                        ["http:", "https:", "mailto:"]
+                            .iter()
+                            .any(|s| scheme.starts_with(s))
+                    });
                 // The editor writes a line break as `\` before it and escapes square brackets.
                 let content = content.strip_suffix('\\').unwrap_or(content);
                 let prefix: String = content
@@ -519,6 +527,10 @@ mod tests {
             ),
             (
                 "王老师：时间为\\[请补充：面谈时间\\](北京时间)。",
+                Some("[请补充：面谈时间]"),
+            ),
+            (
+                "王老师：时间为[请补充：面谈时间](北京时间)。",
                 Some("[请补充：面谈时间]"),
             ),
             (
