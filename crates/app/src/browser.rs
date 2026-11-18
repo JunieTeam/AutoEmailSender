@@ -27,16 +27,21 @@ const PREFIX: &str = "crawl-browser-";
 const TIMEOUT: Duration = Duration::from_secs(20);
 const POLL: Duration = Duration::from_millis(500);
 const STABLE: Duration = Duration::from_millis(1500);
-const PAGE_SNAPSHOT: &str = r#"({
-    state: document.readyState,
-    url: location.href,
-    leaving: document.__aesCrawlLeaving === true,
-    material: {
-        text: document.body?.innerText ?? '',
-        links: [...document.querySelectorAll('a[href]')].map(element => element.href),
-        images: [...document.querySelectorAll('img[alt]')].map(element => element.getAttribute('alt')),
-    },
-})"#;
+const PAGE_SNAPSHOT: &str = r#"(() => {
+    // The page is read with its own site's frames, whose scripts can still be filling them in.
+    const text = page => [page.body?.innerText ?? '', ...[...page.querySelectorAll('iframe')]
+        .map(frame => frame.contentDocument ? text(frame.contentDocument) : '')].join('\n');
+    return {
+        state: document.readyState,
+        url: location.href,
+        leaving: document.__aesCrawlLeaving === true,
+        material: {
+            text: text(document),
+            links: [...document.querySelectorAll('a[href]')].map(element => element.href),
+            images: [...document.querySelectorAll('img[alt]')].map(element => element.getAttribute('alt')),
+        },
+    };
+})()"#;
 const WATCH_NAVIGATION: &str = include_str!("browser/navigation.js");
 const CLICK_CONTROL: &str = r#"(label => {
     const alternative = element => {
@@ -69,12 +74,23 @@ const READ_PAGE: &str = r#"(limit => {
     // does; another site's frame cannot be read.
     const inline = (frames, copies) => [...frames].forEach((frame, at) => {
         const body = frame.contentDocument?.body;
-        if (!body) return;
+        // A hidden frame, as one holding a page for printing, shows nothing of the page.
+        const style = frame.ownerDocument.defaultView.getComputedStyle(frame);
+        if (!body || !frame.getClientRects().length || style.visibility === 'hidden') return;
         const part = body.cloneNode(true);
-        // Its addresses are relative to its own document, not the page's.
+        // Its addresses are relative to its own document, not the page's, the lazy images' too.
+        const absolute = value => {
+            try { return new URL(value, frame.contentDocument.baseURI).href; } catch { return value; }
+        };
         for (const element of part.querySelectorAll('a[href],area[href]')) element.setAttribute('href', element.href);
         for (const element of part.querySelectorAll('img[src],iframe[src],embed[src]')) element.setAttribute('src', element.src);
         for (const element of part.querySelectorAll('object[data]')) element.setAttribute('data', element.data);
+        for (const element of part.querySelectorAll('img[data-src],img[data-original]')) {
+            for (const name of ['data-src', 'data-original']) {
+                const value = element.getAttribute(name)?.trim();
+                if (value) element.setAttribute(name, absolute(value));
+            }
+        }
         inline(body.querySelectorAll('iframe'), part.querySelectorAll('iframe'));
         const content = document.createElement('div');
         content.append(...part.childNodes);
