@@ -95,13 +95,17 @@ pub fn letter(
                 let link = markdown
                     && open == '['
                     && !content.ends_with('\\')
-                    && after.strip_prefix('(').is_some_and(|target| {
-                        let scheme: String = target.trim_start().chars().take(7).collect();
-                        let scheme = scheme.to_ascii_lowercase();
-                        ["http:", "https:", "mailto:"]
-                            .iter()
-                            .any(|s| scheme.starts_with(s))
-                    });
+                    && after
+                        .strip_prefix('(')
+                        .and_then(|a| a.split_once(')'))
+                        .is_some_and(|(target, _)| {
+                            let target = target.trim().trim_start_matches('<');
+                            let scheme: String = target.chars().take(7).collect();
+                            let scheme = scheme.to_ascii_lowercase();
+                            ["http:", "https:", "mailto:"]
+                                .iter()
+                                .any(|s| scheme.starts_with(s))
+                        });
                 // The editor writes a line break as `\` before it and escapes square brackets.
                 let content = content.strip_suffix('\\').unwrap_or(content);
                 let prefix: String = content
@@ -199,12 +203,12 @@ fn addressed(text: &str, mentor: &str, aliases: &[String]) -> bool {
     names(mentor, aliases).any(|name| addresses(text, name))
 }
 
-/// The mentor's names, without a title written after one in parentheses, as in 李明（教授）.
+/// The mentor's names, each also without what follows it in parentheses: a title, as in 李明（教授）,
+/// or the name in other letters, as in 张伟（Wei Zhang）, which the whole name still holds.
 fn names<'a>(mentor: &'a str, aliases: &'a [String]) -> impl Iterator<Item = &'a str> {
     std::iter::once(mentor)
         .chain(aliases.iter().map(String::as_str))
-        .filter_map(|name| name.split(['（', '(']).next())
-        .map(str::trim)
+        .flat_map(|name| [name, name.split(['（', '(']).next().unwrap_or(name).trim()])
         .filter(|name| !name.is_empty())
 }
 
@@ -509,6 +513,7 @@ mod tests {
         ] {
             assert!(salutes(line, "李明（教授）", &aliases), "{line}");
         }
+        assert!(salutes("Dear Prof. Zhang,", "张伟（Wei Zhang）", &[]));
         for line in ["以下是写给李老师的信：", r#"{"body":"李明老师："}"#] {
             assert!(!salutes(line, "李明（教授）", &aliases), "{line}");
         }
@@ -532,6 +537,14 @@ mod tests {
             (
                 "王老师：时间为[请补充：面谈时间](北京时间)。",
                 Some("[请补充：面谈时间]"),
+            ),
+            (
+                "王老师：见[请补充：个人主页](https://example.com",
+                Some("[请补充：个人主页]"),
+            ),
+            (
+                "王老师：见[请补充：表格](<https://example.com/form>)。",
+                None,
             ),
             (
                 "王老师：时间为【请补\\\n充：面谈时间】。",
