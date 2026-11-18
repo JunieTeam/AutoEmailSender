@@ -1474,9 +1474,17 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                         queue::limit(&mut tx, c.crawl, "寻找名单已达到两层链接范围").await?;
                     }
                 }
+                // A page turned to that finds no one new ends its list, whose next pages show those
+                // found before: faculty-civileng.tongji.edu.cn lists all its teachers above a list it
+                // turns ten at a time, each turn read whole. A list's first page turns once anyway.
+                let turns = found || c.kind != PageKind::List;
+                let mut left = false;
                 if p.kind == PageKind::List {
                     for url in &p.material.pagination.urls {
-                        if Scope::new(&c.scope).page(url.clone()).is_ok() {
+                        if Scope::new(&c.scope).page(url.clone()).is_err() {
+                            continue;
+                        }
+                        if turns {
                             queue::enqueue_steps(
                                 &mut tx,
                                 c.crawl,
@@ -1488,6 +1496,9 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                                 !found,
                             )
                             .await?;
+                        } else {
+                            left |=
+                                !queue::queued(&mut tx, c.crawl, url, PageKind::List, &[]).await?;
                         }
                     }
                 }
@@ -1506,18 +1517,32 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                             page: Some(button.page.unwrap_or(current + 1)),
                             control: button.control.clone(),
                         });
-                        queue::enqueue_steps(
-                            &mut tx,
-                            c.crawl,
-                            &c.url,
-                            &c.scope,
-                            c.depth,
-                            PageKind::List,
-                            &steps,
-                            !found,
-                        )
-                        .await?;
+                        if turns {
+                            queue::enqueue_steps(
+                                &mut tx,
+                                c.crawl,
+                                &c.url,
+                                &c.scope,
+                                c.depth,
+                                PageKind::List,
+                                &steps,
+                                !found,
+                            )
+                            .await?;
+                        } else {
+                            left |=
+                                !queue::queued(&mut tx, c.crawl, &c.url, PageKind::List, &steps)
+                                    .await?;
+                        }
                     }
+                }
+                if left {
+                    queue::limit(
+                        &mut tx,
+                        c.crawl,
+                        "有的名单翻到的一页没有新导师，后面的页没有读",
+                    )
+                    .await?;
                 }
                 if p.kind == PageKind::List && p.material.pagination.jump_only {
                     queue::limit(&mut tx, c.crawl, "有的名单只能输入页码跳转，后面的页没有读")

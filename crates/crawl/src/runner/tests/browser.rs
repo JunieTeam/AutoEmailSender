@@ -1946,6 +1946,70 @@ async fn a_profile_that_shows_no_teacher_over_http_is_read_in_the_browser(db: Sq
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_stops_at_a_page_turned_to_finding_no_one_new(db: SqlitePool) {
+    // As faculty-civileng.tongji.edu.cn's pages, each showing everyone above the ten it turns to;
+    // a category whose first page shows only those found before still turns once.
+    let site = Site::new().await;
+    let next = |page: &str| format!("<a href='{page}'>下一页</a>");
+    site.page(
+        "/",
+        &format!(
+            "<title>教师名单</title><p>张三</p>{}<a href='/dept'>按系</a>",
+            next("/?page=2")
+        ),
+    );
+    site.page(
+        "/?page=2",
+        &format!("<title>教师名单</title><p>李四</p>{}", next("/?page=3")),
+    );
+    site.page(
+        "/?page=3",
+        &format!("<title>教师名单</title><p>张三</p>{}", next("/?page=4")),
+    );
+    site.page("/?page=4", "<title>教师名单</title><p>王五</p>");
+    site.page(
+        "/dept",
+        &format!("<title>按系</title><p>张三</p>{}", next("/dept?page=2")),
+    );
+    site.page(
+        "/dept?page=2",
+        &format!("<title>按系</title><p>张三</p>{}", next("/dept?page=3")),
+    );
+    site.page("/dept?page=3", "<title>按系</title><p>王五</p>");
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "list");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let names: Vec<String> = sqlx::query_scalar("SELECT name FROM candidate ORDER BY id")
+        .fetch_all(&db)
+        .await
+        .unwrap();
+    assert_eq!(names, ["张三", "李四"]);
+    let visits = site.visits.lock().unwrap().clone();
+    for read in ["/?page=3", "/dept?page=2"] {
+        assert!(visits.contains(&read.to_owned()), "{read}");
+    }
+    for unread in ["/?page=4", "/dept?page=3"] {
+        assert!(!visits.contains(&unread.to_owned()), "{unread}");
+    }
+    let limits: String = sqlx::query_scalar("SELECT limits FROM crawl")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        limits,
+        r#"["有的名单翻到的一页没有新导师，后面的页没有读"]"#
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_list_pages_on_past_the_limit_of_pages_finding_no_one_new(db: SqlitePool) {
     // The crawl has read as many pages finding no teacher new to it as it reads, as a list misread
     // might give: a list finding someone new still pages on, and nothing else is read.
