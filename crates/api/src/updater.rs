@@ -112,7 +112,9 @@ pub fn check(changelog: &str) -> Result<(), String> {
     for line in changelog.lines().map(str::trim) {
         let read = line.is_empty()
             || line == "# 更新日志"
-            || line.starts_with("## ")
+            || line
+                .strip_prefix("## ")
+                .is_some_and(|h| !h.contains('（') || h.ends_with('）'))
             || line.starts_with("- ")
             || ["### 新功能", "### 改进", "### 修复"].contains(&line);
         if !read {
@@ -120,7 +122,13 @@ pub fn check(changelog: &str) -> Result<(), String> {
         }
     }
     let releases = releases(changelog);
-    let listed = changelog.lines().filter(|l| l.trim().starts_with("- ")).count();
+    if releases.is_empty() {
+        return Err("没有写任何版本".into());
+    }
+    let listed = changelog
+        .lines()
+        .filter(|l| l.trim().starts_with("- "))
+        .count();
     if releases.iter().map(|r| r.changes.len()).sum::<usize>() != listed {
         return Err("有的条目不在“### 新功能”“### 改进”“### 修复”下面".into());
     }
@@ -132,7 +140,10 @@ pub fn check(changelog: &str) -> Result<(), String> {
             return Err(format!("{version} 要写在比它新的版本下面"));
         }
         match &release.date {
-            Some(date) if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_ok() => {}
+            // The app reads it as written, so it must be written in full: 2026-01-02, not 2026-1-2.
+            Some(date)
+                if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+                    .is_ok_and(|d| d.format("%Y-%m-%d").to_string() == *date) => {}
             None if i == 0 => {}
             _ => return Err(format!("{version} 的日期要写成（YYYY-MM-DD）")),
         }
@@ -197,6 +208,9 @@ mod tests {
         check(&format!("## 3.0.2\n\n### 改进\n\n- 丙\n\n{dated}")).unwrap();
         for wrong in [
             dated.replace("2026-12-20", "2026-99-40"),
+            dated.replace("2026-12-01", "2026-12-1"),
+            dated.replace("2026-12-20）", "2026-12-20"),
+            "# 更新日志\n".into(),
             dated.replace("（2026-12-01）", ""),
             dated.replace("### 修复", "### 修正"),
             dated.replace("\n- 甲\n", "\n"),
