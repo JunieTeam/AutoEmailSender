@@ -64,6 +64,28 @@ const CLICK_CONTROL: &str = r#"(label => {
     control.click();
     return true;
 })"#;
+const READ_PAGE: &str = r#"(limit => {
+    // A frame of the page's own site shows part of it, as one a script writes the page's text into
+    // does; another site's frame cannot be read.
+    const inline = (frames, copies) => [...frames].forEach((frame, at) => {
+        const body = frame.contentDocument?.body;
+        if (!body) return;
+        const part = body.cloneNode(true);
+        // Its addresses are relative to its own document, not the page's.
+        for (const element of part.querySelectorAll('a[href],area[href]')) element.setAttribute('href', element.href);
+        for (const element of part.querySelectorAll('img[src],iframe[src],embed[src]')) element.setAttribute('src', element.src);
+        for (const element of part.querySelectorAll('object[data]')) element.setAttribute('data', element.data);
+        inline(body.querySelectorAll('iframe'), part.querySelectorAll('iframe'));
+        const content = document.createElement('div');
+        content.append(...part.childNodes);
+        copies[at].replaceWith(content);
+    });
+    const page = document.documentElement.cloneNode(true);
+    inline(document.querySelectorAll('iframe'), page.querySelectorAll('iframe'));
+    const html = page.outerHTML;
+    if (new TextEncoder().encode(html).length > limit) return {tooLarge:true};
+    return {url:location.href,html};
+})"#;
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -390,14 +412,7 @@ fn render(
     let value = evaluate(
         &window,
         state,
-        &format!(
-            r#"(() => {{
-        const html = document.documentElement.outerHTML;
-        if (new TextEncoder().encode(html).length > {}) return {{tooLarge:true}};
-        return {{url:location.href,html}};
-    }})()"#,
-            crawl::fetch::MAX_PAGE_BYTES
-        ),
+        &format!("{READ_PAGE}({})", crawl::fetch::MAX_PAGE_BYTES),
         Instant::now() + TIMEOUT,
     )?;
     if value["tooLarge"] == true {
