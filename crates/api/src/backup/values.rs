@@ -56,6 +56,9 @@ pub(super) async fn inspect(conn: &mut SqliteConnection) -> Result<()> {
     decodes::<Json<cloud_api::library::Record>>(conn, "mentor_library", "record").await?;
     decodes::<Json<library::updates::Value>>(conn, "library_update", "original").await?;
     decodes::<Json<library::updates::Value>>(conn, "library_update", "incoming").await?;
+    if let Some(id) = library::updates::misfit(conn).await? {
+        return Err(unreadable(&format!("导师库更新第 {id} 条")));
+    }
     models(conn).await?;
     mailboxes(conn).await?;
     schedules(conn).await

@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, field AS \"field: Field\", original AS \"original: Json<Value>\",\n            incoming AS \"incoming: Json<Value>\"\n        FROM library_update",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library_update",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "field: Field",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_update",
+            "name": "field"
+          }
+        }
+      },
+      {
+        "name": "original: Json<Value>",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_update",
+            "name": "original"
+          }
+        }
+      },
+      {
+        "name": "incoming: Json<Value>",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_update",
+            "name": "incoming"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7726ecca53daf39d9a11f469581dad0b9998e866a359b06aeea973928c807a4d"
+}

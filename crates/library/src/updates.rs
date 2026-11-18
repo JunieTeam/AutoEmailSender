@@ -254,6 +254,33 @@ pub async fn list(db: &SqlitePool) -> Result<Vec<Group>, sqlx::Error> {
         .collect())
 }
 
+/// The first update whose values are not of the kind its field holds, as a backup edited by hand may
+/// have: taking one would write what `take` cannot.
+pub async fn misfit(conn: &mut SqliteConnection) -> Result<Option<i64>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"SELECT id, field AS "field: Field", original AS "original: Json<Value>",
+            incoming AS "incoming: Json<Value>"
+        FROM library_update"#
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .find(|r| !fits(r.field, &r.original.0, true) || !fits(r.field, &r.incoming.0, false))
+        .map(|r| r.id))
+}
+
+/// What `take` writes to each field; what a field held before may also have been empty.
+fn fits(field: Field, value: &Value, original: bool) -> bool {
+    match (field, value) {
+        (Field::PrimaryAffiliation, Value::Affiliation(_)) => true,
+        (Field::PrimaryAffiliation, Value::Text(text)) => original && text.is_none(),
+        (_, Value::Affiliation(_)) => false,
+        (Field::Name | Field::PrimaryEmail, Value::Text(text)) => original || text.is_some(),
+        (Field::Research | Field::SourceUrl | Field::Title, Value::Text(_)) => true,
+    }
+}
+
 fn take(profile: &mut Profile, field: Field, unit: Option<&Affiliation>, value: &Value) {
     match (field, value) {
         (Field::Name, Value::Text(Some(name))) => {

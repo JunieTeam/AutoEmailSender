@@ -364,6 +364,23 @@ async fn pending_keeps_earliest_value_and_applies_names_and_email_order(db: Sqli
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_update_whose_value_does_not_fit_its_field_is_found(db: SqlitePool) {
+    let (client, mut server) = setup(&db).await;
+    let mut row = record("mentor_one", "原名", "old@demo.edu.example");
+    adding(&client, &mut server, &db, vec![row.clone()], vec![]).await;
+    row.preview.summary.name = "新名".into();
+    change(&db, row, 2).await;
+    let mut conn = db.acquire().await.unwrap();
+    assert_eq!(updates::misfit(&mut conn).await.unwrap(), None);
+    // A name taken must be one.
+    let id: i64 = sqlx::query_scalar("UPDATE library_update SET incoming = 'null' RETURNING id")
+        .fetch_one(&mut *conn)
+        .await
+        .unwrap();
+    assert_eq!(updates::misfit(&mut conn).await.unwrap(), Some(id));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn changed_local_default_is_preserved_and_equal_new_values_are_hidden(db: SqlitePool) {
     let (client, mut server) = setup(&db).await;
     let mut row = record("mentor_one", "测试导师", "old@demo.edu.example");
