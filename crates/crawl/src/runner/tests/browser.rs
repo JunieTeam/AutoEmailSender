@@ -2039,6 +2039,168 @@ async fn a_last_page_turned_to_finding_no_one_new_leaves_nothing_unread(db: Sqli
     assert_eq!(limits, "[]");
 }
 
+/// Reads and saves the pages queued, however each turns out.
+async fn read_all(db: &SqlitePool, pages: &Pages) {
+    while let Some(claim) = queue::next(db).await.unwrap() {
+        let outcome = process(
+            db,
+            &net::Net::new(vec![]).unwrap(),
+            pages,
+            &Turns::default(),
+            &claim,
+            &Cooldown::new(Arc::default()),
+        )
+        .await
+        .unwrap();
+        save(db, &claim, &outcome).await.unwrap();
+    }
+}
+
+/// Has the crawl, done with its pages, find the list at `path` too.
+async fn find_later(db: &SqlitePool, site: &Site, crawl: i64, path: &str) {
+    let mut conn = db.acquire().await.unwrap();
+    queue::enqueue(
+        &mut conn,
+        crawl,
+        &site.url(path),
+        &site.url("/"),
+        1,
+        PageKind::Entry,
+    )
+    .await
+    .unwrap();
+    sqlx::query("UPDATE crawl SET state = 'running', finished_at = NULL WHERE id = ?")
+        .bind(crawl)
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+}
+
+/// Answers routing as a list, the lists by their titles as `lists` gives, and a teacher's page as
+/// theirs with the address it shows.
+fn answer_lists(mut provider: Provider, lists: fn(&str) -> Value) {
+    tokio::spawn(async move {
+        while let Some(request) = provider.requests.recv().await {
+            let system = request.body["messages"][0]["content"].as_str().unwrap();
+            let data: Value =
+                serde_json::from_str(request.body["messages"][1]["content"].as_str().unwrap())
+                    .unwrap();
+            let output = if system.starts_with("你整理学院") {
+                json!({"kind": "list", "next": []})
+            } else if system.starts_with("你从教师") {
+                lists(data["title"].as_str().unwrap())
+            } else {
+                let emails: Vec<_> = (["a@school.example.edu"].into_iter())
+                    .filter(|address| data.to_string().contains(address))
+                    .collect();
+                json!({
+                    "relation": "matched", "aliases": [], "emails": emails, "affiliations": [],
+                    "homepages": [], "research": null, "papers": [], "names": [], "next": []
+                })
+            };
+            request
+                .respond
+                .send(Response::answer(&output.to_string()))
+                .ok();
+        }
+    });
+}
+
+async fn names_and_emails(db: &SqlitePool) -> Vec<(String, String)> {
+    sqlx::query_as("SELECT name, emails FROM candidate ORDER BY id")
+        .fetch_all(db)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_namesake_waits_for_the_teacher_s_page_that_failed_to_read(db: SqlitePool) {
+    // Read on retry, the page shows the teacher listed first is another of the name.
+    let site = Site::new().await;
+    site.page("/", "<title>名单</title><p><a href='/zhang'>张三</a></p>");
+    site.pages
+        .lock()
+        .unwrap()
+        .insert("/zhang".into(), (404, String::new()));
+    site.page(
+        "/dept",
+        "<title>按系</title><p>张三 b@school.example.edu</p>",
+    );
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    answer_lists(provider, |title| match title {
+        "名单" => json!({"people": [listed("张三", Some(1), vec![])]}),
+        _ => json!({"people": [listed("张三", None, vec!["b@school.example.edu"])]}),
+    });
+    let crawl = queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    read_all(&db, &pages).await;
+    find_later(&db, &site, crawl, "/dept").await;
+    read_all(&db, &pages).await;
+    site.page(
+        "/zhang",
+        "<title>张三</title><p>张三 a@school.example.edu</p>",
+    );
+    queue::retry(&db, crawl, None, crate::now()).await.unwrap();
+    read_all(&db, &pages).await;
+    assert_eq!(
+        names_and_emails(&db).await,
+        [
+            ("张三".into(), r#"["a@school.example.edu"]"#.into()),
+            ("张三".into(), r#"["b@school.example.edu"]"#.into())
+        ]
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_namesake_of_two_told_apart_is_neither(db: SqlitePool) {
+    // Two of a name, each with a page of their own, and then one with an address only.
+    let site = Site::new().await;
+    site.page("/", "<title>名单</title><p><a href='/zhang1'>张三</a></p>");
+    site.page(
+        "/lab",
+        "<title>实验室</title><p><a href='/zhang2'>张三</a></p>",
+    );
+    for path in ["/zhang1", "/zhang2"] {
+        site.page(path, "<title>张三</title><p>张三</p>");
+    }
+    site.page(
+        "/all",
+        "<title>全体</title><p>张三 z@school.example.edu</p>",
+    );
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    answer_lists(provider, |title| match title {
+        "全体" => json!({"people": [listed("张三", None, vec!["z@school.example.edu"])]}),
+        _ => json!({"people": [listed("张三", Some(1), vec![])]}),
+    });
+    let crawl = queue::start(&db, &[site.url("/"), site.url("/lab")], model, 1)
+        .await
+        .unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    read_all(&db, &pages).await;
+    find_later(&db, &site, crawl, "/all").await;
+    read_all(&db, &pages).await;
+    assert_eq!(
+        names_and_emails(&db).await,
+        [
+            ("张三".into(), "[]".into()),
+            ("张三".into(), "[]".into()),
+            ("张三".into(), r#"["z@school.example.edu"]"#.into())
+        ]
+    );
+}
+
 #[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_list_pages_on_past_the_limit_of_pages_finding_no_one_new(db: SqlitePool) {
     // The crawl has read as many pages finding no teacher new to it as it reads, as a list misread

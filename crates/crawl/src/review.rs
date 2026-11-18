@@ -1088,9 +1088,9 @@ pub(crate) async fn save(
 
 /// The crawl's other candidates of a name in `names` that nothing tells apart from the ones `ids`
 /// and a person with `emails`, and a page of their own if `page`, are, once no page of theirs is
-/// left to read: a teacher listed under several categories, mostly without an address, is one.
-/// Two of a name, as a college can have, are told apart when both have addresses and share none,
-/// or both have a page of their own.
+/// left to read: a teacher listed under several categories, mostly without an address, is one. A
+/// page that failed to read is left to read, as its retry can tell them apart. None are when two
+/// of them are told apart from each other, which leaves nothing to say whom the person is.
 async fn namesakes(
     conn: &mut SqliteConnection,
     crawl: i64,
@@ -1106,8 +1106,14 @@ async fn namesakes(
             EXISTS (
                 SELECT 1
                 FROM crawl_page q
-                WHERE q.crawl_id = ?1 AND q.kind = 'profile' AND q.work_state != 'done'
+                WHERE q.crawl_id = ?1 AND q.kind = 'profile'
                 AND (q.url = candidate.profile_url OR q.target_id = candidate.id)
+                AND (q.work_state != 'done' OR q.status != 'success' AND NOT EXISTS (
+                    SELECT 1
+                    FROM candidate_profile p
+                    WHERE p.candidate_id = candidate.id AND p.url = q.url
+                    AND p.mismatched_at IS NOT NULL
+                ))
             ) AS "reading!: bool"
         FROM candidate
         WHERE crawl_id = ?1 AND (id IN (SELECT value FROM json_each(?3)) OR EXISTS (
@@ -1132,22 +1138,32 @@ async fn namesakes(
         known.extend(r.emails.map(|Json(e)| e).unwrap_or_default());
         page |= r.page;
     }
-    let mut found = Vec::new();
-    for r in others.into_iter().filter(|r| !r.reading) {
-        let theirs = r.emails.map(|Json(e)| e).unwrap_or_default();
-        let apart = !known.is_empty()
-            && !theirs.is_empty()
-            && !theirs
+    let fit: Vec<_> = (others.into_iter())
+        .filter(|r| !r.reading)
+        .map(|r| (r.id, r.emails.map(|Json(e)| e).unwrap_or_default(), r.page))
+        .filter(|(_, theirs, their_page)| !apart((&known, page), (theirs, *their_page)))
+        .collect();
+    let ambiguous = (fit.iter().enumerate()).any(|(n, (_, a, a_page))| {
+        fit[n + 1..]
+            .iter()
+            .any(|(_, b, b_page)| apart((a, *a_page), (b, *b_page)))
+    });
+    Ok(if ambiguous {
+        vec![]
+    } else {
+        fit.into_iter().map(|(id, _, _)| id).collect()
+    })
+}
+
+/// Whether two of a name, as a college can have, are told apart, by their addresses and whether
+/// they have a page of their own: both have addresses and share none, or both have a page.
+fn apart((a, a_page): (&[String], bool), (b, b_page): (&[String], bool)) -> bool {
+    a_page && b_page
+        || !a.is_empty()
+            && !b.is_empty()
+            && !b
                 .iter()
-                .any(|e| known.iter().any(|k| k.eq_ignore_ascii_case(e)));
-        if apart || (page && r.page) {
-            continue;
-        }
-        known.extend(theirs);
-        page |= r.page;
-        found.push(r.id);
-    }
-    Ok(found)
+                .any(|e| a.iter().any(|k| k.eq_ignore_ascii_case(e)))
 }
 
 /// Pages at `urls`, read for the candidate, proved not to be theirs: the links no longer identify
