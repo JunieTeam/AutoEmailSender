@@ -84,12 +84,16 @@ pub fn letter(
         .map(|name| Problem::Placeholder { name })
         .collect();
     // Models asked for 【请补充：……】 now and then write it in other brackets.
-    for text in [subject, body_md] {
+    for (markdown, text) in [(false, subject), (true, body_md)] {
         for (open, close) in [('【', '】'), ('[', ']'), ('［', '］')] {
             for rest in text.split(open).skip(1) {
                 let Some((content, after)) = rest.split_once(close) else {
                     continue;
                 };
+                // A link in the body, [请补充：…](…), which the editor shows as one; it writes the
+                // brackets of plain text escaped.
+                let link =
+                    markdown && open == '[' && !content.ends_with('\\') && after.starts_with('(');
                 // The editor writes a line break as `\` before it and escapes square brackets.
                 let content = content.strip_suffix('\\').unwrap_or(content);
                 let prefix: String = content
@@ -97,10 +101,8 @@ pub fn letter(
                     .filter(|c| !c.is_whitespace() && *c != '\\')
                     .take(4)
                     .collect();
-                // The colon tells a marker from text such as 请补充材料的流程; a link is not one.
-                if !matches!(prefix.as_str(), "请补充：" | "请补充:")
-                    || open == '[' && after.starts_with('(')
-                {
+                // The colon tells a marker from text such as 请补充材料的流程.
+                if !matches!(prefix.as_str(), "请补充：" | "请补充:") || link {
                     continue;
                 }
                 let problem = Problem::Placeholder {
@@ -495,6 +497,10 @@ mod tests {
                 Some("[请补充：面谈时间]"),
             ),
             (
+                "王老师：时间为\\[请补充：面谈时间\\](北京时间)。",
+                Some("[请补充：面谈时间]"),
+            ),
+            (
                 "王老师：时间为【请补\\\n充：面谈时间】。",
                 Some("【请补\\\n充：面谈时间】"),
             ),
@@ -525,6 +531,19 @@ mod tests {
                 .collect();
             assert_eq!(letter("王伟", &[], "", body, &[]), expected, "{body}");
         }
+        // A subject is plain text: brackets before parentheses there are no link.
+        assert_eq!(
+            letter(
+                "王伟",
+                &[],
+                "[请补充：项目名称](申请用)",
+                "王老师：您好",
+                &[]
+            ),
+            [Problem::Placeholder {
+                name: "[请补充：项目名称]".into()
+            }]
+        );
     }
 
     #[test]
