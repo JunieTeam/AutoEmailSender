@@ -1090,7 +1090,8 @@ pub(crate) async fn save(
 /// and a person with `emails`, and a page of their own if `page`, are, once no page of theirs is
 /// left to read: a teacher listed under several categories, mostly without an address, is one. A
 /// page that failed to read is left to read, as its retry can tell them apart. None are when two
-/// of them are told apart from each other, which leaves nothing to say whom the person is.
+/// of them, those with a page left to read too, are told apart from each other, which leaves
+/// nothing to say whom the person is.
 async fn namesakes(
     conn: &mut SqliteConnection,
     crawl: i64,
@@ -1139,19 +1140,24 @@ async fn namesakes(
         page |= r.page;
     }
     let fit: Vec<_> = (others.into_iter())
-        .filter(|r| !r.reading)
-        .map(|r| (r.id, r.emails.map(|Json(e)| e).unwrap_or_default(), r.page))
-        .filter(|(_, theirs, their_page)| !apart((&known, page), (theirs, *their_page)))
+        .map(|r| {
+            let emails = r.emails.map(|Json(e)| e).unwrap_or_default();
+            (r.id, emails, r.page, r.reading)
+        })
+        .filter(|(_, theirs, their_page, _)| !apart((&known, page), (theirs, *their_page)))
         .collect();
-    let ambiguous = (fit.iter().enumerate()).any(|(n, (_, a, a_page))| {
+    let ambiguous = (fit.iter().enumerate()).any(|(n, (_, a, a_page, _))| {
         fit[n + 1..]
             .iter()
-            .any(|(_, b, b_page)| apart((a, *a_page), (b, *b_page)))
+            .any(|(_, b, b_page, _)| apart((a, *a_page), (b, *b_page)))
     });
     Ok(if ambiguous {
         vec![]
     } else {
-        fit.into_iter().map(|(id, _, _)| id).collect()
+        (fit.into_iter())
+            .filter(|(_, _, _, reading)| !reading)
+            .map(|(id, ..)| id)
+            .collect()
     })
 }
 
