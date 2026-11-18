@@ -188,27 +188,32 @@ pub fn other_mentors(
 
 /// Whether `text` addresses the mentor named `mentor`, who also goes by `aliases`.
 fn addressed(text: &str, mentor: &str, aliases: &[String]) -> bool {
+    names(mentor, aliases).any(|name| addresses(text, name))
+}
+
+/// The mentor's names, without a title written after one in parentheses, as in 李明（教授）.
+fn names<'a>(mentor: &'a str, aliases: &'a [String]) -> impl Iterator<Item = &'a str> {
     std::iter::once(mentor)
         .chain(aliases.iter().map(String::as_str))
-        .any(|name| addresses(text, name))
+        .filter_map(|name| name.split(['（', '(']).next())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
 }
 
 /// Whether `line` opens by addressing the mentor, as a letter's first line does: "李明老师：",
 /// "尊敬的李老师：" or "Dear Prof. Li,".
 pub fn salutes(line: &str, mentor: &str, aliases: &[String]) -> bool {
-    let line = line.trim();
+    let line = line.trim().trim_start_matches(['*', '_']);
     if let Some(rest) = line.strip_prefix("Dear ") {
         return addressed(rest, mentor, aliases);
     }
     let line = line.strip_prefix("尊敬的").unwrap_or(line);
-    std::iter::once(mentor)
-        .chain(aliases.iter().map(String::as_str))
-        .any(|name| {
-            line.starts_with(name)
-                || TITLES
-                    .iter()
-                    .any(|title| line.starts_with(&format!("{}{title}", surname(name))))
-        })
+    names(mentor, aliases).any(|name| {
+        line.starts_with(name)
+            || TITLES
+                .iter()
+                .any(|title| line.starts_with(&format!("{}{title}", surname(name))))
+    })
 }
 
 /// Whether the body addresses the mentor: by full name, by surname and title, or by a word of the
@@ -483,6 +488,22 @@ mod tests {
         );
         assert!(letter("王伟", &[], "", "王老师：周五下午方便面谈。", &[]).is_empty());
         assert!(letter("王伟", &[], "", "王老师：【请补充：尚未闭合", &[]).is_empty());
+    }
+
+    #[test]
+    fn a_letter_opens_by_addressing_the_mentor() {
+        let aliases = ["Ming Li".to_owned()];
+        for line in [
+            "李明老师：",
+            "**李老师：**",
+            "尊敬的李老师：",
+            "Dear Prof. Li,",
+        ] {
+            assert!(salutes(line, "李明（教授）", &aliases), "{line}");
+        }
+        for line in ["以下是写给李老师的信：", r#"{"body":"李明老师："}"#] {
+            assert!(!salutes(line, "李明（教授）", &aliases), "{line}");
+        }
     }
 
     #[test]
