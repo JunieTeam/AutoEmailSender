@@ -1257,9 +1257,11 @@ async fn read_parts(
         let f = &mut person.fields;
         if research && f.research.is_none() {
             f.research = part.fields.research;
+            whom.research.clone_from(&f.research);
         }
         if contact && f.emails.is_empty() {
             f.emails = part.fields.emails;
+            whom.emails.clone_from(&f.emails);
             person.recognized = part.recognized;
         }
         if (!research || f.research.is_some()) && (!contact || !f.emails.is_empty()) {
@@ -1300,12 +1302,16 @@ async fn subpage(
             page = browser.render(&at, &[]) => page,
             error = invalidated(reader.db, reader.claim) => return Err(error),
         };
-        let Some((url, html)) = (page.ok())
-            .filter(|page| page.html.len() <= crate::fetch::MAX_PAGE_BYTES)
-            .and_then(|page| Some((at.redirect(at.url(), &page.url).ok()?, page.html)))
-        else {
+        let Ok(page) = page else {
             return skipped("not_rendered");
         };
+        if page.html.len() > crate::fetch::MAX_PAGE_BYTES {
+            return skipped("too_large");
+        }
+        let Ok(url) = at.redirect(at.url(), &page.url) else {
+            return skipped("outside_site");
+        };
+        let html = page.html;
         let span = tracing::Span::current();
         tokio::task::spawn_blocking(move || span.in_scope(|| crate::parse_rendered(&url, &html)))
             .await
@@ -1325,9 +1331,6 @@ async fn subpage(
     if m.needs_browser.is_some() {
         return skipped("needs_browser");
     }
-    if !extract::mentions(&m, &names) {
-        return skipped("not_named");
-    }
     let files = embedded::Reader {
         fetcher: &pages.http,
         recognize: pages.recognize,
@@ -1346,6 +1349,10 @@ async fn subpage(
         },
         error = invalidated(reader.db, reader.claim) => return Err(error),
     };
+    // Its documents can name them, as a page showing only the CV it embeds.
+    if !extract::mentions(&m, &names) {
+        return skipped("not_named");
+    }
     let mut data = extract::data(&m, 0..m.units.len());
     data["target"] = serde_json::json!({
         "name": target.name,
