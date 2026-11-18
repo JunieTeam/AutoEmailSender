@@ -59,6 +59,13 @@ impl Kind<'_> {
     }
 }
 
+/// The letter to rewrite: none when it holds nothing of what the kind writes, which is then drafted.
+fn to_rewrite<'a>(current: Option<&'a Letter>, kind: Kind<'_>) -> Option<&'a Letter> {
+    current.filter(|c| {
+        !c.body_md.trim().is_empty() || !(kind.body_only() || c.subject.trim().is_empty())
+    })
+}
+
 /// Token estimate uses the same prompt as generation.
 pub fn estimate(
     me: &profile::Profile,
@@ -68,6 +75,7 @@ pub fn estimate(
     current: Option<&Letter>,
     kind: Kind<'_>,
 ) -> (i64, i64) {
+    let current = to_rewrite(current, kind);
     (
         model::background::tokens(&system(me, kind, current.is_some()))
             + model::background::tokens(&message(me, references, attached, mentor, current, kind)),
@@ -129,9 +137,8 @@ pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
         },
     } = input;
     let kind = *kind;
-    let blank = current.body_md.trim().is_empty()
-        && (kind.body_only() || current.subject.trim().is_empty());
-    let current = (!blank).then_some(current);
+    let current = to_rewrite(Some(current), kind);
+    let blank = current.is_none();
     let system = system(me, kind, current.is_some());
     let message = message(me, references, attached, mentor, current, kind);
     let answer = model::ask(net, turn, &system, &message, false)
