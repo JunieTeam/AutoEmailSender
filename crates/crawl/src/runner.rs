@@ -1404,6 +1404,9 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                 (None, Some(failure)) => (PageStatus::Failed, Some(failure.clone())),
                 (None, None) => (PageStatus::Success, None),
             };
+            // A page not read through is retried as it was queued: a list's first page, read as a
+            // list over HTTP though not in the browser, still routes, and turns at least once.
+            let kind = if reason.is_none() { p.kind } else { c.kind };
             let reason = reason.map(Json);
             let given = p.given.as_ref().map(Json);
             sqlx::query!(
@@ -1411,7 +1414,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                 SET work_state = 'done', kind = ?, status = ?, error = ?, text = ?, fetched_at = ?,
                     given_links = ?
                 WHERE id = ?"#,
-                p.kind,
+                kind,
                 status,
                 reason,
                 text,
@@ -1556,8 +1559,9 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                             )
                             .await?;
                         } else {
-                            left |=
-                                !queue::queued(&mut tx, c.crawl, url, PageKind::List, &[]).await?;
+                            left |= p.material.pagination.later
+                                && !queue::queued(&mut tx, c.crawl, url, PageKind::List, &[])
+                                    .await?;
                         }
                     }
                 }

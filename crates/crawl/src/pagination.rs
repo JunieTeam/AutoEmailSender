@@ -214,8 +214,6 @@ static PAGES: LazyLock<Regex> = LazyLock::new(|| {
 pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool) -> Pagination {
     let mut contexts: Vec<Context<'_>> = Vec::new();
     let mut pagination = Pagination::default();
-    // Whether the pager leads on to a later page, by a link or a click.
-    let mut later = false;
     // A last-page control leading here says this is the last page, which another pager on it, as
     // one for phones, can still offer a next page past.
     let at_last =
@@ -377,7 +375,7 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                 if !pagination.urls.contains(link) {
                     pagination.urls.push(link.clone());
                 }
-                later |= onward;
+                pagination.later |= onward;
             }
         } else if matches!(control.kind, Kind::Jump) {
             // Past the check for its last page above, a pager counting its pages has more.
@@ -398,13 +396,13 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                         control: control.text.clone(),
                     });
                 }
-                later |= onward;
+                pagination.later |= onward;
             }
         }
     }
     // A jump goes to the page written in the box beside it, which no click replays: the pages
     // only it leads to stay unread, though the pager can lead back to earlier ones.
-    pagination.jump_only &= !later;
+    pagination.jump_only &= !pagination.later;
     pagination
 }
 

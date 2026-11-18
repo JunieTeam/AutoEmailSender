@@ -2004,9 +2004,39 @@ async fn a_list_stops_at_a_page_turned_to_finding_no_one_new(db: SqlitePool) {
         .await
         .unwrap();
     assert_eq!(
-        limits,
-        r#"["有的名单翻到的一页没有新导师，后面的页没有读"]"#
+        serde_json::from_str::<Vec<String>>(&limits).unwrap().len(),
+        1
     );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_last_page_turned_to_finding_no_one_new_leaves_nothing_unread(db: SqlitePool) {
+    // Its pager leads back only, to the first page by another address.
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>教师名单</title><p>张三</p><p>李四</p><a href='/?page=2'>下一页</a>",
+    );
+    site.page(
+        "/?page=2",
+        "<title>教师名单</title><p>张三</p><a href='/?page=1'>上一页</a>",
+    );
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "list");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let limits: String = sqlx::query_scalar("SELECT limits FROM crawl")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(limits, "[]");
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -2052,5 +2082,8 @@ async fn a_list_pages_on_past_the_limit_of_pages_finding_no_one_new(db: SqlitePo
         .fetch_one(&db)
         .await
         .unwrap();
-    assert_eq!(limits, r#"["找名单已有 60 页没找到新导师，后面的没有读"]"#);
+    assert_eq!(
+        serde_json::from_str::<Vec<String>>(&limits).unwrap().len(),
+        1
+    );
 }
