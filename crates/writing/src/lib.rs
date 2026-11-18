@@ -69,7 +69,7 @@ pub fn estimate(
     kind: Kind<'_>,
 ) -> (i64, i64) {
     (
-        model::background::tokens(&system(me, kind))
+        model::background::tokens(&system(me, kind, current.is_some()))
             + model::background::tokens(&message(me, references, attached, mentor, current, kind)),
         if kind.body_only() { 500 } else { 1200 },
     )
@@ -132,7 +132,7 @@ pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
     let blank = current.body_md.trim().is_empty()
         && (kind.body_only() || current.subject.trim().is_empty());
     let current = (!blank).then_some(current);
-    let system = system(me, kind);
+    let system = system(me, kind, current.is_some());
     let message = message(me, references, attached, mentor, current, kind);
     let answer = model::ask(net, turn, &system, &message, false)
         .await
@@ -162,14 +162,16 @@ pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
     }
     if kind.body_only() {
         let answer = model::output::thinking_block(answer.text.trim())
-            .map_err(|_| Error::NotALetter { finish_reason })?;
-        let body = answer
-            .trim()
-            .strip_prefix("<body>")
-            .and_then(|a| a.strip_suffix("</body>"))
-            .map(str::trim)
-            .filter(|b| !b.is_empty())
-            .ok_or(Error::NotALetter { finish_reason })?;
+            .map_err(|_| Error::NotALetter { finish_reason })?
+            .trim();
+        // Models now and then leave out the tags around a body that is all they wrote.
+        let body = match answer.strip_prefix("<body>") {
+            Some(rest) => rest.strip_suffix("</body>"),
+            None => (!answer.starts_with('<') && !answer.contains("</body>")).then_some(answer),
+        }
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+        .ok_or(Error::NotALetter { finish_reason })?;
         Ok(Letter {
             subject: String::new(),
             body_md: body.to_owned(),
@@ -180,19 +182,35 @@ pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
 }
 
 // The user's own wishes are instructions, which the material must not be able to pass for. Each
-// kind gets only the rules it needs: a model follows a short list better than one it must override.
-fn system(me: &profile::Profile, kind: Kind<'_>) -> String {
-    let rules = match kind {
-        Kind::First => format!(
-            "{FIRST}\n\n{DATA}\n\n{FACTS}\n{PITCH}\n{FIRST_LENGTH}\n{FORM}\n\n{REWRITE}\n\n{FIRST_FORMAT}"
-        ),
-        Kind::FollowUp(_) => format!(
-            "{FOLLOW_UP}\n\n{DATA}\n\n{FACTS}\n{PITCH}\n{FOLLOW_UP_LENGTH}\n{FORM}\n\n{REWRITE}\n\n{BODY_FORMAT}"
-        ),
-        Kind::Reply(_) => {
-            format!("{REPLY}\n\n{DATA}\n\n{FACTS}\n{ANSWER}\n{FORM}\n\n{POLISH}\n\n{BODY_FORMAT}")
+// kind gets only the rules it needs, drafting or rewriting: a model follows a short list better than
+// one it must override.
+fn system(me: &profile::Profile, kind: Kind<'_>, rewriting: bool) -> String {
+    let mut parts = match kind {
+        Kind::First => vec![FIRST, DATA, FACTS, PITCH, FIRST_LENGTH, FORM],
+        Kind::FollowUp(_) if rewriting => {
+            vec![FOLLOW_UP, DATA, FACTS, PITCH, FOLLOW_UP_LENGTH, FORM]
         }
+        Kind::FollowUp(_) => vec![
+            FOLLOW_UP,
+            DATA,
+            FACTS,
+            PITCH,
+            FOLLOW_UP_BRIEF,
+            FOLLOW_UP_LENGTH,
+            FORM,
+        ],
+        Kind::Reply(_) if rewriting => vec![REPLY, DATA, FACTS, FORM, POLISH],
+        Kind::Reply(_) => vec![REPLY, DATA, FACTS, ANSWER, FORM],
     };
+    if rewriting && !matches!(kind, Kind::Reply(_)) {
+        parts.push(REWRITE);
+    }
+    parts.push(if kind.body_only() {
+        BODY_FORMAT
+    } else {
+        FIRST_FORMAT
+    });
+    let rules = parts.join("\n\n");
     match &me.rewrite_preference {
         Some(preference) => {
             format!("{rules}\n\n学生的写信偏好，优先于上面的篇幅和语气：\n{preference}")
@@ -228,10 +246,11 @@ const PITCH: &str = "内容：\n\
     - 语气礼貌、诚恳、具体，不堆砌客套话，不评价导师的水平和成就（比如“造诣深厚”“令我十分敬佩”）。\n\
     - 有“附件”时，在正文里简单说明附上了什么；没有“附件”时不提附件。\n\
     - 不留占位符或待填的内容，比如“{导师姓名}”“[你的学校]”“XXX”；缺的信息就不写。";
-const FIRST_LENGTH: &str = "- 篇幅适中，宁短勿长：中文正文 300 到 500 字，英文 200 到 300 词。";
-const FOLLOW_UP_LENGTH: &str = "- 只写三四句话：提一句之前的信（可以点出一段最相关的经历），问导师是否方便查看，\
-    再致谢；不重复之前的信，不编造追问的理由和之前那封信的时间（比如“正在准备材料”“上周”），\
-    不反复道歉。中文 80 到 150 字，英文 60 到 100 词。";
+const FIRST_LENGTH: &str = "篇幅适中，宁短勿长：中文正文 300 到 500 字，英文 200 到 300 词。";
+const FOLLOW_UP_BRIEF: &str = "只写三四句话：提一句之前的信（可以点出一段最相关的经历），\
+    问导师是否方便查看，再致谢；不重复之前的信，不编造追问的理由和之前那封信的时间（比如\
+    “正在准备材料”“上周”），不反复道歉。";
+const FOLLOW_UP_LENGTH: &str = "篇幅：中文 80 到 150 字，英文 60 到 100 词。";
 const ANSWER: &str = "内容：\n\
     - 逐条回应第一封信里的每个问题和请求，不重复首封的自我介绍和经历，不讲契合和导师的研究方向，\
     不加导师没问的内容（比如以后的学习计划）。导师没有提问或要求时（比如只说没有名额），\
@@ -249,14 +268,14 @@ const FORM: &str = "格式：\n\
     - 落款写“个人资料”里的姓名；没有姓名时落款不写名字。不写日期。\n\
     - 正文用 Markdown，只用段落、换行、加粗、斜体、链接、有序和无序列表；不用标题、表格、\
     引用、代码和图片。段落之间空一行。";
-const REWRITE: &str = "有“现在的信”时是改写，另外遵守：\n\
-    - 在现在这封信的基础上改：保留它的结构、段落顺序和主要内容，优化表达，\
+const REWRITE: &str = "这次是改写“现在的信”：\n\
+    - 保留它的结构、段落顺序和主要内容，优化表达，\
     并结合“导师”的研究方向做至少一处具体的个性化。\n\
     - 日期、年份、数字、链接、联系方式、专有名称和附件说明保持原样。\n\
     - 信里还没替换的占位符（比如“{导师研究方向}”），资料里有对应的内容就换成它，\
     没有就改成不需要它的说法。";
-const POLISH: &str = "有“现在的信”时只润色学生的正文：保留意思、结构、日期、数字、链接、联系方式、\
-    专有名称、附件说明和所有“【请补充：……】”，不另加承诺，不加研究方向的个性化。";
+const POLISH: &str = "这次只润色“现在的信”的正文：保留意思、结构和学生写的每件事，以及日期、数字、\
+    链接、联系方式、专有名称、附件说明和所有“【请补充：……】”；不另加承诺，不加研究方向的个性化。";
 const FIRST_FORMAT: &str = r#"主题简短，写来意和学生的姓名，比如“报考研究生咨询”加上姓名；英文信的主题也用英文，改写时现在的主题是中文的也译成英文。只输出下面的格式，前后不加任何文字：
 <subject>主题</subject>
 <body>

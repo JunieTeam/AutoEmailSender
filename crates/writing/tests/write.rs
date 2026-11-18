@@ -170,6 +170,64 @@ async fn follow_up_uses_prior_letters_without_private_mentor_fields(db: SqlitePo
     );
 }
 
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_body_alone_may_come_back_without_its_tags(db: SqlitePool) {
+    let (id, _) = setup(&db).await;
+    let (address, _) = provider(vec![
+        ("王伟老师：\n\n想请问您是否方便查看之前的申请。", "stop"),
+        ("<Dear 王伟,>想请问您是否方便。</Dear 王伟,>", "stop"),
+        ("<body>王伟老师：想请问您是否方便。", "stop"),
+    ])
+    .await
+    .unwrap();
+    model(&db, &address, true).await;
+    let previous = vec![Letter {
+        subject: "申请读博".into(),
+        body_md: "原信内容".into(),
+    }];
+    let chosen = model::chosen(&db, model::Feature::Writing)
+        .await
+        .unwrap()
+        .unwrap();
+    let prepared = writing::prepare(
+        &db,
+        id,
+        &[],
+        writing::Basis {
+            chosen: &chosen,
+            references: &[],
+            kind: writing::Kind::FollowUp(&previous),
+        },
+    )
+    .await
+    .unwrap();
+    let net = Net::new(Vec::new()).unwrap();
+    let write = async || {
+        writing::write(
+            &net,
+            &turn(&chosen).await,
+            &prepared,
+            &blank(),
+            |purpose, usage, _| {
+                model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
+            },
+        )
+        .await
+    };
+    assert_eq!(
+        write().await.unwrap().body_md,
+        "王伟老师：\n\n想请问您是否方便查看之前的申请。"
+    );
+    // Tags of its own making, or a body left open, are not the letter asked for.
+    for _ in 0..2 {
+        let result = write().await;
+        assert!(
+            matches!(result, Err(Error::NotALetter { .. })),
+            "{result:?}"
+        );
+    }
+}
+
 /// The purpose and tokens of each call recorded.
 async fn usage(db: &SqlitePool) -> Vec<(String, i64, i64, i64)> {
     sqlx::query!(
@@ -592,8 +650,10 @@ async fn reply_drafts_and_rewrites_use_the_fixed_target_and_record_their_purpose
             .contains("ACL 2025")
     );
     assert_eq!(data["附件"], serde_json::json!(["简历.pdf"]));
+    // A draft answers the mentor; a rewrite only polishes what the student wrote.
+    assert!(calls[0].0.contains("不替学生决定") && !calls[0].0.contains("保留意思"));
+    assert!(calls[1].0.contains("保留意思") && !calls[1].0.contains("逐条回应"));
     for (system, message) in calls.iter() {
-        assert!(system.contains("不替学生决定") && system.contains("保留意思"));
         assert!(system.contains("语气再正式一些"));
         assert!(!message.contains("wangwei@") && !message.contains("师兄说回信很慢"));
         assert!(!message.contains("引用不发送"));
