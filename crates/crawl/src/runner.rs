@@ -1565,10 +1565,11 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                                 !found,
                             )
                             .await?;
-                        } else {
-                            left |= p.material.pagination.onward.contains(url)
-                                && !queue::queued(&mut tx, c.crawl, url, PageKind::List, &[])
-                                    .await?;
+                        } else if p.material.pagination.onward.contains(url) {
+                            // As if turned one by one: those its first page queued in one go too.
+                            queue::unqueue(&mut tx, c.crawl, url).await?;
+                            left |=
+                                !queue::queued(&mut tx, c.crawl, url, PageKind::List, &[]).await?;
                         }
                     }
                 }

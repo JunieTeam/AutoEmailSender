@@ -215,6 +215,23 @@ pub(crate) async fn queued(
     .await?
     .is_some())
 }
+/// Leaves unread the list's page at `url` that waits to be read for the first time.
+pub(crate) async fn unqueue(
+    conn: &mut SqliteConnection,
+    crawl: i64,
+    url: &PageUrl,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"DELETE FROM crawl_page
+        WHERE crawl_id = ? AND url IN (SELECT value FROM json_each(?)) AND kind = 'list'
+        AND steps = '[]' AND work_state = 'queued' AND fetched_at IS NULL"#,
+        crawl,
+        Json(both_schemes(&[url.as_str()]))
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
 /// What a page waiting its turn says.
 pub(crate) const NOT_READ: &str = "尚未读取";
 

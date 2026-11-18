@@ -2010,6 +2010,63 @@ async fn a_list_stops_at_a_page_turned_to_finding_no_one_new(db: SqlitePool) {
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_list_stops_at_a_page_turned_to_finding_no_one_new_among_those_queued_at_once(
+    db: SqlitePool,
+) {
+    // Its pager links every page, which its first page queues in one go.
+    let site = Site::new().await;
+    let pager = |page: usize| {
+        (1..=4)
+            .map(|n| match n {
+                n if n == page => format!("<span>{n}</span>"),
+                1 => "<a href='/'>1</a>".into(),
+                n => format!("<a href='/?page={n}'>{n}</a>"),
+            })
+            .collect::<String>()
+    };
+    site.page(
+        "/",
+        &format!(
+            "<title>教师名单</title><p>张三</p><div class='pages'>{}</div>",
+            pager(1)
+        ),
+    );
+    site.page(
+        "/?page=2",
+        &format!(
+            "<title>教师名单</title><p>张三</p><div class='pages'>{}</div>",
+            pager(2)
+        ),
+    );
+    site.page("/?page=3", "<title>教师名单</title><p>李四</p>");
+    site.page("/?page=4", "<title>教师名单</title><p>王五</p>");
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    route_all(provider, "list");
+    queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    drain(&db, &pages).await;
+    let visits = site.visits.lock().unwrap().clone();
+    assert!(visits.contains(&"/?page=2".to_owned()));
+    for unread in ["/?page=3", "/?page=4"] {
+        assert!(!visits.contains(&unread.to_owned()), "{unread}");
+    }
+    let limits: String = sqlx::query_scalar("SELECT limits FROM crawl")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Vec<String>>(&limits).unwrap().len(),
+        1
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_last_page_turned_to_finding_no_one_new_leaves_nothing_unread(db: SqlitePool) {
     // Its pager leads back only, to the first page by another address.
     let site = Site::new().await;

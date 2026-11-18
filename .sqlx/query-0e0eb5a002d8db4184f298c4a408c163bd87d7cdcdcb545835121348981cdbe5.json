@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM crawl_page\n        WHERE crawl_id = ? AND url IN (SELECT value FROM json_each(?)) AND kind = 'list'\n        AND steps = '[]' AND work_state = 'queued' AND fetched_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "0e0eb5a002d8db4184f298c4a408c163bd87d7cdcdcb545835121348981cdbe5"
+}
