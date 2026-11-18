@@ -87,16 +87,20 @@ pub fn letter(
     for text in [subject, body_md] {
         for (open, close) in [('【', '】'), ('[', ']'), ('［', '］')] {
             for rest in text.split(open).skip(1) {
-                let Some((content, _)) = rest.split_once(close) else {
+                let Some((content, after)) = rest.split_once(close) else {
                     continue;
                 };
-                // The colon tells a marker from a link such as [请补充材料的流程](…).
+                // The editor writes a line break as `\` before it and escapes square brackets.
+                let content = content.strip_suffix('\\').unwrap_or(content);
                 let prefix: String = content
                     .chars()
-                    .filter(|c| !c.is_whitespace())
+                    .filter(|c| !c.is_whitespace() && *c != '\\')
                     .take(4)
                     .collect();
-                if !matches!(prefix.as_str(), "请补充：" | "请补充:") {
+                // The colon tells a marker from text such as 请补充材料的流程; a link is not one.
+                if !matches!(prefix.as_str(), "请补充：" | "请补充:")
+                    || open == '[' && after.starts_with('(')
+                {
                     continue;
                 }
                 let problem = Problem::Placeholder {
@@ -182,10 +186,6 @@ pub fn other_mentors(
 
 /// Whether the body addresses the mentor: by full name, by surname and title, or by a word of the
 /// name in Latin letters, as in "Dear Prof. Smith" or "Zhang老师".
-fn addresses(body: &str, name: &str) -> bool {
-    let length = if COMPOUND_SURNAMES.iter().any(|s| name.starts_with(s)) {
-        2
-    } else {
 /// Whether `text` addresses the mentor named `mentor`, who also goes by `aliases`.
 pub fn addressed(text: &str, mentor: &str, aliases: &[String]) -> bool {
     std::iter::once(mentor)
@@ -193,6 +193,10 @@ pub fn addressed(text: &str, mentor: &str, aliases: &[String]) -> bool {
         .any(|name| addresses(text, name))
 }
 
+fn addresses(body: &str, name: &str) -> bool {
+    let length = if COMPOUND_SURNAMES.iter().any(|s| name.starts_with(s)) {
+        2
+    } else {
         1
     };
     let surname: String = name.chars().take(length).collect();
@@ -463,6 +467,15 @@ mod tests {
             ("王老师：【重点】这是一段正常内容。", None),
             ("王老师：见[主页](https://example.com)。", None),
             ("王老师：见[请补充材料的流程](https://example.com)。", None),
+            ("王老师：见[请补充：查看材料](https://example.com)。", None),
+            (
+                "王老师：时间为\\[请补充：面谈时间\\]。",
+                Some("[请补充：面谈时间]"),
+            ),
+            (
+                "王老师：时间为【请补\\\n充：面谈时间】。",
+                Some("【请补\\\n充：面谈时间】"),
+            ),
             (
                 "王老师：时间为[请补充：面谈时间]。",
                 Some("[请补充：面谈时间]"),
