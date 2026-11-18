@@ -12,13 +12,144 @@ pub const GITHUB_MANIFEST: &str =
 /// and each version's files under `<version>/`.
 pub const MIRROR: &str = "https://dl.auto-email-sender.cn/";
 
+/// The changelog of this version and those before it, newest first.
+pub const CHANGELOG: &str = include_str!("../../../CHANGELOG.md");
+
 #[derive(Clone, Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
     pub version: String,
     /// Unix milliseconds, or null when the release has no publication date.
     pub published_at: Option<i64>,
-    pub notes: Option<String>,
+    /// The changes since the running version, newest first.
+    pub releases: Vec<Release>,
+}
+
+impl UpdateInfo {
+    /// A manifest's notes are the changelog up to its version (docs/development.md#发布).
+    pub fn new(version: String, published_at: Option<i64>, notes: &str, current: &str) -> Self {
+        // A version that does not parse is not after any: None is less than Some.
+        let current = semver::Version::parse(current).ok();
+        let releases = releases(notes)
+            .into_iter()
+            .filter(|r| semver::Version::parse(&r.version).ok() > current)
+            .collect();
+        Self {
+            version,
+            published_at,
+            releases,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Release {
+    pub version: String,
+    /// `YYYY-MM-DD`; none while the version is being prepared.
+    pub date: Option<String>,
+    pub changes: Vec<Change>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+pub struct Change {
+    pub kind: ChangeKind,
+    pub text: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum ChangeKind {
+    Feature,
+    Improvement,
+    Fix,
+}
+
+/// The releases in a changelog written as CHANGELOG.md is: `## <version>（<date>）`, then
+/// `### 新功能`, `### 改进` or `### 修复`, each followed by `- <change>` lines. Other lines are left
+/// out, as a manifest's notes come from outside.
+pub fn releases(changelog: &str) -> Vec<Release> {
+    let mut releases: Vec<Release> = Vec::new();
+    let mut kind = None;
+    for line in changelog.lines().map(str::trim) {
+        if let Some(heading) = line.strip_prefix("## ") {
+            let (version, date) = heading
+                .split_once('（')
+                .map_or((heading, None), |(v, d)| (v, d.strip_suffix('）')));
+            releases.push(Release {
+                version: version.trim().to_owned(),
+                date: date.map(str::to_owned),
+                changes: Vec::new(),
+            });
+            kind = None;
+        } else if let Some(heading) = line.strip_prefix("### ") {
+            kind = match heading {
+                "新功能" => Some(ChangeKind::Feature),
+                "改进" => Some(ChangeKind::Improvement),
+                "修复" => Some(ChangeKind::Fix),
+                _ => None,
+            };
+        } else if let (Some(text), Some(kind), Some(release)) =
+            (line.strip_prefix("- "), kind, releases.last_mut())
+        {
+            release.changes.push(Change {
+                kind,
+                text: text.trim().to_owned(),
+            });
+        }
+    }
+    releases
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_update_lists_the_changes_of_each_version_after_the_running_one() {
+        let notes = "# 更新日志\n\n## 3.1.0（2027-01-02）\n\n### 新功能\n\n- 甲\n\n### 修复\n\n\
+            - 乙\n\n## 3.0.1（2026-12-20）\n\n### 改进\n\n- 丙\n\n### 文档\n\n- 不列\n\n\
+            ## 3.0.0（2026-12-01）\n\n### 新功能\n\n- 丁\n";
+        let info = UpdateInfo::new("3.1.0".into(), None, notes, "3.0.0");
+        let change = |kind, text: &str| Change {
+            kind,
+            text: text.into(),
+        };
+        assert_eq!(
+            info.releases,
+            [
+                Release {
+                    version: "3.1.0".into(),
+                    date: Some("2027-01-02".into()),
+                    changes: vec![
+                        change(ChangeKind::Feature, "甲"),
+                        change(ChangeKind::Fix, "乙")
+                    ],
+                },
+                Release {
+                    version: "3.0.1".into(),
+                    date: Some("2026-12-20".into()),
+                    changes: vec![change(ChangeKind::Improvement, "丙")],
+                },
+            ]
+        );
+        assert!(
+            UpdateInfo::new("3.1.0".into(), None, "", "3.0.0")
+                .releases
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn the_bundled_changelog_reads_whole() {
+        let listed = CHANGELOG.lines().filter(|l| l.starts_with("- ")).count();
+        let read = releases(CHANGELOG);
+        assert_eq!(read.iter().map(|r| r.changes.len()).sum::<usize>(), listed);
+        assert!(
+            read.iter()
+                .all(|r| semver::Version::parse(&r.version).is_ok())
+        );
+    }
 }
 
 #[derive(Clone, Debug, Serialize, TS)]

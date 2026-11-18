@@ -207,6 +207,7 @@ fn main() -> tauri::Result<()> {
             notifications::request_notification_permission,
             #[cfg(target_os = "macos")]
             notifications::open_notification_settings,
+            updater::changelog,
             updater::update_status,
             updater::check_update,
             updater::download_update,

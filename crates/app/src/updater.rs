@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter, Manager, Url};
 use tauri_plugin_updater::{Error, Update, UpdaterExt};
 
 use api::CallError;
-use api::updater::{GITHUB_MANIFEST, MIRROR, UpdateInfo, UpdateStatus};
+use api::updater::{GITHUB_MANIFEST, MIRROR, Release, UpdateInfo, UpdateStatus};
 use failure::Failure;
 
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
@@ -119,10 +119,13 @@ impl Updater {
     }
 
     fn status(&self) -> UpdateStatus {
-        let info = |update: &Update| UpdateInfo {
-            version: update.version.clone(),
-            published_at: update.date.map(|date| date.unix_timestamp() * 1000),
-            notes: update.body.clone(),
+        let info = |update: &Update| {
+            UpdateInfo::new(
+                update.version.clone(),
+                update.date.map(|date| date.unix_timestamp() * 1000),
+                update.body.as_deref().unwrap_or_default(),
+                &update.current_version,
+            )
         };
         match &*self.phase() {
             Phase::Current => UpdateStatus::Current,
@@ -170,6 +173,12 @@ async fn schedule(mut check: impl AsyncFnMut()) {
         ticks.tick().await;
         check().await;
     }
+}
+
+/// The versions up to this one, for 更新日志 in 关于和日志.
+#[tauri::command]
+pub fn changelog() -> Vec<Release> {
+    api::updater::releases(api::updater::CHANGELOG)
 }
 
 #[tauri::command]

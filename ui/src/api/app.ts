@@ -1,5 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ExportMentors, NotificationPermission, RestoreInfo, StartupFailure, UpdateStatus } from "@/api/types";
+import type {
+  ExportMentors,
+  NotificationPermission,
+  Release,
+  RestoreInfo,
+  StartupFailure,
+  UpdateStatus,
+} from "@/api/types";
 
 // Commands of the desktop app itself (crates/app), beside the core's operations in call.ts. They
 // reject with a `CallError`, as calls do.
@@ -87,6 +94,11 @@ export function restoreBackup(exportedAt: number): Promise<void> {
 /** Current desktop update state; refresh on update-changed. */
 export function updateStatus(): Promise<UpdateStatus> {
   return invoke<UpdateStatus>("update_status");
+}
+
+/** The versions up to the running one, newest first. */
+export function changelog(): Promise<Release[]> {
+  return invoke<Release[]>("changelog");
 }
 
 /** Checks now; automatic checks run in Rust even with no visible window. */

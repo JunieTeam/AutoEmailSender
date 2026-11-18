@@ -20,9 +20,18 @@ pub async fn publish(tag: &str, dir: &Path) -> crate::Result {
     let (macos, macos_signature) = package(dir, ".app.tar.gz", version)?;
     let (windows, windows_signature) = package(dir, "-setup.exe", version)?;
     let dmg = only(dir, ".dmg")?;
-    let notes_path = dir.join("notes.md");
-    let notes = std::fs::read_to_string(&notes_path)
-        .map_err(|e| format!("读不到更新说明 {}：{e}", notes_path.display()))?;
+    // The changelog as tagged; clients show those of its versions after their own.
+    let tagged = Command::new("git")
+        .args(["show", &format!("{tag}:CHANGELOG.md")])
+        .output()?;
+    if !tagged.status.success() {
+        return Err(format!("读不到标签 {tag} 上的 CHANGELOG.md").into());
+    }
+    let notes = String::from_utf8(tagged.stdout)?;
+    match api::updater::releases(&notes).first() {
+        Some(r) if r.version == version && r.date.is_some() => {}
+        _ => return Err(format!("CHANGELOG.md 最上面要是写好日期的 {version}").into()),
+    }
     // Each run gets a directory of its own, even two started in the same second, and overwrites
     // nothing: the CDN keeps files for a month, so a client still on the previous manifest would
     // get a package failing its signature.

@@ -1,9 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { getVersion } from "@tauri-apps/api/app";
 import { ArrowDownToLine } from "lucide-react";
 import { useState } from "react";
 import { downloadUpdate, restartUpdate, updateStatus } from "@/api/app";
 import { failureOf } from "@/api/call";
 import type { UpdateStatus } from "@/api/types";
+import { UpdateChanges } from "@/components/changelog";
 import { FailureNote } from "@/components/failure";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -47,19 +49,21 @@ export function UpdateDialog({
 }) {
   const download = useMutation({ mutationFn: downloadUpdate });
   const restart = useMutation({ mutationFn: restartUpdate });
+  const current = useQuery({ queryKey: ["appVersion"], queryFn: getVersion, staleTime: Infinity }).data;
   const { update } = status;
   const failure = restart.error
     ? failureOf(restart.error)
     : status.kind === "available" && (status.error ?? (download.error ? failureOf(download.error) : null));
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="w-[520px]">
-        <DialogHeader>新版本 {update.version}</DialogHeader>
+      <DialogContent className="w-[560px]">
+        <DialogHeader>更新到 {update.version}</DialogHeader>
         <DialogBody className="flex flex-col gap-3 text-sm">
-          {update.publishedAt !== null && <p className="text-muted-foreground">{day(update.publishedAt)}发布</p>}
-          <p className="max-h-72 overflow-y-auto leading-relaxed whitespace-pre-line wrap-anywhere">
-            {update.notes ?? "这个版本无更新说明"}
+          <p className="text-muted-foreground">
+            {current && `自 ${current} 以来的更新内容`}
+            {update.publishedAt !== null && `${current ? "，" : ""}${day(update.publishedAt)}发布`}
           </p>
+          <UpdateChanges releases={update.releases} />
         </DialogBody>
         <DialogFooter>
           {status.kind === "downloading" ? (

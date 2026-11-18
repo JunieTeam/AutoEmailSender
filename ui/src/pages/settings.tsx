@@ -15,6 +15,7 @@ import {
   setAutostart,
 } from "@/api/app";
 import { call, failureOf } from "@/api/call";
+import { ChangelogDialog } from "@/components/changelog";
 import { FailureNote } from "@/components/failure";
 import { FeedbackDialog } from "@/components/feedback";
 import { ModelAction } from "@/components/ai-writing";
@@ -277,6 +278,7 @@ function CheckUpdate() {
   const queryClient = useQueryClient();
   const status = useUpdate().data;
   const [open, setOpen] = useState(false);
+  const [log, setLog] = useState(false);
   const check = useMutation({
     mutationFn: checkUpdate,
     onSuccess: (s) => {
@@ -285,10 +287,14 @@ function CheckUpdate() {
     },
   });
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3">
       <Button variant="quiet" disabled={check.isPending} onClick={() => check.mutate()}>
         {check.isPending ? "正在检查…" : "检查更新"}
       </Button>
+      <Button variant="quiet" onClick={() => setLog(true)}>
+        更新日志
+      </Button>
+      {log && <ChangelogDialog onClose={() => setLog(false)} />}
       {check.isSuccess && status?.kind === "current" && (
         <span className="text-sm text-muted-foreground">已是最新版本</span>
       )}

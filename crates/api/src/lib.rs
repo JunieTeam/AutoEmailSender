@@ -411,6 +411,7 @@ macro_rules! operations {
             collect::<ExportMentors>(&cfg, &mut decls);
             collect::<backup::RestoreInfo>(&cfg, &mut decls);
             collect::<updater::UpdateStatus>(&cfg, &mut decls);
+            collect::<updater::Release>(&cfg, &mut decls);
             collect::<startup::StartupFailure>(&cfg, &mut decls);
             collect::<notifications::NotificationPermission>(&cfg, &mut decls);
             $($(

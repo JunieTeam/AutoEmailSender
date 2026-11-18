@@ -206,6 +206,7 @@ dependencies = [
  "receive",
  "remote",
  "reqwest",
+ "semver",
  "send",
  "serde",
  "serde_json",

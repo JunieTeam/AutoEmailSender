@@ -107,6 +107,10 @@ keyword?: string, };
 
 export type Capacity = { windows: number, emails: number, nextChangeAt: number | null, };
 
+export type Change = { kind: ChangeKind, text: string, };
+
+export type ChangeKind = "feature" | "improvement" | "fix";
+
 export type CloudBackup = { enabled: boolean, running: boolean,
 /**
  * Logged in before cloud backup existed, so the password must derive the key once.
@@ -1244,6 +1248,12 @@ export type Redeemed = { days: number, plusUntil: number, };
 
 export type RelayStatus = { "kind": "off" } | { "kind": "connecting" } | { "kind": "online" } | { "kind": "failed", reason: string, };
 
+export type Release = { version: string,
+/**
+ * `YYYY-MM-DD`; none while the version is being prepared.
+ */
+date: string | null, changes: Array<Change>, };
+
 export type RenderedApproval = { attachments: Array<number>, id: number,
 /**
  * Agent approvals receive these from the confirmation dialog.
@@ -1499,7 +1509,11 @@ export type UpdateInfo = { version: string,
 /**
  * Unix milliseconds, or null when the release has no publication date.
  */
-publishedAt: number | null, notes: string | null, };
+publishedAt: number | null,
+/**
+ * The changes since the running version, newest first.
+ */
+releases: Array<Release>, };
 
 export type UpdateStatus = { "kind": "current" } | { "kind": "available", update: UpdateInfo, error: Failure | null, } | { "kind": "downloading", update: UpdateInfo, downloaded: number, total: number | null, } | { "kind": "ready", update: UpdateInfo, };
 

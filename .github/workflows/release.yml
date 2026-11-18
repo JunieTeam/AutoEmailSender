@@ -4,11 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 已存在的版本标签，例如 v3.0.0
-        required: true
-        type: string
-      notes:
-        description: 更新说明（Markdown，同时用于 Release 和应用内更新提示）
+        description: 已存在的版本标签，例如 v3.0.0；更新说明取自标签上的 CHANGELOG.md
         required: true
         type: string
 
@@ -22,16 +18,20 @@ concurrency:
 jobs:
   version:
     runs-on: ubuntu-latest
+    outputs:
+      notes: ${{ steps.check.outputs.notes }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: refs/tags/${{ inputs.tag }}
-      - name: 核对标签与工作区版本
+      - name: 核对标签、工作区版本和更新日志
+        id: check
         env:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           python3 - <<'PY'
           import os
+          import re
           import tomllib
           from pathlib import Path
 
@@ -39,6 +39,14 @@ jobs:
           tag = os.environ["RELEASE_TAG"]
           if tag != f"v{version}":
               raise SystemExit(f"标签 {tag} 与工作区版本 {version} 不一致")
+          # The newest section, dated, is this version's; it is the Release's text.
+          changelog = Path("CHANGELOG.md").read_text()
+          sections = re.split(r"^## ", changelog, flags=re.M)[1:]
+          heading, _, body = (sections[0] if sections else "").partition("\n")
+          if not re.fullmatch(rf"{re.escape(version)}（\d{{4}}-\d{{2}}-\d{{2}}）", heading.strip()):
+              raise SystemExit(f"CHANGELOG.md 最上面要是写好日期的 {version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"notes<<NOTES_END\n{body.strip()}\nNOTES_END\n")
           print(f"已核对 {tag}")
           PY
 
@@ -81,7 +89,7 @@ jobs:
         with:
           tagName: ${{ inputs.tag }}
           releaseName: Auto Email Sender ${{ inputs.tag }}
-          releaseBody: ${{ inputs.notes }}
+          releaseBody: ${{ needs.version.outputs.notes }}
           releaseDraft: true
           prerelease: false
           uploadUpdaterJson: true
@@ -92,3 +100,30 @@ jobs:
       - name: 验证 macOS 整包签名
         if: runner.os == 'macOS'
         run: codesign --verify --deep --strict --verbose=2 "target/${{ matrix.target }}/release/bundle/macos/Auto Email Sender.app"
+
+  manifest:
+    needs: bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - name: 更新清单带上到这一版为止的全部更新日志
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        # The app shows every version after its own, so the notes are the whole changelog.
+        run: |
+          gh release download "$RELEASE_TAG" --pattern latest.json --dir manifest
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("manifest/latest.json")
+          manifest = json.loads(path.read_text())
+          manifest["notes"] = Path("CHANGELOG.md").read_text().strip()
+          path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+          PY
+          gh release upload "$RELEASE_TAG" manifest/latest.json --clobber
