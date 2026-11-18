@@ -184,28 +184,50 @@ pub fn other_mentors(
         .collect()
 }
 
-/// Whether the body addresses the mentor: by full name, by surname and title, or by a word of the
-/// name in Latin letters, as in "Dear Prof. Smith" or "Zhang老师".
 /// Whether `text` addresses the mentor named `mentor`, who also goes by `aliases`.
-pub fn addressed(text: &str, mentor: &str, aliases: &[String]) -> bool {
+fn addressed(text: &str, mentor: &str, aliases: &[String]) -> bool {
     std::iter::once(mentor)
         .chain(aliases.iter().map(String::as_str))
         .any(|name| addresses(text, name))
 }
 
+/// Whether `line` opens by addressing the mentor, as a letter's first line does: "李明老师：",
+/// "尊敬的李老师：" or "Dear Prof. Li,".
+pub fn salutes(line: &str, mentor: &str, aliases: &[String]) -> bool {
+    let line = line.trim();
+    if let Some(rest) = line.strip_prefix("Dear ") {
+        return addressed(rest, mentor, aliases);
+    }
+    let line = line.strip_prefix("尊敬的").unwrap_or(line);
+    std::iter::once(mentor)
+        .chain(aliases.iter().map(String::as_str))
+        .any(|name| {
+            line.starts_with(name)
+                || TITLES
+                    .iter()
+                    .any(|title| line.starts_with(&format!("{}{title}", surname(name))))
+        })
+}
+
+/// Whether the body addresses the mentor: by full name, by surname and title, or by a word of the
+/// name in Latin letters, as in "Dear Prof. Smith" or "Zhang老师".
 fn addresses(body: &str, name: &str) -> bool {
-    let length = if COMPOUND_SURNAMES.iter().any(|s| name.starts_with(s)) {
-        2
-    } else {
-        1
-    };
-    let surname: String = name.chars().take(length).collect();
+    let surname = surname(name);
     let said = latin_words(body);
     body.contains(name)
         || TITLES
             .iter()
             .any(|title| body.contains(&format!("{surname}{title}")))
         || latin_words(name).iter().any(|w| said.contains(w))
+}
+
+fn surname(name: &str) -> String {
+    let length = if COMPOUND_SURNAMES.iter().any(|s| name.starts_with(s)) {
+        2
+    } else {
+        1
+    };
+    name.chars().take(length).collect()
 }
 
 /// As in "附件是我的简历" or "I have attached my CV".

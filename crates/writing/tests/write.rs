@@ -177,10 +177,12 @@ async fn a_body_alone_may_come_back_without_its_tags(db: SqlitePool) {
         ("王伟老师：\n\n想请问您是否方便查看之前的申请。", "stop"),
         ("<Dear 王伟,>想请问您是否方便。</Dear 王伟,>", "stop"),
         (
-            "以下是一封简短的追问：\n\n王伟老师：想请问您是否方便。",
+            "以下是写给王老师的追问：\n\n王伟老师：想请问您是否方便。",
             "stop",
         ),
         ("抱歉，我无法完成这个请求。", "stop"),
+        (r#"{"body":"王伟老师：想请问您是否方便。"}"#, "stop"),
+        ("王伟老师：<draft>想请问您是否方便。</draft>", "stop"),
         ("<body>王伟老师：想请问您是否方便。", "stop"),
     ])
     .await
@@ -224,7 +226,7 @@ async fn a_body_alone_may_come_back_without_its_tags(db: SqlitePool) {
         "王伟老师：\n\n想请问您是否方便查看之前的申请。"
     );
     // Tags of its own making, a preface, a refusal or a body left open are not the letter asked for.
-    for _ in 0..4 {
+    for _ in 0..6 {
         let result = write().await;
         assert!(
             matches!(result, Err(Error::NotALetter { .. })),

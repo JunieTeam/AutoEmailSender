@@ -172,15 +172,16 @@ pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
             .map_err(|_| Error::NotALetter { finish_reason })?
             .trim();
         // Models now and then leave out the tags around a body that is all they wrote: one that
-        // opens by addressing the mentor, not with a preface, a refusal or other markup.
+        // opens by addressing the mentor, not with a preface, a refusal or other markup, and
+        // holds no tag of the answer's format.
         let body = match answer.strip_prefix("<body>") {
             Some(rest) => rest.strip_suffix("</body>"),
             None => (!answer.starts_with('<')
-                && !answer.contains("</body>")
+                && !answer.contains("</")
                 && answer
                     .lines()
                     .next()
-                    .is_some_and(|line| check::addressed(line, &mentor.name, &mentor.aliases)))
+                    .is_some_and(|line| check::salutes(line, &mentor.name, &mentor.aliases)))
             .then_some(answer),
         }
         .map(str::trim)
