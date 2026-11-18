@@ -64,7 +64,7 @@ const CLICK_CONTROL: &str = concat!(
     // label a control here has too.
     const leads = element => element.tagName === 'A' && /^\s*(?!#|javascript:)\S/i.test(element.getAttribute('href') || '');
     const controls = documents(document).flatMap(page => [...page.querySelectorAll('a,button,input,[role="button"],[onclick]')]);
-    const control = controls.find(element => {
+    const matching = controls.filter(element => {
         if (element.tagName === 'INPUT' && !['button', 'submit', 'image'].includes((element.getAttribute('type') || '').toLowerCase())) return false;
         if (leads(element)) return false;
         const style = element.ownerDocument.defaultView.getComputedStyle(element);
@@ -72,7 +72,11 @@ const CLICK_CONTROL: &str = concat!(
             && element.getClientRects().length && style.visibility !== 'hidden'
             && controlText(element).trim().replace(/\s+/g, ' ') === label;
     });
+    const control = matching[0];
     if (!control) return false;
+    // Controls of the label in more than one document, as a carousel's and the list's in a frame,
+    // leave which is meant unknown; a page's pagers above and below its list are one.
+    if (matching.some(other => other.ownerDocument !== control.ownerDocument)) return 'ambiguous';
     control.click();
     return true;
 })"#
@@ -412,6 +416,17 @@ fn render(
             deadline,
         )
         .map_err(failed_step)?;
+        if clicked == json!("ambiguous") {
+            tracing::info!(
+                page = step.page,
+                reason = "control_ambiguous",
+                "browser step failed"
+            );
+            return Err(failed(&format!(
+                "页面里有几处都是“{}”，分不清该点哪一个",
+                step.control
+            )));
+        }
         if clicked != json!(true) {
             tracing::info!(
                 page = step.page,
