@@ -1828,6 +1828,82 @@ async fn a_teacher_s_page_leaving_their_research_to_a_page_of_its_own_is_read_wi
 }
 
 #[tokio::test]
+async fn a_teacher_s_page_started_from_is_read_with_the_page_giving_their_research() {
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = Site::new().await;
+    let nav = "<nav><a href='/t/zhang/yjfx.htm'>研究方向</a><a href='/kxyj.htm'>科学研究</a></nav>";
+    site.page(
+        "/t/zhang/index.htm",
+        &format!("<title>张三</title>{nav}<p>张三 z@school.example.edu</p><p>暂无内容</p>"),
+    );
+    site.page(
+        "/t/zhang/yjfx.htm",
+        &format!("<title>张三 研究方向</title>{nav}<p>张三</p><p>机器学习</p>"),
+    );
+    let mut provider = Provider::start().await.unwrap();
+    let id = config(&db, &provider.address).await;
+    let model = tokio::spawn(async move {
+        while let Some(r) = provider.requests.recv().await {
+            let system = r.body["messages"][0]["content"].as_str().unwrap();
+            let answer = if system.starts_with("你整理学院") {
+                json!({"kind": "profile", "next": []})
+            } else if system.starts_with("你整理一位导师") {
+                json!({
+                    "name": "张三", "aliases": [], "emails": ["z@school.example.edu"],
+                    "affiliations": [], "homepages": [], "research": null, "papers": []
+                })
+            } else {
+                json!({
+                    "relation": "matched", "aliases": [], "emails": [], "affiliations": [],
+                    "homepages": [], "research": "机器学习", "papers": [], "names": [], "next": []
+                })
+            };
+            r.respond.send(Response::answer(&answer.to_string())).ok();
+        }
+    });
+    let crawl = queue::start(&db, &[site.url("/t/zhang/index.htm")], id, 1)
+        .await
+        .unwrap();
+    let (tx, mut events) = mpsc::unbounded_channel();
+    let task = tokio::spawn(run_with_pages(
+        db.clone(),
+        net::Net::new(vec![]).unwrap(),
+        Arc::new(Pages::local(site.port)),
+        Crawler::default(),
+        Turns::default(),
+        move || {
+            tx.send(()).ok();
+        },
+        |_| {},
+    ));
+    changed_until(&db, crawl, &mut events, "done").await;
+    task.abort();
+    model.abort();
+    let candidates: Vec<(String, String, Option<String>)> =
+        sqlx::query_as("SELECT name, emails, research FROM candidate")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        candidates,
+        [(
+            "张三".to_owned(),
+            r#"["z@school.example.edu"]"#.to_owned(),
+            Some("机器学习".to_owned())
+        )]
+    );
+    assert!(
+        !site
+            .visits
+            .lock()
+            .unwrap()
+            .contains(&"/kxyj.htm".to_owned())
+    );
+    db.close().await;
+    dir.close().unwrap();
+}
+
+#[tokio::test]
 async fn a_teacher_s_page_is_read_when_the_one_known_before_was_not() {
     // The first list gives his address, but its link to his page is broken.
     let (dir, db) = test_fixtures::db::open().await.unwrap();

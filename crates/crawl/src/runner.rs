@@ -677,7 +677,7 @@ async fn read(
     if let Some(kind) = read_before(db, c, &m, rendered).await? {
         return Ok(read_again(c, m, kind));
     }
-    let page = interpret(&reader, &scope, m, unit.as_ref()).await?;
+    let page = interpret(&reader, fetcher, &scope, m, rendered, unit.as_ref()).await?;
     // A list that loads its teachers with scripts gives none over HTTP, though its menu may link
     // other lists. Another page is read again only when it leads nowhere, as an entry links to
     // the lists it is for or shows them by its controls, unless they are a link too far.
@@ -694,7 +694,7 @@ async fn read(
             } else if let Some(kind) = read_before(db, c, &material, true).await? {
                 Ok(read_again(c, material, kind))
             } else {
-                interpret(&reader, &scope, material, unit.as_ref()).await
+                interpret(&reader, fetcher, &scope, material, true, unit.as_ref()).await
             }
         }
         Ok(None) => Ok(page),
@@ -812,8 +812,10 @@ async fn crawl_unit(
 /// What a page found while looking for lists is, and what it gives.
 async fn interpret(
     reader: &Reader<'_>,
+    pages: &Pages,
     scope: &Scope,
     m: Material,
+    rendered: bool,
     unit: Option<&Affiliation>,
 ) -> Result<Page, ReadError> {
     let c = reader.claim;
@@ -862,6 +864,9 @@ async fn interpret(
                     p.profile = c.steps.is_empty().then(|| c.url.clone());
                     if p.profile.is_none() {
                         p.fields.homepages.retain(|url| url != m.url.as_str());
+                    } else {
+                        let target = p.fields.clone();
+                        read_parts(reader, pages, scope, &m, rendered, &target, &mut p).await?;
                     }
                     Some(p)
                 }
@@ -1167,24 +1172,7 @@ async fn read_for_candidate(
         );
     }
     if c.kind == PageKind::Profile && own {
-        let research = person.fields.research.is_none() && target.research.is_none();
-        let contact = person.fields.emails.is_empty() && target.emails.is_empty();
-        for url in extract::subpages(&m, research, contact) {
-            let Some(part) = subpage(reader, pages, scope, url, rendered, &target, &names).await?
-            else {
-                continue;
-            };
-            let f = &mut person.fields;
-            if f.research.is_none() {
-                f.research = part.fields.research;
-            }
-            if f.emails.is_empty() {
-                f.emails = part.fields.emails;
-            }
-            if (f.research.is_some() || !research) && (!f.emails.is_empty() || !contact) {
-                break;
-            }
-        }
+        read_parts(reader, pages, scope, &m, rendered, &target, &mut person).await?;
     }
     person.recognized = person
         .fields
@@ -1229,6 +1217,40 @@ fn owned(person: &mut Person, m: &Material, names: &[&str], others: &[String], p
         .emails
         .retain(|email| trusted && owned.contains(email));
     person.fields.homepages.retain(|url| url != m.url.as_str());
+}
+
+/// Fills in the research and addresses `person`'s own page leaves to pages of its own, for what
+/// `target`, whom it is read for, lacks too.
+async fn read_parts(
+    reader: &Reader<'_>,
+    pages: &Pages,
+    scope: &Scope,
+    m: &Material,
+    rendered: bool,
+    target: &MentorFields,
+    person: &mut Person,
+) -> Result<(), ReadError> {
+    let names: Vec<_> = std::iter::once(target.name.as_str())
+        .chain(target.aliases.iter().map(String::as_str))
+        .collect();
+    let research = person.fields.research.is_none() && target.research.is_none();
+    let contact = person.fields.emails.is_empty() && target.emails.is_empty();
+    for url in extract::subpages(m, research, contact) {
+        let Some(part) = subpage(reader, pages, scope, url, rendered, target, &names).await? else {
+            continue;
+        };
+        let f = &mut person.fields;
+        if f.research.is_none() {
+            f.research = part.fields.research;
+        }
+        if f.emails.is_empty() {
+            f.emails = part.fields.emails;
+        }
+        if (f.research.is_some() || !research) && (!f.emails.is_empty() || !contact) {
+            break;
+        }
+    }
+    Ok(())
 }
 
 /// What a page of a teacher's own page gives of them, read as part of it, in the browser if the page
