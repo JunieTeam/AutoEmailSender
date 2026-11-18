@@ -164,10 +164,17 @@ pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
         let answer = model::output::thinking_block(answer.text.trim())
             .map_err(|_| Error::NotALetter { finish_reason })?
             .trim();
-        // Models now and then leave out the tags around a body that is all they wrote.
+        // Models now and then leave out the tags around a body that is all they wrote: one that
+        // opens by addressing the mentor, not with a preface, a refusal or other markup.
         let body = match answer.strip_prefix("<body>") {
             Some(rest) => rest.strip_suffix("</body>"),
-            None => (!answer.starts_with('<') && !answer.contains("</body>")).then_some(answer),
+            None => (!answer.starts_with('<')
+                && !answer.contains("</body>")
+                && answer
+                    .lines()
+                    .next()
+                    .is_some_and(|line| check::addressed(line, &mentor.name, &mentor.aliases)))
+            .then_some(answer),
         }
         .map(str::trim)
         .filter(|b| !b.is_empty())

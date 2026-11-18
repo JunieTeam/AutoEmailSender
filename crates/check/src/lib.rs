@@ -108,10 +108,7 @@ pub fn letter(
             }
         }
     }
-    let addressed = std::iter::once(mentor)
-        .chain(aliases.iter().map(String::as_str))
-        .any(|name| addresses(body_md, name));
-    if !body_md.trim().is_empty() && !addressed {
+    if !body_md.trim().is_empty() && !addressed(body_md, mentor, aliases) {
         problems.push(Problem::NoSalutation {
             salutation: salutation(mentor),
         });
@@ -189,6 +186,13 @@ fn addresses(body: &str, name: &str) -> bool {
     let length = if COMPOUND_SURNAMES.iter().any(|s| name.starts_with(s)) {
         2
     } else {
+/// Whether `text` addresses the mentor named `mentor`, who also goes by `aliases`.
+pub fn addressed(text: &str, mentor: &str, aliases: &[String]) -> bool {
+    std::iter::once(mentor)
+        .chain(aliases.iter().map(String::as_str))
+        .any(|name| addresses(text, name))
+}
+
         1
     };
     let surname: String = name.chars().take(length).collect();

@@ -176,6 +176,11 @@ async fn a_body_alone_may_come_back_without_its_tags(db: SqlitePool) {
     let (address, _) = provider(vec![
         ("王伟老师：\n\n想请问您是否方便查看之前的申请。", "stop"),
         ("<Dear 王伟,>想请问您是否方便。</Dear 王伟,>", "stop"),
+        (
+            "以下是一封简短的追问：\n\n王伟老师：想请问您是否方便。",
+            "stop",
+        ),
+        ("抱歉，我无法完成这个请求。", "stop"),
         ("<body>王伟老师：想请问您是否方便。", "stop"),
     ])
     .await
@@ -218,8 +223,8 @@ async fn a_body_alone_may_come_back_without_its_tags(db: SqlitePool) {
         write().await.unwrap().body_md,
         "王伟老师：\n\n想请问您是否方便查看之前的申请。"
     );
-    // Tags of its own making, or a body left open, are not the letter asked for.
-    for _ in 0..2 {
+    // Tags of its own making, a preface, a refusal or a body left open are not the letter asked for.
+    for _ in 0..4 {
         let result = write().await;
         assert!(
             matches!(result, Err(Error::NotALetter { .. })),
