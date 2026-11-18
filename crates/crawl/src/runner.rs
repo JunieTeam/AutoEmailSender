@@ -1043,14 +1043,14 @@ async fn read_for_candidate(
         .collect();
     // A page that fills in its teacher with scripts shows only its template over HTTP, as
     // cta.jxufe.edu.cn writes `{{name}}` and vcc.tech's people pages ask for theirs.
-    let m = if !rendered
+    let (m, rendered) = if !rendered
         && c.kind != PageKind::EnrichChild
         && !extract::mentions(&m, &names)
         && let Some(material) = pages.render_again(reader.db, c, at, &m).await?
     {
-        material
+        (material, true)
     } else {
-        m
+        (m, rendered)
     };
     // A site can publish a teacher's page under each column that lists them, at another address
     // each time. Once one copy was read, another adds nothing.
@@ -1156,34 +1156,35 @@ async fn read_for_candidate(
         extract::fill(&mut person.fields.affiliations, unit);
     }
     let own = result.relation == extract::Relation::Matched;
-    // Only one person's own page vouches for every address on it. Elsewhere an address must sit
-    // by their name, as on a list, and a subpage that gives more than one is not trusted for any.
+    // Only one person's own page vouches for every address on it.
     if !own || c.kind == PageKind::EnrichChild {
-        let target_names: Vec<_> = names
-            .iter()
-            .copied()
-            .chain(person.fields.aliases.iter().map(String::as_str))
-            .collect();
-        let page_names: Vec<_> = result
-            .names
-            .iter()
-            .map(String::as_str)
-            .chain(target_names.iter().copied())
-            .collect();
-        let mut owned = Vec::new();
-        for email in m.units.iter().flat_map(|unit| &unit.emails) {
-            if !owned.contains(&email.address)
-                && crate::owns_email(&m, &page_names, &target_names, &email.address)
-            {
-                owned.push(email.address.clone());
+        owned(
+            &mut person,
+            &m,
+            &names,
+            &result.names,
+            c.kind == PageKind::EnrichChild,
+        );
+    }
+    if c.kind == PageKind::Profile && own {
+        let research = person.fields.research.is_none() && target.research.is_none();
+        let contact = person.fields.emails.is_empty() && target.emails.is_empty();
+        for url in extract::subpages(&m, research, contact) {
+            let Some(part) = subpage(reader, pages, scope, url, rendered, &target, &names).await?
+            else {
+                continue;
+            };
+            let f = &mut person.fields;
+            if f.research.is_none() {
+                f.research = part.fields.research;
+            }
+            if f.emails.is_empty() {
+                f.emails = part.fields.emails;
+            }
+            if (f.research.is_some() || !research) && (!f.emails.is_empty() || !contact) {
+                break;
             }
         }
-        let trusted = c.kind != PageKind::EnrichChild || owned.len() == 1;
-        person
-            .fields
-            .emails
-            .retain(|email| trusted && owned.contains(email));
-        person.fields.homepages.retain(|url| url != m.url.as_str());
     }
     person.recognized = person
         .fields
@@ -1204,6 +1205,114 @@ async fn read_for_candidate(
         failure: None,
         given: None,
     })
+}
+/// Keeps of the addresses the model gave the person only those by their name on the page, as on a
+/// list; on a `part` of their page, none if more than one is, as a page of a college's contacts.
+fn owned(person: &mut Person, m: &Material, names: &[&str], others: &[String], part: bool) {
+    let target_names: Vec<_> = (names.iter().copied())
+        .chain(person.fields.aliases.iter().map(String::as_str))
+        .collect();
+    let page_names: Vec<_> = (others.iter().map(String::as_str))
+        .chain(target_names.iter().copied())
+        .collect();
+    let mut owned = Vec::new();
+    for email in m.units.iter().flat_map(|unit| &unit.emails) {
+        if !owned.contains(&email.address)
+            && crate::owns_email(m, &page_names, &target_names, &email.address)
+        {
+            owned.push(email.address.clone());
+        }
+    }
+    let trusted = !part || owned.len() == 1;
+    person
+        .fields
+        .emails
+        .retain(|email| trusted && owned.contains(email));
+    person.fields.homepages.retain(|url| url != m.url.as_str());
+}
+
+/// What a page of a teacher's own page gives of them, read as part of it, in the browser if the page
+/// was: none when it does not open, does not name them or is not about them, which leaves their
+/// page as it read.
+async fn subpage(
+    reader: &Reader<'_>,
+    pages: &Pages,
+    scope: &Scope,
+    url: &PageUrl,
+    rendered: bool,
+    target: &MentorFields,
+    names: &[&str],
+) -> Result<Option<Person>, ReadError> {
+    let skipped = |reason: &str| {
+        tracing::info!(url = url.as_str(), reason, "subpage skipped");
+        Ok(None)
+    };
+    let Ok(at) = scope.page(url.clone()) else {
+        return skipped("outside_site");
+    };
+    // Its parts need the browser as the page did, as faculty-civileng.tongji.edu.cn's to decrypt
+    // their addresses.
+    let m = if rendered {
+        let Some(browser) = &pages.browser else {
+            return skipped("needs_browser");
+        };
+        let page = tokio::select! {
+            page = browser.render(&at, &[]) => page,
+            error = invalidated(reader.db, reader.claim) => return Err(error),
+        };
+        let Some((url, html)) = (page.ok())
+            .filter(|page| page.html.len() <= crate::fetch::MAX_PAGE_BYTES)
+            .and_then(|page| Some((at.redirect(at.url(), &page.url).ok()?, page.html)))
+        else {
+            return skipped("not_rendered");
+        };
+        let span = tracing::Span::current();
+        tokio::task::spawn_blocking(move || span.in_scope(|| crate::parse_rendered(&url, &html)))
+            .await
+            .map_err(|e| ReadError::Failed(crate::CrawlError::Worker(e).failure()))?
+    } else {
+        match pages.http.fetch(&at, false).await {
+            Ok(fetched) => fetched.material,
+            Err(error) => {
+                if let crate::CrawlError::SlowDown(wait) = error {
+                    let round = reader.cooldown.round(&reader.claim.crawl);
+                    reader.cooldown.defer(reader.claim.crawl, round, wait);
+                }
+                return skipped("not_fetched");
+            }
+        }
+    };
+    if m.needs_browser.is_some() {
+        return skipped("needs_browser");
+    }
+    if !extract::mentions(&m, names) {
+        return skipped("not_named");
+    }
+    let mut data = extract::data(&m, 0..m.units.len());
+    data["target"] = serde_json::json!({
+        "name": target.name,
+        "aliases": target.aliases,
+        "affiliations": target.affiliations
+    });
+    data["subpages"] = serde_json::json!(false);
+    // Failing alone, it leaves the page as it read; a pause or a limit holds the page back.
+    let result = match reader
+        .ask::<extract::Targeted>("profile", extract::TARGET, data)
+        .await
+    {
+        Ok(result) => result,
+        Err(ReadError::Failed(_)) => return skipped("model_failed"),
+        Err(error) => return Err(error),
+    };
+    if result.relation == extract::Relation::Mismatched {
+        return skipped("mismatched");
+    }
+    let Ok(mut person) = extract::profile(&m, target.name.clone(), result.details) else {
+        return skipped("invalid_profile");
+    };
+    owned(&mut person, &m, names, &result.names, true);
+    tracing::info!(url = url.as_str(), "subpage read");
+    Ok(Some(person))
 }
 /// Whom a list's profile page is read for, or whom they have merged into since; none when it is
 /// a link of nobody's.

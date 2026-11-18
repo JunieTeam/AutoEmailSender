@@ -709,6 +709,53 @@ fn front_page(link: &PageUrl, page: &PageUrl) -> bool {
         && (name.is_empty()
             || !name.contains('/') && matches!(stem.as_str(), "index" | "main" | "default"))
 }
+/// The pages a teacher's own page links of its own on what they research or how to reach them, for
+/// what it leaves out: a homepage system, as faculty-civileng.tongji.edu.cn's, shows each on a page
+/// of its own in the teacher's directory, named for it, its own section on the first saying no
+/// more than “暂无内容”. Those of a page at a site's root would be the site's.
+pub fn subpages(m: &Material, research: bool, contact: bool) -> Vec<&PageUrl> {
+    let page = m.url.parsed();
+    let Some(directory) = (page.path().rsplit_once('/')).map(|(directory, _)| directory) else {
+        return vec![];
+    };
+    if directory.is_empty() {
+        return vec![];
+    }
+    let named = |text: &str| {
+        let text = text.trim().to_lowercase();
+        let any = |words: &[&str]| words.iter().any(|w| text.contains(w));
+        research
+            && (text == "research"
+                || any(&[
+                    "研究方向",
+                    "研究领域",
+                    "研究兴趣",
+                    "研究内容",
+                    "科研方向",
+                    "research interest",
+                    "research area",
+                    "research direction",
+                    "research field",
+                ]))
+            || contact && (text.starts_with("contact") || any(&["联系方式", "联系信息", "联系我"]))
+    };
+    let mut found: Vec<&PageUrl> = Vec::new();
+    for (text, url) in links(m) {
+        let link = url.parsed();
+        if named(text)
+            && link.host_str() == page.host_str()
+            && link.path().starts_with(&format!("{directory}/"))
+            && !url.is_normalization_of(&m.url)
+            && !found.contains(&url)
+        {
+            found.push(url);
+            if found.len() == 2 {
+                break;
+            }
+        }
+    }
+    found
+}
 pub fn profile(m: &Material, name: String, p: Details) -> Result<Person, String> {
     let all = links(m);
     let mut homepages = vec![m.url.as_str().to_owned()];

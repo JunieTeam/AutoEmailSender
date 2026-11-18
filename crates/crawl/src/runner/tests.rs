@@ -1675,7 +1675,10 @@ async fn a_teacher_listed_under_several_categories_is_one_unless_told_apart() {
             } else if data["title"] == "王五" {
                 targeted("w1@school.example.edu")
             } else {
-                json!({"relation": "matched", "emails": [], "research": "催化", "names": []})
+                json!({
+                    "relation": "matched", "aliases": [], "emails": [], "affiliations": [],
+                    "homepages": [], "research": "催化", "papers": [], "names": [], "next": []
+                })
             };
             r.respond.send(Response::answer(&answer.to_string())).ok();
         }
@@ -1713,6 +1716,113 @@ async fn a_teacher_listed_under_several_categories_is_one_unless_told_apart() {
         ]
         .map(|(name, emails)| (name.to_owned(), emails.to_owned()))
     );
+    db.close().await;
+    dir.close().unwrap();
+}
+
+#[tokio::test]
+async fn a_teacher_s_page_leaving_their_research_to_a_page_of_its_own_is_read_with_it() {
+    // As faculty-civileng.tongji.edu.cn's homepages, whose 研究方向 says only 暂无内容, giving it on
+    // a page in the teacher's directory; the site's own 科学研究 is not theirs, and a page giving
+    // its teacher's research needs none of its parts.
+    let (dir, db) = test_fixtures::db::open().await.unwrap();
+    let site = Site::new().await;
+    site.page(
+        "/",
+        "<title>教授</title><p><a href='/t/zhang/index.htm'>张三</a></p>\
+        <p><a href='/t/li/index.htm'>李四</a></p>",
+    );
+    let nav = |who: &str| {
+        format!(
+            "<nav><a href='/t/{who}/yjfx.htm'>研究方向</a><a href='/t/{who}/lw.htm'>出版论著</a>\
+            <a href='/kxyj.htm'>科学研究</a></nav>"
+        )
+    };
+    site.page(
+        "/t/zhang/index.htm",
+        &format!(
+            "<title>张三</title>{}<p>张三 z@school.example.edu</p><h3>研究方向</h3><p>暂无内容</p>",
+            nav("zhang")
+        ),
+    );
+    site.page(
+        "/t/zhang/yjfx.htm",
+        &format!(
+            "<title>张三 研究方向</title>{}<p>张三</p><p>机器学习</p>",
+            nav("zhang")
+        ),
+    );
+    site.page(
+        "/t/li/index.htm",
+        &format!(
+            "<title>李四</title>{}<p>李四 l@school.example.edu</p><p>研究方向：数据库</p>",
+            nav("li")
+        ),
+    );
+    let mut provider = Provider::start().await.unwrap();
+    let id = config(&db, &provider.address).await;
+    let model = tokio::spawn(async move {
+        while let Some(r) = provider.requests.recv().await {
+            let system = r.body["messages"][0]["content"].as_str().unwrap();
+            let data: Value =
+                serde_json::from_str(r.body["messages"][1]["content"].as_str().unwrap()).unwrap();
+            let title = data["title"].as_str().unwrap();
+            let answer = if system.starts_with("你整理学院") {
+                json!({"kind": "list", "next": []})
+            } else if system.starts_with("你从教师") {
+                json!({"people": [listed("张三", Some(1), vec![]), listed("李四", Some(2), vec![])]})
+            } else {
+                let (emails, research) = match title {
+                    "张三" => (vec!["z@school.example.edu"], None),
+                    "张三 研究方向" => (vec![], Some("机器学习")),
+                    _ => (vec!["l@school.example.edu"], Some("数据库")),
+                };
+                json!({
+                    "relation": "matched", "aliases": [], "emails": emails, "affiliations": [],
+                    "homepages": [], "research": research, "papers": [], "names": [], "next": []
+                })
+            };
+            r.respond.send(Response::answer(&answer.to_string())).ok();
+        }
+    });
+    let crawl = queue::start(&db, &[site.url("/")], id, 1).await.unwrap();
+    let (tx, mut events) = mpsc::unbounded_channel();
+    let task = tokio::spawn(run_with_pages(
+        db.clone(),
+        net::Net::new(vec![]).unwrap(),
+        Arc::new(Pages::local(site.port)),
+        Crawler::default(),
+        Turns::default(),
+        move || {
+            tx.send(()).ok();
+        },
+        |_| {},
+    ));
+    changed_until(&db, crawl, &mut events, "done").await;
+    task.abort();
+    model.abort();
+    let candidates: Vec<(String, String, Option<String>)> =
+        sqlx::query_as("SELECT name, emails, research FROM candidate ORDER BY id")
+            .fetch_all(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        candidates,
+        [
+            ("张三", r#"["z@school.example.edu"]"#, Some("机器学习")),
+            ("李四", r#"["l@school.example.edu"]"#, Some("数据库")),
+        ]
+        .map(|(name, emails, research)| (
+            name.into(),
+            emails.into(),
+            research.map(Into::into)
+        ))
+    );
+    let visits = site.visits.lock().unwrap().clone();
+    assert!(visits.contains(&"/t/zhang/yjfx.htm".to_owned()));
+    for unread in ["/t/li/yjfx.htm", "/kxyj.htm", "/t/zhang/lw.htm"] {
+        assert!(!visits.contains(&unread.to_owned()), "{unread}");
+    }
     db.close().await;
     dir.close().unwrap();
 }
