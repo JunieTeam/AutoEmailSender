@@ -13,7 +13,8 @@ use ts_rs::TS;
     rename_all_fields = "camelCase"
 )]
 pub enum Problem {
-    /// A placeholder left as written, as what fills it was missing.
+    /// A placeholder left as written, as what fills it was missing, or a 【请补充：……】 marker left for
+    /// the student; `name` is the text as written.
     Placeholder {
         name: String,
     },
@@ -78,11 +79,9 @@ pub fn letter(
 ) -> Vec<Problem> {
     let mut problems: Vec<Problem> = template::PLACEHOLDERS
         .into_iter()
-        .filter(|name| {
-            let written = format!("{{{name}}}");
-            subject.contains(&written) || body_md.contains(&written)
-        })
-        .map(|name| Problem::Placeholder { name: name.into() })
+        .map(|name| format!("{{{name}}}"))
+        .filter(|written| subject.contains(written) || body_md.contains(written))
+        .map(|name| Problem::Placeholder { name })
         .collect();
     // Models asked for 【请补充：……】 now and then write it in other brackets.
     for text in [subject, body_md] {
@@ -91,12 +90,13 @@ pub fn letter(
                 let Some((content, _)) = rest.split_once(close) else {
                     continue;
                 };
+                // The colon tells a marker from a link such as [请补充材料的流程](…).
                 let prefix: String = content
                     .chars()
                     .filter(|c| !c.is_whitespace())
-                    .take(3)
+                    .take(4)
                     .collect();
-                if prefix != "请补充" {
+                if !matches!(prefix.as_str(), "请补充：" | "请补充:") {
                     continue;
                 }
                 let problem = Problem::Placeholder {
@@ -425,10 +425,10 @@ mod tests {
             ),
             [
                 Problem::Placeholder {
-                    name: "学院".into()
+                    name: "{学院}".into()
                 },
                 Problem::Placeholder {
-                    name: "我的姓名".into()
+                    name: "{我的姓名}".into()
                 }
             ]
         );
@@ -458,6 +458,7 @@ mod tests {
         for (body, marker) in [
             ("王老师：【重点】这是一段正常内容。", None),
             ("王老师：见[主页](https://example.com)。", None),
+            ("王老师：见[请补充材料的流程](https://example.com)。", None),
             (
                 "王老师：时间为[请补充：面谈时间]。",
                 Some("[请补充：面谈时间]"),

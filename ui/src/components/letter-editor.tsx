@@ -48,12 +48,21 @@ function decorate(doc: Node, className: string, find: (text: string) => [number,
   return DecorationSet.create(doc, found);
 }
 
+/** A 【请补充：……】 marker in any of the brackets the send check reads (`check::letter`). */
+const MARKER = [
+  ["【", "】"],
+  ["\\[", "\\]"],
+  ["［", "］"],
+]
+  .map(([open, close]) => `${open}\\s*请\\s*补\\s*充\\s*[：:][^${close}]*${close}`)
+  .join("|");
+
 /**
  * Highlights the placeholders the app fills in, such as `{导师姓名}`, so a mistyped one stands out by
  * staying plain.
  */
 function highlightPlaceholders(names: string[], className: string, unfilled: boolean) {
-  const pattern = new RegExp(`\\{(?:${names.join("|")})\\}${unfilled ? "|【请\\s*补\\s*充[^】]*】" : ""}`, "g");
+  const pattern = new RegExp(`\\{(?:${names.join("|")})\\}${unfilled ? `|${MARKER}` : ""}`, "g");
   return Extension.create({
     name: "highlightPlaceholders",
     addProseMirrorPlugins() {

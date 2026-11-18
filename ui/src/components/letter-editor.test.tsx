@@ -37,6 +37,9 @@ it.each([
   ["【请[补充](https://example.edu)：面谈时间】", "【请补充：面谈时间】"],
   ["【请补充:面谈时间】", "【请补充:面谈时间】"],
   ["【请补\n充：面谈时间】", "【请补充：面谈时间】"],
+  ["[请补充：面谈时间]", "[请补充：面谈时间]"],
+  ["［请补充：面谈时间］", "［请补充：面谈时间］"],
+  ["[请补充材料的流程](https://example.edu)", ""],
 ])("highlights the whole visible marker across inline nodes: %s", async (markdown, visible) => {
   const container = document.createElement("div");
   document.body.append(container);
