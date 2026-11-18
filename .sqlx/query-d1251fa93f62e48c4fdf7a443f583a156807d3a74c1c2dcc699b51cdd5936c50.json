@@ -1,0 +1,158 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, address, sender_name, provider, smtp_host, smtp_port,\n             smtp_security AS \"smtp_security: transport::Security\", imap_host, imap_port,\n             imap_security AS \"imap_security: transport::Security\", daily_limit, min_interval_s\n           FROM mailbox",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "address",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "address"
+          }
+        }
+      },
+      {
+        "name": "sender_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "sender_name"
+          }
+        }
+      },
+      {
+        "name": "provider",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "smtp_host",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "smtp_host"
+          }
+        }
+      },
+      {
+        "name": "smtp_port",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "smtp_port"
+          }
+        }
+      },
+      {
+        "name": "smtp_security: transport::Security",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "smtp_security"
+          }
+        }
+      },
+      {
+        "name": "imap_host",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "imap_host"
+          }
+        }
+      },
+      {
+        "name": "imap_port",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "imap_port"
+          }
+        }
+      },
+      {
+        "name": "imap_security: transport::Security",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "imap_security"
+          }
+        }
+      },
+      {
+        "name": "daily_limit",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "daily_limit"
+          }
+        }
+      },
+      {
+        "name": "min_interval_s",
+        "ordinal": 11,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "mailbox",
+            "name": "min_interval_s"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d1251fa93f62e48c4fdf7a443f583a156807d3a74c1c2dcc699b51cdd5936c50"
+}

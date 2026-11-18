@@ -2,6 +2,7 @@
 
 mod archive;
 pub mod cloud;
+mod values;
 
 use std::fs::{self, File};
 use std::io;
@@ -382,6 +383,7 @@ async fn inspect_database(
             "备份数据库的关联数据不完整，请换一份备份文件".into(),
         ));
     }
+    values::inspect(conn).await?;
     let materials: Vec<(i64, i64)> = sqlx::query_as("SELECT id, size FROM material")
         .fetch_all(&mut *conn)
         .await?;

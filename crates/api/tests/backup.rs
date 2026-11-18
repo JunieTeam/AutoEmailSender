@@ -226,6 +226,54 @@ async fn extra_trigger_is_rejected_and_staging_is_removed(db: SqlitePool) {
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn values_only_the_app_defines_are_checked_as_it_reads_them(db: SqlitePool) {
+    let dir = tempfile::tempdir().unwrap();
+    fixture(&db, dir.path()).await;
+    // Each edit the schema allows but the app cannot read, the row it names and how to undo it.
+    let edits = [
+        (
+            "UPDATE model_config SET provider = 'gone' WHERE id = 1",
+            "模型配置第 1 条",
+            "UPDATE model_config SET provider = 'deepseek' WHERE id = 1",
+        ),
+        (
+            "UPDATE model_config SET off_peak_input_price = 1 WHERE id = 2",
+            "模型配置第 2 条",
+            "UPDATE model_config SET off_peak_input_price = NULL WHERE id = 2",
+        ),
+        (
+            "UPDATE mailbox SET provider = 'gone'",
+            "邮箱 me@example.invalid",
+            "UPDATE mailbox SET provider = 'custom'",
+        ),
+        (
+            r#"UPDATE mailbox SET paused_until = 1, pause_reason = '{"kind":"gone"}'"#,
+            "mailbox 表的 pause_reason",
+            "UPDATE mailbox SET paused_until = NULL, pause_reason = NULL",
+        ),
+        (
+            "UPDATE crawl_page SET url = 'not a page'",
+            "crawl_page 表的 url",
+            "UPDATE crawl_page SET url = 'https://example.invalid'",
+        ),
+    ];
+    let target = dir.path().join("backup.zip");
+    for (edit, place, undo) in edits {
+        sqlx::raw_sql(edit).execute(&db).await.unwrap();
+        backup::export(&db, dir.path(), &target, NOW).await.unwrap();
+        let error = backup::prepare(dir.path(), &target).await.unwrap_err();
+        assert!(
+            matches!(&error, backup::Error::Invalid(message) if message.contains(place)),
+            "{edit}: {error}"
+        );
+        assert!(!dir.path().join("restore").exists());
+        sqlx::raw_sql(undo).execute(&db).await.unwrap();
+    }
+    backup::export(&db, dir.path(), &target, NOW).await.unwrap();
+    backup::prepare(dir.path(), &target).await.unwrap();
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn changed_migration_checksum_is_rejected_and_staging_is_removed(db: SqlitePool) {
     let dir = tempfile::tempdir().unwrap();
     fixture(&db, dir.path()).await;
