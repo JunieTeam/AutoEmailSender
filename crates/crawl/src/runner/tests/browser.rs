@@ -2344,6 +2344,63 @@ async fn a_namesake_is_not_another_s_while_a_page_that_can_tell_them_apart_faile
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_teacher_s_page_read_takes_no_namesake_who_can_as_well_be_another_s(db: SqlitePool) {
+    // Two of a name with pages of their own, one failing to read until a retry shows the address
+    // a list gave someone of the name; another list gives the name only, which can be either's.
+    let site = Site::new().await;
+    site.page("/", "<title>名单</title><p><a href='/zhang1'>张三</a></p>");
+    site.pages
+        .lock()
+        .unwrap()
+        .insert("/zhang1".into(), (404, String::new()));
+    site.page(
+        "/lab",
+        "<title>实验室</title><p><a href='/zhang2'>张三</a></p>",
+    );
+    site.page("/zhang2", "<title>张三</title><p>张三</p>");
+    site.page(
+        "/all",
+        "<title>全体</title><p>张三 a@school.example.edu</p>",
+    );
+    site.page("/group", "<title>课题组</title><p>张三</p>");
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    answer_lists(provider, |title| match title {
+        "全体" => json!({"people": [listed("张三", None, vec!["a@school.example.edu"])]}),
+        "课题组" => json!({"people": [listed("张三", None, vec![])]}),
+        _ => json!({"people": [listed("张三", Some(1), vec![])]}),
+    });
+    let crawl = queue::start(&db, &[site.url("/"), site.url("/lab")], model, 1)
+        .await
+        .unwrap();
+    let pages = Pages {
+        writes: db::Writes::default(),
+        http: Fetcher::local(site.port),
+        browser: None,
+        recognize: super::recognize,
+    };
+    read_all(&db, &pages).await;
+    for path in ["/all", "/group"] {
+        find_later(&db, &site, crawl, path).await;
+        read_all(&db, &pages).await;
+    }
+    site.page(
+        "/zhang1",
+        "<title>张三</title><p>张三 a@school.example.edu</p>",
+    );
+    queue::retry(&db, crawl, None, crate::now()).await.unwrap();
+    read_all(&db, &pages).await;
+    assert_eq!(
+        names_and_emails(&db).await,
+        [
+            ("张三".into(), r#"["a@school.example.edu"]"#.into()),
+            ("张三".into(), "[]".into()),
+            ("张三".into(), "[]".into())
+        ]
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_list_pages_on_past_the_limit_of_pages_finding_no_one_new(db: SqlitePool) {
     // The crawl has read as many pages finding no teacher new to it as it reads, as a list misread
     // might give: a list finding someone new still pages on, and nothing else is read.
