@@ -106,7 +106,7 @@ const READ_PAGE: &str = concat!(
         inline(body.querySelectorAll('iframe'), part.querySelectorAll('iframe'));
         const content = document.createElement('div');
         // Its head's scripts can be what makes its links turn pages; that they are there is enough.
-        content.append(...[...frame.contentDocument.head.querySelectorAll('script')].map(script => script.cloneNode(false)));
+        content.append(...[...frame.contentDocument.querySelectorAll('head script')].map(script => script.cloneNode(false)));
         content.append(...part.childNodes);
         copies[at].replaceWith(content);
     });
