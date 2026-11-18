@@ -565,6 +565,30 @@ fn a_pager_s_counts_beside_its_controls_end_all_of_them_on_its_last_page() {
 }
 
 #[test]
+fn a_pager_leads_on_only_by_its_links_to_later_pages() {
+    // A link back can be to the first page by another address; a pager counting no pages gives
+    // the page this is by its address.
+    let second = PageUrl::parse("https://school.example.edu/list?page=2").unwrap();
+    let page = parse(
+        &second,
+        "<div class='pages'><a href='/list?page=1'>上一页</a><a href='/list?page=1'>1</a>\
+        <span>2</span><a href='/list?page=3'>3</a><a href='/list?page=3'>下一页</a></div>",
+    );
+    let onward: Vec<_> = (page.pagination.onward.iter())
+        .map(PageUrl::as_str)
+        .collect();
+    assert_eq!(onward, ["https://school.example.edu/list?page=3"]);
+    let last = PageUrl::parse("https://school.example.edu/list?page=3").unwrap();
+    let page = parse(
+        &last,
+        "<div class='pages'><a href='/list?page=1'>1</a><a href='/list?page=2'>2</a>\
+        <span>3</span></div>",
+    );
+    assert_eq!(page.pagination.urls.len(), 2);
+    assert!(page.pagination.onward.is_empty());
+}
+
+#[test]
 fn a_pager_offering_only_to_jump_to_a_page_needs_no_browser() {
     // A list of chem.scu.edu.cn on one page: its page turns are plain text, and only the control
     // jumping to the page written in the box beside it acts, which no browser can replay either.

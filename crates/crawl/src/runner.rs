@@ -1559,7 +1559,7 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                             )
                             .await?;
                         } else {
-                            left |= p.material.pagination.later
+                            left |= p.material.pagination.onward.contains(url)
                                 && !queue::queued(&mut tx, c.crawl, url, PageKind::List, &[])
                                     .await?;
                         }

@@ -2039,6 +2039,39 @@ async fn a_last_page_turned_to_finding_no_one_new_leaves_nothing_unread(db: Sqli
     assert_eq!(limits, "[]");
 }
 
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn pages_still_to_read_leave_room_under_the_limit(db: SqlitePool) {
+    // As the many pages a long list's first page queues at once.
+    let site = Site::new().await;
+    let provider = Provider::start().await.unwrap();
+    let model = config(&db, &provider.address).await;
+    let crawl = queue::start(&db, &[site.url("/")], model, 1).await.unwrap();
+    for n in 0..queue::LIST_LIMIT {
+        sqlx::query(
+            r#"INSERT INTO crawl_page (crawl_id, url, scope_url, kind, mode, status, error,
+                work_state)
+            VALUES (?, ?, ?, 'list', 'http', 'failed', '{"message":"尚未读取","details":null}',
+                'queued')"#,
+        )
+        .bind(crawl)
+        .bind(site.url(&format!("/?page={n}")).as_str())
+        .bind(site.url("/").as_str())
+        .execute(&db)
+        .await
+        .unwrap();
+    }
+    let mut conn = db.acquire().await.unwrap();
+    let dept = site.url("/dept");
+    queue::enqueue(&mut conn, crawl, &dept, &site.url("/"), 1, PageKind::Entry)
+        .await
+        .unwrap();
+    assert!(
+        queue::queued(&mut conn, crawl, &dept, PageKind::Entry, &[])
+            .await
+            .unwrap()
+    );
+}
+
 /// Reads and saves the pages queued, however each turns out.
 async fn read_all(db: &SqlitePool, pages: &Pages) {
     while let Some(claim) = queue::next(db).await.unwrap() {

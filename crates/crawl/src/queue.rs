@@ -131,7 +131,9 @@ pub async fn enqueue(
 
 /// Queues the page `url` opens to after `steps`, if it is `limited` only while fewer pages read for
 /// lists found no teacher new to the crawl than the limit: it stops a crawl wandering, not reading
-/// a long list, whose next page follows one that found someone new.
+/// a long list, whose next page follows one that found someone new. A list's pages still to read,
+/// as the many its first page queues, count for nothing yet; other pages count once queued, as
+/// what one page leads to can be many.
 #[expect(
     clippy::too_many_arguments,
     reason = "the page as the queue keeps it, and whether the limit holds it back"
@@ -154,7 +156,7 @@ pub(crate) async fn enqueue_steps(
         && sqlx::query_scalar!(
             r#"SELECT count(*)
             FROM crawl_page p
-            WHERE crawl_id = ? AND kind IN ('entry','list')
+            WHERE crawl_id = ? AND kind IN ('entry','list') AND (work_state = 'done' OR kind = 'entry')
             AND NOT EXISTS (SELECT 1 FROM candidate WHERE list_page_id = p.id)"#,
             crawl
         )

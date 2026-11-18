@@ -78,8 +78,8 @@ pub struct Pagination {
     /// It counts pages after this one, and leads on to them only by a jump to the page written in
     /// a box, which no click replays.
     pub jump_only: bool,
-    /// Whether the pager leads on to a later page, by a link or a click; its links can lead back.
-    pub later: bool,
+    /// Those of `urls` leading on to a later page; the others lead back.
+    pub onward: Vec<PageUrl>,
     /// The page its pager says this is.
     pub page: Option<u32>,
 }

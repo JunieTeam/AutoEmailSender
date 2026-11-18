@@ -214,6 +214,8 @@ static PAGES: LazyLock<Regex> = LazyLock::new(|| {
 pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool) -> Pagination {
     let mut contexts: Vec<Context<'_>> = Vec::new();
     let mut pagination = Pagination::default();
+    // Whether the pager leads on to a later page, by a link or a click.
+    let mut later = false;
     // A last-page control leading here says this is the last page, which another pager on it, as
     // one for phones, can still offer a next page past.
     let at_last =
@@ -360,7 +362,9 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
         }
         let onward = match control.kind {
             Kind::Backward | Kind::First => false,
-            Kind::Number(n) => counted.is_none_or(|(page, _)| n > page),
+            // Without a count, the page its address names is the one this is.
+            Kind::Number(n) => (counted.map(|(page, _)| page).or_else(|| query_page(url)))
+                .is_none_or(|page| n > page),
             // Labelled otherwise, as 返回, a link leads on only to a page after the one this is, as
             // its address names it or else the pager the link is in counts it: a query counting
             // from 0 falls one short of the pager, which at most notes pages unread that were not.
@@ -375,7 +379,10 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                 if !pagination.urls.contains(link) {
                     pagination.urls.push(link.clone());
                 }
-                pagination.later |= onward;
+                if onward && !pagination.onward.contains(link) {
+                    pagination.onward.push(link.clone());
+                }
+                later |= onward;
             }
         } else if matches!(control.kind, Kind::Jump) {
             // Past the check for its last page above, a pager counting its pages has more.
@@ -396,13 +403,13 @@ pub(crate) fn extract(controls: &[Control<'_>], url: &PageUrl, has_scripts: bool
                         control: control.text.clone(),
                     });
                 }
-                pagination.later |= onward;
+                later |= onward;
             }
         }
     }
     // A jump goes to the page written in the box beside it, which no click replays: the pages
     // only it leads to stay unread, though the pager can lead back to earlier ones.
-    pagination.jump_only &= !pagination.later;
+    pagination.jump_only &= !later;
     pagination
 }
 
