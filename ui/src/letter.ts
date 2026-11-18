@@ -15,9 +15,10 @@ export const LETTER_BODY =
 export function letterHtml(markdown: string, style: LetterStyle): string {
   const doc = new DOMParser().parseFromString(toHtml(markdown), "text/html");
   const spacing = `0 0 ${style.paragraphSpacingEm}em`;
+  if (style.firstLineIndent) separateSalutation(doc.body);
   for (const p of doc.querySelectorAll("p")) {
     p.style.margin = spacing;
-    if (style.firstLineIndent && !p.closest("li")) p.style.textIndent = "2em";
+    if (style.firstLineIndent && !p.closest("li") && !atMargin(p)) p.style.textIndent = "2em";
   }
   for (const list of doc.querySelectorAll<HTMLElement>("ul, ol")) {
     const nested = list.parentElement?.closest("li");
@@ -47,6 +48,31 @@ export function letterHtml(markdown: string, style: LetterStyle): string {
   page.style.lineHeight = String(style.lineHeight);
   page.append(...doc.body.childNodes);
   return page.outerHTML;
+}
+
+// A Chinese letter starts its salutation and a 敬礼 standing alone at the margin, indented or not.
+const SALUTATION = /[：:]$/;
+const SALUTE = /^敬礼[！!]?$/;
+
+/** Whether an indented letter leaves the paragraph at the margin. */
+function atMargin(p: HTMLParagraphElement): boolean {
+  const text = (p.textContent ?? "").trim();
+  return (p === p.ownerDocument.body.firstElementChild && SALUTATION.test(text)) || SALUTE.test(text);
+}
+
+/** The salutation on the first line of a letter, its own paragraph: the lines after it are indented. */
+function separateSalutation(body: HTMLElement) {
+  const first = body.firstElementChild;
+  if (!(first instanceof HTMLParagraphElement)) return;
+  const nodes = [...first.childNodes];
+  const br = nodes.find((node) => node instanceof HTMLBRElement);
+  if (!br) return;
+  const line = nodes.slice(0, nodes.indexOf(br));
+  if (!SALUTATION.test(line.map(inline).join("").trim())) return;
+  const salutation = body.ownerDocument.createElement("p");
+  salutation.append(...line);
+  br.remove();
+  first.before(salutation);
 }
 
 /** A letter's body as plain text, for mail apps that show no HTML. */

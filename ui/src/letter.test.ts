@@ -32,6 +32,30 @@ test("paragraphs are indented, and lists move in as a whole", () => {
   expect(plain.querySelector("ul")?.style.paddingLeft).toBe("2em");
 });
 
+const paragraphs = (markdown: string, s: LetterStyle) =>
+  [...render(markdown, s).querySelectorAll("p")].map((p) => [p.textContent?.trim(), p.style.textIndent]);
+
+test("an indented letter leaves its salutation and a 敬礼 standing alone at the margin", () => {
+  const indented = { ...style, firstLineIndent: true };
+  expect(paragraphs("王老师：\n您好！我是林晓。\n\n此致\n敬礼！\n\n林晓", indented)).toEqual([
+    ["王老师：", ""],
+    ["您好！我是林晓。", "2em"],
+    ["此致敬礼！", "2em"],
+    ["林晓", "2em"],
+  ]);
+  expect(paragraphs("尊敬的王老师:\n\n正文：\n\n此致\n\n敬礼", indented)).toEqual([
+    ["尊敬的王老师:", ""],
+    ["正文：", "2em"],
+    ["此致", "2em"],
+    ["敬礼", ""],
+  ]);
+  expect(paragraphs("您好！我是林晓。\n\n下面是：", indented)).toEqual([
+    ["您好！我是林晓。", "2em"],
+    ["下面是：", "2em"],
+  ]);
+  expect(paragraphs("王老师：\n您好！", style)).toEqual([["王老师：您好！", ""]]);
+});
+
 test("links to anything but web pages and email addresses are only text", () => {
   const page = render("[点我](javascript:alert(1)) [网页](https://a.com) [邮箱](mailto:a@b.com)", style);
   expect([...page.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
