@@ -243,7 +243,7 @@ async fn values_only_the_app_defines_are_checked_as_it_reads_them(db: SqlitePool
         ),
         (
             "UPDATE mailbox SET provider = 'gone'",
-            "邮箱 me@example.invalid",
+            "邮箱配置第 1 条",
             "UPDATE mailbox SET provider = 'custom'",
         ),
         (

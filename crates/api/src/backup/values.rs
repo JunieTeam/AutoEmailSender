@@ -54,6 +54,8 @@ pub(super) async fn inspect(conn: &mut SqliteConnection) -> Result<()> {
     decodes::<Json<email::fact_check::FactCheck>>(conn, "email", "fact_check").await?;
     decodes::<Json<Vec<i64>>>(conn, "email", "open_times").await?;
     decodes::<Json<cloud_api::library::Record>>(conn, "mentor_library", "record").await?;
+    decodes::<Json<library::updates::Value>>(conn, "library_update", "original").await?;
+    decodes::<Json<library::updates::Value>>(conn, "library_update", "incoming").await?;
     models(conn).await?;
     mailboxes(conn).await?;
     schedules(conn).await
@@ -146,7 +148,7 @@ async fn mailboxes(conn: &mut SqliteConnection) -> Result<()> {
             .check()
         })();
         if let Err(reason) = checked {
-            return Err(unreadable(&format!("邮箱 {}：{reason}", r.address)));
+            return Err(unreadable(&format!("邮箱配置第 {} 条：{reason}", r.id)));
         }
     }
     Ok(())
@@ -154,12 +156,12 @@ async fn mailboxes(conn: &mut SqliteConnection) -> Result<()> {
 
 /// Sending windows read as the tasks sending in them do.
 async fn schedules(conn: &mut SqliteConnection) -> Result<()> {
-    for task in sqlx::query!("SELECT id, name FROM task")
+    for task in sqlx::query!("SELECT id FROM task")
         .fetch_all(&mut *conn)
         .await?
     {
         if email::schedule::get(conn, task.id).await.is_err() {
-            return Err(unreadable(&format!("任务“{}”的发送时间", task.name)));
+            return Err(unreadable(&format!("任务第 {} 条的发送时间", task.id)));
         }
     }
     Ok(())

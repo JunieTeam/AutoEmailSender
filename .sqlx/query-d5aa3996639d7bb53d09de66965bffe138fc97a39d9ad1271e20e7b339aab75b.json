@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, name FROM task",
+  "query": "SELECT id FROM task",
   "describe": {
     "columns": [
       {
@@ -13,26 +13,14 @@
             "name": "id"
           }
         }
-      },
-      {
-        "name": "name",
-        "ordinal": 1,
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "task",
-            "name": "name"
-          }
-        }
       }
     ],
     "parameters": {
       "Right": 0
     },
     "nullable": [
-      false,
       false
     ]
   },
-  "hash": "be1e9194fa2c21a526fbe18b2041e8aece095a9e7926b403bb719394e0cc6427"
+  "hash": "d5aa3996639d7bb53d09de66965bffe138fc97a39d9ad1271e20e7b339aab75b"
 }

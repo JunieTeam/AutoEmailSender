@@ -29,7 +29,7 @@ pub enum Field {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
-pub(crate) enum Value {
+pub enum Value {
     Text(Option<String>),
     Affiliation(Affiliation),
 }
