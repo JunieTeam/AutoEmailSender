@@ -27,23 +27,29 @@ const PREFIX: &str = "crawl-browser-";
 const TIMEOUT: Duration = Duration::from_secs(20);
 const POLL: Duration = Duration::from_millis(500);
 const STABLE: Duration = Duration::from_millis(1500);
-const PAGE_SNAPSHOT: &str = r#"(() => {
-    // The page is read with its own site's frames, whose scripts can still be filling them in.
-    const text = page => [page.body?.innerText ?? '', ...[...page.querySelectorAll('iframe')]
-        .map(frame => frame.contentDocument ? text(frame.contentDocument) : '')].join('\n');
+const PAGE_SNAPSHOT: &str = concat!(
+    "(() => {",
+    include_str!("browser/frames.js"),
+    r#"
+    // Its frames' scripts can still be filling them in.
+    const pages = documents(document);
     return {
-        state: document.readyState,
+        state: pages.every(page => page.readyState === 'complete') ? 'complete' : 'loading',
         url: location.href,
         leaving: document.__aesCrawlLeaving === true,
         material: {
-            text: text(document),
-            links: [...document.querySelectorAll('a[href]')].map(element => element.href),
-            images: [...document.querySelectorAll('img[alt]')].map(element => element.getAttribute('alt')),
+            text: pages.map(page => page.body?.innerText ?? '').join('\n'),
+            links: pages.flatMap(page => [...page.querySelectorAll('a[href]')].map(element => element.href)),
+            images: pages.flatMap(page => [...page.querySelectorAll('img[alt]')].map(element => element.getAttribute('alt'))),
         },
     };
-})()"#;
+})()"#
+);
 const WATCH_NAVIGATION: &str = include_str!("browser/navigation.js");
-const CLICK_CONTROL: &str = r#"(label => {
+const CLICK_CONTROL: &str = concat!(
+    "(label => {",
+    include_str!("browser/frames.js"),
+    r#"
     const alternative = element => {
         const attributes = element.tagName === 'IMG' ? ['alt', 'title', 'aria-label'] : ['aria-label', 'title', 'alt'];
         return attributes.map(name => element.getAttribute(name)).find(value => value?.trim());
@@ -57,10 +63,11 @@ const CLICK_CONTROL: &str = r#"(label => {
     // A link opens another page rather than acting here, and a site's menu can link a page by the
     // label a control here has too.
     const leads = element => element.tagName === 'A' && /^\s*(?!#|javascript:)\S/i.test(element.getAttribute('href') || '');
-    const control = [...document.querySelectorAll('a,button,input,[role="button"],[onclick]')].find(element => {
+    const controls = documents(document).flatMap(page => [...page.querySelectorAll('a,button,input,[role="button"],[onclick]')]);
+    const control = controls.find(element => {
         if (element.tagName === 'INPUT' && !['button', 'submit', 'image'].includes((element.getAttribute('type') || '').toLowerCase())) return false;
         if (leads(element)) return false;
-        const style = getComputedStyle(element);
+        const style = element.ownerDocument.defaultView.getComputedStyle(element);
         return !element.disabled && !element.closest('[disabled],[aria-disabled="true"],.disabled')
             && element.getClientRects().length && style.visibility !== 'hidden'
             && controlText(element).trim().replace(/\s+/g, ' ') === label;
@@ -68,15 +75,16 @@ const CLICK_CONTROL: &str = r#"(label => {
     if (!control) return false;
     control.click();
     return true;
-})"#;
-const READ_PAGE: &str = r#"(limit => {
-    // A frame of the page's own site shows part of it, as one a script writes the page's text into
-    // does; another site's frame cannot be read.
+})"#
+);
+const READ_PAGE: &str = concat!(
+    "(limit => {",
+    include_str!("browser/frames.js"),
+    r#"
+    // Each frame that shows takes the place of its element.
     const inline = (frames, copies) => [...frames].forEach((frame, at) => {
-        const body = frame.contentDocument?.body;
-        // A hidden frame, as one holding a page for printing, shows nothing of the page.
-        const style = frame.ownerDocument.defaultView.getComputedStyle(frame);
-        if (!body || !frame.getClientRects().length || style.visibility === 'hidden') return;
+        if (!shows(frame)) return;
+        const body = frame.contentDocument.body;
         const part = body.cloneNode(true);
         // Its addresses are relative to its own document, not the page's, the lazy images' too.
         const absolute = value => {
@@ -101,7 +109,8 @@ const READ_PAGE: &str = r#"(limit => {
     const html = page.outerHTML;
     if (new TextEncoder().encode(html).length > limit) return {tooLarge:true};
     return {url:location.href,html};
-})"#;
+})"#
+);
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
