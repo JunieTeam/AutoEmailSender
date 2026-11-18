@@ -1171,16 +1171,10 @@ async fn read_for_candidate(
             c.kind == PageKind::EnrichChild,
         );
     }
+    person.recognized = recognized(&person, &m);
     if c.kind == PageKind::Profile && own {
         read_parts(reader, pages, scope, &m, rendered, &target, &mut person).await?;
     }
-    person.recognized = person
-        .fields
-        .emails
-        .iter()
-        .filter(|address| m.only_from_image(address))
-        .cloned()
-        .collect();
     Ok(Page {
         material: m,
         kind: c.kind,
@@ -1219,8 +1213,16 @@ fn owned(person: &mut Person, m: &Material, names: &[&str], others: &[String], p
     person.fields.homepages.retain(|url| url != m.url.as_str());
 }
 
-/// Fills in the research and addresses `person`'s own page leaves to pages of its own, for what
-/// `target`, whom it is read for, lacks too.
+/// The addresses the person was given that the page shows only in its images.
+fn recognized(person: &Person, m: &Material) -> Vec<String> {
+    (person.fields.emails.iter())
+        .filter(|address| m.only_from_image(address))
+        .cloned()
+        .collect()
+}
+
+/// Fills in the research or addresses `person`'s own page leaves to pages of its own, if `target`,
+/// whom it is read for, lacks them too.
 async fn read_parts(
     reader: &Reader<'_>,
     pages: &Pages,
@@ -1230,23 +1232,37 @@ async fn read_parts(
     target: &MentorFields,
     person: &mut Person,
 ) -> Result<(), ReadError> {
-    let names: Vec<_> = std::iter::once(target.name.as_str())
-        .chain(target.aliases.iter().map(String::as_str))
-        .collect();
-    let research = person.fields.research.is_none() && target.research.is_none();
-    let contact = person.fields.emails.is_empty() && target.emails.is_empty();
+    // Whom the parts are of, by the names their page gives them too, with what is known of them.
+    let mut whom = target.clone();
+    for alias in &person.fields.aliases {
+        if !whom.aliases.contains(alias) {
+            whom.aliases.push(alias.clone());
+        }
+    }
+    if whom.research.is_none() {
+        whom.research.clone_from(&person.fields.research);
+    }
+    if whom.emails.is_empty() {
+        whom.emails.clone_from(&person.fields.emails);
+    }
+    let (research, contact) = (whom.research.is_none(), whom.emails.is_empty());
     for url in extract::subpages(m, research, contact) {
-        let Some(part) = subpage(reader, pages, scope, url, rendered, target, &names).await? else {
+        // A site asking to slow down is asked for nothing the page can do without.
+        if reader.cooldown.until().is_some() {
+            break;
+        }
+        let Some(part) = subpage(reader, pages, scope, url, rendered, &whom).await? else {
             continue;
         };
         let f = &mut person.fields;
-        if f.research.is_none() {
+        if research && f.research.is_none() {
             f.research = part.fields.research;
         }
-        if f.emails.is_empty() {
+        if contact && f.emails.is_empty() {
             f.emails = part.fields.emails;
+            person.recognized = part.recognized;
         }
-        if (f.research.is_some() || !research) && (!f.emails.is_empty() || !contact) {
+        if (!research || f.research.is_some()) && (!contact || !f.emails.is_empty()) {
             break;
         }
     }
@@ -1254,8 +1270,8 @@ async fn read_parts(
 }
 
 /// What a page of a teacher's own page gives of them, read as part of it, in the browser if the page
-/// was: none when it does not open, does not name them or is not about them, which leaves their
-/// page as it read.
+/// was, with its images and documents for what `target` lacks: none when it does not open, does
+/// not name them or is not theirs, which leaves their page as it read.
 async fn subpage(
     reader: &Reader<'_>,
     pages: &Pages,
@@ -1263,8 +1279,10 @@ async fn subpage(
     url: &PageUrl,
     rendered: bool,
     target: &MentorFields,
-    names: &[&str],
 ) -> Result<Option<Person>, ReadError> {
+    let names: Vec<_> = std::iter::once(target.name.as_str())
+        .chain(target.aliases.iter().map(String::as_str))
+        .collect();
     let skipped = |reason: &str| {
         tracing::info!(url = url.as_str(), reason, "subpage skipped");
         Ok(None)
@@ -1307,9 +1325,27 @@ async fn subpage(
     if m.needs_browser.is_some() {
         return skipped("needs_browser");
     }
-    if !extract::mentions(&m, names) {
+    if !extract::mentions(&m, &names) {
         return skipped("not_named");
     }
+    let files = embedded::Reader {
+        fetcher: &pages.http,
+        recognize: pages.recognize,
+        cooldown: reader.cooldown,
+        crawl: reader.claim.crawl,
+    };
+    let read = files.read(
+        m,
+        target.emails.is_empty(),
+        target.emails.is_empty() || target.research.is_none(),
+    );
+    let m = tokio::select! {
+        m = read => match m {
+            Ok(m) => m,
+            Err(_) => return skipped("embedded_failed"),
+        },
+        error = invalidated(reader.db, reader.claim) => return Err(error),
+    };
     let mut data = extract::data(&m, 0..m.units.len());
     data["target"] = serde_json::json!({
         "name": target.name,
@@ -1326,13 +1362,14 @@ async fn subpage(
         Err(ReadError::Failed(_)) => return skipped("model_failed"),
         Err(error) => return Err(error),
     };
-    if result.relation == extract::Relation::Mismatched {
-        return skipped("mismatched");
+    if result.relation != extract::Relation::Matched {
+        return skipped("not_theirs");
     }
     let Ok(mut person) = extract::profile(&m, target.name.clone(), result.details) else {
         return skipped("invalid_profile");
     };
-    owned(&mut person, &m, names, &result.names, true);
+    owned(&mut person, &m, &names, &result.names, true);
+    person.recognized = recognized(&person, &m);
     tracing::info!(url = url.as_str(), "subpage read");
     Ok(Some(person))
 }

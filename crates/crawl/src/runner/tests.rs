@@ -1724,18 +1724,20 @@ async fn a_teacher_listed_under_several_categories_is_one_unless_told_apart() {
 async fn a_teacher_s_page_leaving_their_research_to_a_page_of_its_own_is_read_with_it() {
     // As faculty-civileng.tongji.edu.cn's homepages, whose 研究方向 says only 暂无内容, giving it on
     // a page in the teacher's directory; the site's own 科学研究 is not theirs, and a page giving
-    // its teacher's research needs none of its parts.
+    // its teacher's research needs none of its parts. A part is read only for what they lack, and
+    // can name them as their page does.
     let (dir, db) = test_fixtures::db::open().await.unwrap();
     let site = Site::new().await;
     site.page(
         "/",
         "<title>教授</title><p><a href='/t/zhang/index.htm'>张三</a></p>\
-        <p><a href='/t/li/index.htm'>李四</a></p>",
+        <p><a href='/t/li/index.htm'>李四</a></p><p><a href='/t/wang/index.htm'>王五</a></p>\
+        <p><a href='/t/zhao/index.htm'>赵六</a></p>",
     );
     let nav = |who: &str| {
         format!(
-            "<nav><a href='/t/{who}/yjfx.htm'>研究方向</a><a href='/t/{who}/lw.htm'>出版论著</a>\
-            <a href='/kxyj.htm'>科学研究</a></nav>"
+            "<nav><a href='/t/{who}/yjfx.htm'>研究方向</a><a href='/t/{who}/lxfs.htm'>联系方式</a>\
+            <a href='/t/{who}/lw.htm'>出版论著</a><a href='/kxyj.htm'>科学研究</a></nav>"
         )
     };
     site.page(
@@ -1759,6 +1761,31 @@ async fn a_teacher_s_page_leaving_their_research_to_a_page_of_its_own_is_read_wi
             nav("li")
         ),
     );
+    site.page(
+        "/t/wang/index.htm",
+        &format!("<title>王五</title>{}<p>王五</p>", nav("wang")),
+    );
+    site.page(
+        "/t/wang/lxfs.htm",
+        &format!(
+            "<title>王五 联系方式</title>{}<p>王五 w@school.example.edu</p><p>新方向</p>",
+            nav("wang")
+        ),
+    );
+    site.page(
+        "/t/zhao/index.htm",
+        &format!(
+            "<title>赵六</title>{}<p>赵六 Liu Zhao zl@school.example.edu</p>",
+            nav("zhao")
+        ),
+    );
+    site.page(
+        "/t/zhao/yjfx.htm",
+        &format!(
+            "<title>Liu Zhao</title>{}<p>Liu Zhao</p><p>Databases</p>",
+            nav("zhao")
+        ),
+    );
     let mut provider = Provider::start().await.unwrap();
     let id = config(&db, &provider.address).await;
     let model = tokio::spawn(async move {
@@ -1770,15 +1797,24 @@ async fn a_teacher_s_page_leaving_their_research_to_a_page_of_its_own_is_read_wi
             let answer = if system.starts_with("你整理学院") {
                 json!({"kind": "list", "next": []})
             } else if system.starts_with("你从教师") {
-                json!({"people": [listed("张三", Some(1), vec![]), listed("李四", Some(2), vec![])]})
+                json!({"people": [
+                    listed("张三", Some(1), vec![]),
+                    listed("李四", Some(2), vec![]),
+                    {"n": "王五", "t": "教授", "p": 3, "e": [], "r": "已有方向"},
+                    listed("赵六", Some(4), vec![]),
+                ]})
             } else {
-                let (emails, research) = match title {
-                    "张三" => (vec!["z@school.example.edu"], None),
-                    "张三 研究方向" => (vec![], Some("机器学习")),
-                    _ => (vec!["l@school.example.edu"], Some("数据库")),
+                let (aliases, emails, research) = match title {
+                    "张三" => (vec![], vec!["z@school.example.edu"], None),
+                    "张三 研究方向" => (vec![], vec![], Some("机器学习")),
+                    "李四" => (vec![], vec!["l@school.example.edu"], Some("数据库")),
+                    "王五" => (vec![], vec![], None),
+                    "王五 联系方式" => (vec![], vec!["w@school.example.edu"], Some("新方向")),
+                    "赵六" => (vec!["Liu Zhao"], vec!["zl@school.example.edu"], None),
+                    _ => (vec![], vec![], Some("Databases")),
                 };
                 json!({
-                    "relation": "matched", "aliases": [], "emails": emails, "affiliations": [],
+                    "relation": "matched", "aliases": aliases, "emails": emails, "affiliations": [],
                     "homepages": [], "research": research, "papers": [], "names": [], "next": []
                 })
             };
@@ -1811,6 +1847,8 @@ async fn a_teacher_s_page_leaving_their_research_to_a_page_of_its_own_is_read_wi
         [
             ("张三", r#"["z@school.example.edu"]"#, Some("机器学习")),
             ("李四", r#"["l@school.example.edu"]"#, Some("数据库")),
+            ("王五", r#"["w@school.example.edu"]"#, Some("已有方向")),
+            ("赵六", r#"["zl@school.example.edu"]"#, Some("Databases")),
         ]
         .map(|(name, emails, research)| (
             name.into(),
@@ -1820,7 +1858,14 @@ async fn a_teacher_s_page_leaving_their_research_to_a_page_of_its_own_is_read_wi
     );
     let visits = site.visits.lock().unwrap().clone();
     assert!(visits.contains(&"/t/zhang/yjfx.htm".to_owned()));
-    for unread in ["/t/li/yjfx.htm", "/kxyj.htm", "/t/zhang/lw.htm"] {
+    for unread in [
+        "/t/li/yjfx.htm",
+        "/t/li/lxfs.htm",
+        "/t/zhang/lxfs.htm",
+        "/t/wang/yjfx.htm",
+        "/kxyj.htm",
+        "/t/zhang/lw.htm",
+    ] {
         assert!(!visits.contains(&unread.to_owned()), "{unread}");
     }
     db.close().await;
