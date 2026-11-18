@@ -30,9 +30,13 @@ impl UpdateInfo {
     pub fn new(version: String, published_at: Option<i64>, notes: &str, current: &str) -> Self {
         // A version that does not parse is not after any: None is less than Some.
         let current = semver::Version::parse(current).ok();
+        let target = semver::Version::parse(&version).ok();
         let releases = releases(notes)
             .into_iter()
-            .filter(|r| semver::Version::parse(&r.version).ok() > current)
+            .filter(|r| {
+                let release = semver::Version::parse(&r.version).ok();
+                release > current && release <= target
+            })
             .collect();
         Self {
             version,
@@ -101,6 +105,45 @@ pub fn releases(changelog: &str) -> Vec<Release> {
     releases
 }
 
+/// Why a changelog cannot go out with a release, if it cannot: each version is older than the one
+/// above it and dated, but for the first while it is being prepared, and lists at least one change,
+/// under the headings `releases` reads; anything else would be left out of the app.
+pub fn check(changelog: &str) -> Result<(), String> {
+    for line in changelog.lines().map(str::trim) {
+        let read = line.is_empty()
+            || line == "# 更新日志"
+            || line.starts_with("## ")
+            || line.starts_with("- ")
+            || ["### 新功能", "### 改进", "### 修复"].contains(&line);
+        if !read {
+            return Err(format!("读不懂这一行：{line}"));
+        }
+    }
+    let releases = releases(changelog);
+    let listed = changelog.lines().filter(|l| l.trim().starts_with("- ")).count();
+    if releases.iter().map(|r| r.changes.len()).sum::<usize>() != listed {
+        return Err("有的条目不在“### 新功能”“### 改进”“### 修复”下面".into());
+    }
+    let mut newer: Option<semver::Version> = None;
+    for (i, release) in releases.iter().enumerate() {
+        let version = semver::Version::parse(&release.version)
+            .map_err(|_| format!("版本号写错了：{}", release.version))?;
+        if newer.as_ref().is_some_and(|newer| *newer <= version) {
+            return Err(format!("{version} 要写在比它新的版本下面"));
+        }
+        match &release.date {
+            Some(date) if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_ok() => {}
+            None if i == 0 => {}
+            _ => return Err(format!("{version} 的日期要写成（YYYY-MM-DD）")),
+        }
+        if release.changes.is_empty() {
+            return Err(format!("{version} 下面没有写变化"));
+        }
+        newer = Some(version);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,6 +154,11 @@ mod tests {
             - 乙\n\n## 3.0.1（2026-12-20）\n\n### 改进\n\n- 丙\n\n### 文档\n\n- 不列\n\n\
             ## 3.0.0（2026-12-01）\n\n### 新功能\n\n- 丁\n";
         let info = UpdateInfo::new("3.1.0".into(), None, notes, "3.0.0");
+        // A changelog lists nothing past the version it came with.
+        assert_eq!(
+            UpdateInfo::new("3.0.1".into(), None, notes, "3.0.0").releases[0].version,
+            "3.0.1"
+        );
         let change = |kind, text: &str| Change {
             kind,
             text: text.into(),
@@ -141,14 +189,23 @@ mod tests {
     }
 
     #[test]
-    fn the_bundled_changelog_reads_whole() {
-        let listed = CHANGELOG.lines().filter(|l| l.starts_with("- ")).count();
-        let read = releases(CHANGELOG);
-        assert_eq!(read.iter().map(|r| r.changes.len()).sum::<usize>(), listed);
-        assert!(
-            read.iter()
-                .all(|r| semver::Version::parse(&r.version).is_ok())
-        );
+    fn a_changelog_goes_out_only_when_the_app_reads_all_of_it() {
+        check(CHANGELOG).unwrap();
+        let dated = "## 3.0.1（2026-12-20）\n\n### 修复\n\n- 甲\n\n\
+            ## 3.0.0（2026-12-01）\n\n### 新功能\n\n- 乙\n";
+        check(dated).unwrap();
+        check(&format!("## 3.0.2\n\n### 改进\n\n- 丙\n\n{dated}")).unwrap();
+        for wrong in [
+            dated.replace("2026-12-20", "2026-99-40"),
+            dated.replace("（2026-12-01）", ""),
+            dated.replace("### 修复", "### 修正"),
+            dated.replace("\n- 甲\n", "\n"),
+            dated.replace("3.0.1", "2.9.0"),
+            dated.replace("### 修复\n\n", ""),
+            format!("说明\n\n{dated}"),
+        ] {
+            assert!(check(&wrong).is_err(), "{wrong}");
+        }
     }
 }
 

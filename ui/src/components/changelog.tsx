@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { changelog } from "@/api/app";
+import { failureOf } from "@/api/call";
 import type { Change, ChangeKind, Release } from "@/api/types";
+import { FailureNote } from "@/components/failure";
+import { Loading } from "@/components/loading";
 import { Dialog, DialogBody, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { day } from "@/format";
 
@@ -56,6 +59,8 @@ export function ChangelogDialog({ onClose }: { onClose: () => void }) {
       <DialogContent className="w-[520px]">
         <DialogHeader>更新日志</DialogHeader>
         <DialogBody className="flex flex-col gap-6 pb-6 text-sm">
+          {releases.isPending && <Loading />}
+          {releases.isError && <FailureNote failure={failureOf(releases.error)} />}
           {releases.data?.map((r) => (
             <section key={r.version} className="flex flex-col gap-3">
               <h3 className="text-base font-semibold">

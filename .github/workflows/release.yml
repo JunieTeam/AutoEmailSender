@@ -33,6 +33,7 @@ jobs:
           import os
           import re
           import tomllib
+          from datetime import date
           from pathlib import Path
 
           version = tomllib.loads(Path("Cargo.toml").read_text())["workspace"]["package"]["version"]
@@ -43,7 +44,10 @@ jobs:
           changelog = Path("CHANGELOG.md").read_text()
           sections = re.split(r"^## ", changelog, flags=re.M)[1:]
           heading, _, body = (sections[0] if sections else "").partition("\n")
-          if not re.fullmatch(rf"{re.escape(version)}（\d{{4}}-\d{{2}}-\d{{2}}）", heading.strip()):
+          dated = re.fullmatch(rf"{re.escape(version)}（(\d{{4}}-\d{{2}}-\d{{2}})）", heading.strip())
+          try:
+              date.fromisoformat(dated[1] if dated else "")
+          except ValueError:
               raise SystemExit(f"CHANGELOG.md 最上面要是写好日期的 {version}")
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write(f"notes<<NOTES_END\n{body.strip()}\nNOTES_END\n")

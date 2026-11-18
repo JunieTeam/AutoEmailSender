@@ -28,6 +28,7 @@ pub async fn publish(tag: &str, dir: &Path) -> crate::Result {
         return Err(format!("读不到标签 {tag} 上的 CHANGELOG.md").into());
     }
     let notes = String::from_utf8(tagged.stdout)?;
+    api::updater::check(&notes).map_err(|e| format!("标签 {tag} 上的 CHANGELOG.md：{e}"))?;
     match api::updater::releases(&notes).first() {
         Some(r) if r.version == version && r.date.is_some() => {}
         _ => return Err(format!("CHANGELOG.md 最上面要是写好日期的 {version}").into()),
