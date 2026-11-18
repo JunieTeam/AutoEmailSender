@@ -84,19 +84,23 @@ pub fn letter(
         })
         .map(|name| Problem::Placeholder { name: name.into() })
         .collect();
+    // Models asked for 【请补充：……】 now and then write it in other brackets.
     for text in [subject, body_md] {
-        for rest in text.split("【请").skip(1) {
-            if let Some((content, _)) = rest.split_once('】') {
+        for (open, close) in [('【', '】'), ('[', ']'), ('［', '］')] {
+            for rest in text.split(open).skip(1) {
+                let Some((content, _)) = rest.split_once(close) else {
+                    continue;
+                };
                 let prefix: String = content
                     .chars()
                     .filter(|c| !c.is_whitespace())
-                    .take(2)
+                    .take(3)
                     .collect();
-                if prefix != "补充" {
+                if prefix != "请补充" {
                     continue;
                 }
                 let problem = Problem::Placeholder {
-                    name: format!("【请{content}】"),
+                    name: format!("{open}{content}{close}"),
                 };
                 if !problems.contains(&problem) {
                     problems.push(problem);
@@ -450,9 +454,18 @@ mod tests {
     }
 
     #[test]
-    fn student_decision_markers_are_found_with_either_colon_or_a_line_break() {
+    fn student_decision_markers_are_found_in_any_bracket_with_either_colon_or_a_line_break() {
         for (body, marker) in [
             ("王老师：【重点】这是一段正常内容。", None),
+            ("王老师：见[主页](https://example.com)。", None),
+            (
+                "王老师：时间为[请补充：面谈时间]。",
+                Some("[请补充：面谈时间]"),
+            ),
+            (
+                "王老师：时间为［请补充：面谈时间］。",
+                Some("［请补充：面谈时间］"),
+            ),
             (
                 "王老师：时间为【请补充：面谈时间】。",
                 Some("【请补充：面谈时间】"),
