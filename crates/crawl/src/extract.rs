@@ -495,10 +495,10 @@ pub fn compared(m: &Material) -> String {
         "blocks": (m.units.iter())
             .map(|u| {
                 let block = block(u, &all, true);
-                // A footer's or menu's numbers count visits or date the last update, and change
-                // from one opening of a page to the next, as faculty-civileng.tongji.edu.cn's
-                // 总访问量 does. Where its links lead is compared apart.
-                if u.footer_or_nav.is_some() {
+                // A footer's or menu's line of text counts visits or dates the last update, which
+                // changes from one opening of a page to the next, as faculty-civileng.tongji.edu.cn's
+                // 总访问量 does. One linking or giving an address can be a list's, wrapped in one.
+                if u.footer_or_nav.is_some() && u.links.is_empty() && u.emails.is_empty() {
                     block.chars().filter(|c| !c.is_ascii_digit()).collect()
                 } else {
                     block
@@ -836,6 +836,17 @@ mod tests {
         assert_eq!(
             compared(&page(17313159, 236)),
             compared(&page(17313194, 236))
+        );
+        // A menu's address tells another page.
+        let menu = |address: &str| {
+            crate::page::parse(
+                &url,
+                &format!("<nav><p>张三 <a href='mailto:{address}'>邮箱</a></p></nav>"),
+            )
+        };
+        assert_ne!(
+            compared(&menu("zhang1@school.example.edu")),
+            compared(&menu("zhang2@school.example.edu"))
         );
         // A category of it counts other teachers.
         assert_ne!(
