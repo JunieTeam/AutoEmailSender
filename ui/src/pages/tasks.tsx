@@ -587,9 +587,19 @@ export function TaskReviewPage() {
               </Button>
             )}
             {t.progress.generationFailed > 0 && t.state !== "stopped" && (
-              <Button variant="ghost" className="w-full" onClick={() => action.mutate("retryTaskGeneration")}>
-                重试全部生成失败的
-              </Button>
+              // Retrying writes with the task's model, which may wait for consent like going on does.
+              <ModelAction
+                feature="writing"
+                modelIds={[t.modelConfigId]}
+                checked
+                disabled={action.isPending}
+                onWrite={() => action.mutate("retryTaskGeneration")}
+                renderTrigger={(props) => (
+                  <Button variant="ghost" className="w-full" {...props}>
+                    重试全部生成失败的
+                  </Button>
+                )}
+              />
             )}
           </div>
           <div ref={scroller} className="min-h-0 flex-1 space-y-[3px] overflow-y-auto px-2">
@@ -743,12 +753,14 @@ function DraftDetail({
         ) : d.state === "generation_failed" ? (
           <div className="space-y-3 p-5">
             {d.error && <FailureNote failure={d.error} lead="生成失败：" className="text-warning" />}
-            <Button
+            <ModelAction
+              feature="writing"
+              modelIds={[task.modelConfigId]}
+              checked
               disabled={action.isPending || task.state === "stopped"}
-              onClick={() => action.mutate("retryTaskGeneration")}
-            >
-              重试
-            </Button>
+              onWrite={() => action.mutate("retryTaskGeneration")}
+              renderTrigger={(props) => <Button {...props}>重试</Button>}
+            />
           </div>
         ) : (
           <TaskLetter
@@ -795,7 +807,7 @@ function DraftDetail({
             </>
           )}
           {(d.state === "approved" || d.state === "failed") && task.state !== "stopped" && (
-            <Button variant="quiet" onClick={() => action.mutate("withdrawEmail")}>
+            <Button variant="ghost" size="sm" onClick={() => action.mutate("withdrawEmail")}>
               改回草稿
             </Button>
           )}

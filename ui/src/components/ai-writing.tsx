@@ -166,7 +166,7 @@ export function ModelAction({
   /** AI 核对 follows what the model writes, on a model of its own, when it is turned on. */
   checked?: boolean;
   children?: ReactNode;
-  /** Going on with or retrying work looks like the buttons beside it, such as "暂停". */
+  /** For the default button: going on with or retrying work looks like the buttons beside it, such as "暂停". */
   variant?: "ai" | "quiet";
   size?: "default" | "sm";
   renderTrigger?: (props: { disabled: boolean; onClick?: () => void }) => ReactElement;
