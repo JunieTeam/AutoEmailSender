@@ -147,6 +147,7 @@ export function MatchingProgress() {
                 {p.pause ? (
                   <ModelAction
                     feature="match"
+                    variant="quiet"
                     disabled={action.isPending}
                     onWrite={() => action.mutate("resumeMatching")}
                   >
@@ -172,7 +173,12 @@ export function MatchingProgress() {
             {p.failed > 0 && (
               <>
                 <span className="text-warning">失败 {p.failed} 位</span>
-                <ModelAction feature="match" disabled={action.isPending} onWrite={() => action.mutate("retryMatching")}>
+                <ModelAction
+                  feature="match"
+                  variant="quiet"
+                  disabled={action.isPending}
+                  onWrite={() => action.mutate("retryMatching")}
+                >
                   重试
                 </ModelAction>
               </>

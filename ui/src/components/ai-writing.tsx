@@ -154,6 +154,8 @@ export function ModelAction({
   modelIds,
   checked,
   children,
+  variant = "ai",
+  size = "default",
   renderTrigger,
   disabled,
   onWrite,
@@ -164,6 +166,9 @@ export function ModelAction({
   /** AI 核对 follows what the model writes, on a model of its own, when it is turned on. */
   checked?: boolean;
   children?: ReactNode;
+  /** Going on with or retrying work looks like the buttons beside it, such as "暂停". */
+  variant?: "ai" | "quiet";
+  size?: "default" | "sm";
   renderTrigger?: (props: { disabled: boolean; onClick?: () => void }) => ReactElement;
   disabled: boolean;
   onWrite: () => void;
@@ -194,7 +199,13 @@ export function ModelAction({
     return renderTrigger ? (
       renderTrigger({ disabled: off, onClick })
     ) : (
-      <Button variant="ai" className="px-3" disabled={off} onClick={onClick}>
+      <Button
+        variant={variant}
+        size={size}
+        className={variant === "ai" ? "px-3" : undefined}
+        disabled={off}
+        onClick={onClick}
+      >
         {children}
       </Button>
     );

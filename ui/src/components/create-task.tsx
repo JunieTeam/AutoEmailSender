@@ -6,7 +6,7 @@ import { cn } from "cn";
 import { call, failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
 import type { Material, ModelEstimate, NewTask, TemplateSummary, Writer, Kind } from "@/api/types";
-import { ModelAction } from "@/components/ai-writing";
+import { AiIcon, ModelAction } from "@/components/ai-writing";
 import { featureModel } from "@/components/model-dialog";
 import { Field, formClose } from "@/components/form";
 import { LIBRARY_STATUS } from "@/components/library";
@@ -400,6 +400,7 @@ function TaskSteps({
               disabled={create.isPending || !form.name.trim() || !scheduleValid(form.schedule) || !enoughCapacity}
               onWrite={() => create.mutate()}
             >
+              <AiIcon />
               创建任务
             </ModelAction>
           ) : (

@@ -314,19 +314,28 @@ function CrawlRow({ crawl: c }: { crawl: CrawlSummary }) {
 /** "继续" of a paused crawl, which reads only the pages still to read; with none left, it calls no model. */
 export function ResumeCrawl({
   crawl: c,
+  size,
   disabled,
   onResume,
 }: {
   crawl: CrawlSummary;
+  size?: "sm";
   disabled: boolean;
   onResume: () => void;
 }) {
   return c.remaining > 0 ? (
-    <ModelAction feature="crawl" disabled={disabled} modelIds={c.modelIds} onWrite={onResume}>
+    <ModelAction
+      feature="crawl"
+      variant="quiet"
+      size={size}
+      disabled={disabled}
+      modelIds={c.modelIds}
+      onWrite={onResume}
+    >
       继续
     </ModelAction>
   ) : (
-    <Button variant="quiet" disabled={disabled} onClick={onResume}>
+    <Button variant="quiet" size={size} disabled={disabled} onClick={onResume}>
       继续
     </Button>
   );
@@ -1263,6 +1272,7 @@ function EnrichDialog({
               start.mutate(undefined, { onError: () => client.invalidateQueries({ queryKey: ["listModelConfigs"] }) })
             }
           >
+            <AiIcon />
             {start.isPending ? "正在安排…" : "开始补全"}
           </ModelAction>
         </DialogFooter>

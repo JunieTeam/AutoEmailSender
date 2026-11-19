@@ -399,6 +399,7 @@ export function TaskReviewPage() {
             (t.state === "paused" && t.writer === "ai" && t.progress.generating > 0 ? (
               <ModelAction
                 feature="writing"
+                variant="quiet"
                 modelIds={[t.modelConfigId]}
                 checked
                 disabled={action.isPending}

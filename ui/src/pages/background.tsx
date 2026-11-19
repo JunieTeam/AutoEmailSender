@@ -287,6 +287,7 @@ export function BackgroundPage() {
                   {c.state === "paused" && (
                     <ResumeCrawl
                       crawl={c}
+                      size="sm"
                       disabled={crawl.isPending}
                       onResume={() => crawl.mutate({ op: "resumeCrawl", id: c.id })}
                     />
@@ -306,6 +307,8 @@ export function BackgroundPage() {
                   </Link>
                   <ModelAction
                     feature="match"
+                    variant="quiet"
+                    size="sm"
                     disabled={matching.isPending}
                     onWrite={() => matching.mutate("resumeMatching")}
                   >
@@ -323,6 +326,8 @@ export function BackgroundPage() {
                   </Link>
                   <ModelAction
                     feature="reply"
+                    variant="quiet"
+                    size="sm"
                     disabled={resumeReplies.isPending}
                     onWrite={() => resumeReplies.mutate()}
                   >
