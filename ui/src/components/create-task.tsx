@@ -305,36 +305,40 @@ function TaskSteps({
                   主题沿用上一封。AI 会把之前发出的信的主题和正文发给所选模型，用于撰写简短追问；选模板时只使用正文。
                 </p>
               )}
-              <fieldset className="space-y-2">
-                <legend className="mb-2 text-muted-foreground">参考材料</legend>
-                {materials
-                  .filter((m) => m.hasText)
-                  .map((m) => (
+              {materials.some((m) => m.hasText) && (
+                <fieldset className="space-y-2">
+                  <legend className="mb-2 text-muted-foreground">参考材料</legend>
+                  {materials
+                    .filter((m) => m.hasText)
+                    .map((m) => (
+                      <label className="flex items-center gap-2" key={m.id}>
+                        <Checkbox
+                          checked={form.references.includes(m.id)}
+                          onCheckedChange={(on) => toggle("references", m.id, on)}
+                        />
+                        <span className="min-w-0 truncate">{m.fileName}</span>
+                      </label>
+                    ))}
+                </fieldset>
+              )}
+              {materials.length > 0 && (
+                <fieldset className="space-y-2">
+                  <legend className="mb-2 text-muted-foreground">
+                    附件{attached.length > 0 && ` · ${fileSize(attached.reduce((n, m) => n + m.size, 0))}`}
+                  </legend>
+                  {materials.map((m) => (
                     <label className="flex items-center gap-2" key={m.id}>
                       <Checkbox
-                        checked={form.references.includes(m.id)}
-                        onCheckedChange={(on) => toggle("references", m.id, on)}
+                        checked={form.attachments.includes(m.id)}
+                        disabled={!form.attachments.includes(m.id) && attached.some((a) => a.fileName === m.fileName)}
+                        onCheckedChange={(on) => toggle("attachments", m.id, on)}
                       />
                       <span className="min-w-0 truncate">{m.fileName}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{fileSize(m.size)}</span>
                     </label>
                   ))}
-              </fieldset>
-              <fieldset className="space-y-2">
-                <legend className="mb-2 text-muted-foreground">
-                  附件{attached.length > 0 && ` · ${fileSize(attached.reduce((n, m) => n + m.size, 0))}`}
-                </legend>
-                {materials.map((m) => (
-                  <label className="flex items-center gap-2" key={m.id}>
-                    <Checkbox
-                      checked={form.attachments.includes(m.id)}
-                      disabled={!form.attachments.includes(m.id) && attached.some((a) => a.fileName === m.fileName)}
-                      onCheckedChange={(on) => toggle("attachments", m.id, on)}
-                    />
-                    <span className="min-w-0 truncate">{m.fileName}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{fileSize(m.size)}</span>
-                  </label>
-                ))}
-              </fieldset>
+                </fieldset>
+              )}
               {materials.length === 0 && (
                 <p className="text-muted-foreground">
                   尚未添加材料，可在
