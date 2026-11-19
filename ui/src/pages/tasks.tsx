@@ -84,8 +84,10 @@ const SEGMENTS: [keyof Progress, string, string][] = [
   ["failed", "发送失败", "bg-destructive"],
   ["canceled", "已取消", "bg-input"],
 ];
+/** The task's letters, each in one of the segments: `cloud` is part of `approved`. */
+const letterCount = (progress: Progress) => SEGMENTS.reduce((n, [k]) => n + progress[k], 0);
 function ProgressBar({ progress, labels = false }: { progress: Progress; labels?: boolean }) {
-  const total = Object.values(progress).reduce((n, v) => n + v, 0);
+  const total = letterCount(progress);
   return (
     <div className="min-w-0">
       <div
@@ -199,7 +201,7 @@ function TaskList() {
               <div className="min-w-0">
                 <h2 className="truncate font-medium">{t.name}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {day(t.createdAt)} · {Object.values(t.progress).reduce((n, v) => n + v, 0)} 位导师
+                  {day(t.createdAt)} · {letterCount(t.progress)} 位导师
                   {t.progress.review > 0 && t.state !== "stopped" && (
                     <span className="text-foreground"> · {t.progress.review} 封待审核</span>
                   )}
