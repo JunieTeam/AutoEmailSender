@@ -8,6 +8,7 @@ import { refreshTasks } from "@/components/task-cache";
 import { FailureNote } from "@/components/failure";
 import type {
   DraftFilter,
+  DraftPage,
   DraftState,
   Failure,
   PlanColumn,
@@ -325,8 +326,44 @@ export function TaskReviewPage() {
   function choose(email: number | undefined, step = matchMedia(COMPACT).matches) {
     void navigate({ search: (s) => ({ ...s, email }), replace: !step });
   }
+  /**
+   * Shows a page of the list as it is now, and on it the letter `pick` chooses; unless the user has
+   * moved on meanwhile, to another letter, page or filter, which stays.
+   */
+  function turn(to: number, from: number, pick: (shown: DraftPage) => number | undefined) {
+    void client
+      .fetchQuery({
+        queryKey: ["listTaskDrafts", id, filter, to],
+        queryFn: () => call("listTaskDrafts", { taskId: id, filter, page: to }),
+      })
+      .then((shown) => {
+        // One emptied since, as by approving the last letter on it: the page before, at its end.
+        if (shown.drafts.length === 0 && to > 1) return turn(to - 1, from, (before) => before.drafts.at(-1)?.id);
+        const { location } = router.state;
+        if (location.pathname === `/tasks/${id}` && location.search.email === from)
+          void navigate({
+            search: (s) => ({ ...s, page: to > 1 ? to : undefined, email: pick(shown) }),
+            replace: true,
+          });
+      })
+      .catch((e: unknown) => setError(failureOf(e)));
+  }
+  /**
+   * docs/ui.md#任务: an approved letter moves down the list, and the one after it takes its place,
+   * from the next page too; that one is shown next.
+   */
+  function approved(email: number) {
+    const index = (list.data?.drafts ?? []).findIndex((d) => d.id === email);
+    refreshTasks(client);
+    turn(page, email, (shown) => (shown.drafts[index] ?? shown.drafts.at(-1))?.id);
+  }
   function move(delta: number) {
     const drafts = list.data?.drafts ?? [];
+    // In a narrow window with only the list on show, J opens the first letter.
+    if (search.email === undefined) {
+      if (delta > 0 && drafts[0]) choose(drafts[0].id);
+      return;
+    }
     const index = drafts.findIndex((d) => d.id === current);
     const next = drafts[index + delta];
     if (next) choose(next.id, false);
@@ -598,10 +635,7 @@ export function TaskReviewPage() {
             composer={composer}
             chosen={search.email !== undefined}
             onBack={() => choose(undefined, false)}
-            onApproved={() => {
-              refreshTasks(client);
-              move(1);
-            }}
+            onApproved={() => approved(current)}
           />
         ) : (
           <section className="compact:hidden">
