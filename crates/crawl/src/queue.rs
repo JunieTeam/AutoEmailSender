@@ -164,7 +164,7 @@ pub(crate) async fn enqueue_steps(
         .await?
             >= LIST_LIMIT
     {
-        limit(conn, crawl, "找名单已有 60 页没找到新导师，后面的没有读").await?;
+        limit(conn, crawl, "查找名单时已有 60 页未找到新导师，未读取后续页面").await?;
         return Ok(());
     }
     sqlx::query!(

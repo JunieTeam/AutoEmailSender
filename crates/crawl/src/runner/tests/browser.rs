@@ -1841,7 +1841,7 @@ async fn a_list_paging_on_only_by_a_jump_notes_its_later_pages_unread() {
             .await
             .unwrap();
         assert_eq!(
-            limits, r#"["有的名单只能输入页码跳转，后面的页没有读"]"#,
+            limits, r#"["部分名单只能输入页码跳转，未读取后续页面"]"#,
             "{pagers:?}"
         );
         db.close().await;

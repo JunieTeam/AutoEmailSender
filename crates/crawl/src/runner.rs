@@ -783,7 +783,7 @@ fn read_again(c: &Claim, m: Material, kind: PageKind) -> Page {
     match c.steps.last().and_then(|s| s.page) {
         Some(page) if m.pagination.page.is_some_and(|on| on < page) => Page {
             failure: Some(Failure::new(format!(
-                "名单翻到第 {page} 页时页面没有变化，后面的页没有读"
+                "名单翻到第 {page} 页时页面未变化，未读取后续页面"
             ))),
             ..Page::nothing(m, PageKind::Entry)
         },
@@ -1630,15 +1630,11 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
                     }
                 }
                 if left {
-                    queue::limit(
-                        &mut tx,
-                        c.crawl,
-                        "有的名单翻到的一页没有新导师，后面的页没有读",
-                    )
-                    .await?;
+                    queue::limit(&mut tx, c.crawl, "部分名单的某一页无新导师，未读取后续页面")
+                        .await?;
                 }
                 if p.kind == PageKind::List && p.material.pagination.jump_only {
-                    queue::limit(&mut tx, c.crawl, "有的名单只能输入页码跳转，后面的页没有读")
+                    queue::limit(&mut tx, c.crawl, "部分名单只能输入页码跳转，未读取后续页面")
                         .await?;
                 }
             }
@@ -1779,8 +1775,8 @@ async fn finish(db: &SqlitePool, at: i64) -> Result<Vec<CrawlFinished>, sqlx::Er
             let reason = if pages.read == 0 {
                 "本次整理未能处理任何页面。请查看各页面的原因后重试。"
             } else {
-                "没有在读到的网页上找到导师。请换成学院“师资队伍”“教师名录”这类页面再试；\
-                要登录或只对校内开放的页面读不到。"
+                "读取的网页上未找到导师。请换成学院“师资队伍”“教师名录”这类页面再试；\
+                需要登录或仅限校内访问的页面无法读取。"
             };
             sqlx::query!(
                 "UPDATE crawl SET state = 'failed', error = ? WHERE id = ?",
@@ -1804,8 +1800,8 @@ async fn finish(db: &SqlitePool, at: i64) -> Result<Vec<CrawlFinished>, sqlx::Er
         let mut messages = Vec::new();
         if activity.iter().any(|p| p.candidate_id.is_none()) {
             messages.push(match (candidates, pages.read) {
-                (0, 0) => format!("整理未能完成：{failed} 个页面未打开，去智能整理里查看原因"),
-                (0, _) => "整理没有找到导师，去智能整理里查看原因".to_owned(),
+                (0, 0) => format!("整理未能完成：{failed} 个页面未打开，请在智能整理中查看原因"),
+                (0, _) => "整理未找到导师，请在智能整理中查看原因".to_owned(),
                 _ => format!("整理完成：找到 {candidates} 位候选，{failed} 个页面未打开"),
             });
         }
@@ -1814,7 +1810,7 @@ async fn finish(db: &SqlitePool, at: i64) -> Result<Vec<CrawlFinished>, sqlx::Er
             .filter(|p| p.enrich == Some(enrich::EnrichState::Done))
             .count();
         if enriched > 0 {
-            messages.push(format!("信息补全完成：{enriched} 位，去候选里查看结果"));
+            messages.push(format!("信息补全完成：{enriched} 位，可在候选中查看结果"));
         }
         if !messages.is_empty() {
             sqlx::query!("UPDATE crawl SET reported_at=? WHERE id=?", at, id)

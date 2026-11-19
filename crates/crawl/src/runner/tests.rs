@@ -5294,11 +5294,11 @@ async fn a_crawl_that_finds_no_teacher_fails_and_says_what_to_try(db: SqlitePool
     assert!(
         finish(&db, now()).await.unwrap()[0]
             .message
-            .contains("没有找到导师")
+            .contains("未找到导师")
     );
     let crawl = &queue::list(&db, 1).await.unwrap().crawls[0];
     assert_eq!(crawl.state, queue::CrawlState::Failed);
     let reason = &crawl.error.as_ref().unwrap().message;
-    assert!(reason.contains("没有在读到的网页上找到导师"), "{reason}");
+    assert!(reason.contains("读取的网页上未找到导师"), "{reason}");
     server.abort();
 }

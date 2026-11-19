@@ -91,7 +91,7 @@ impl CrawlError {
             }
             Self::Status(500..=599) => Failure::new("网站出错了。请稍后重试。"),
             Self::Status(code) => Failure::unrecognized(
-                "网站没有正常返回网页。请稍后重试，或在浏览器中检查网址。",
+                "网站未正常返回网页。请稍后重试，或在浏览器中检查网址。",
                 &format!("HTTP {code}"),
             ),
             Self::SlowDown(_) => Failure::new("网站要求放慢访问。请稍后重试。"),
