@@ -190,8 +190,8 @@ export function BackgroundPage() {
     mutationFn: (op: "pauseMatching" | "resumeMatching") => call(op, {}),
     onSettled: () => refreshMentors(queryClient),
   });
-  const pauseTask = useMutation({
-    mutationFn: (id: number) => call("pauseTask", { id }),
+  const task = useMutation({
+    mutationFn: ({ op, id }: { op: "pauseTask" | "resumeTask"; id: number }) => call(op, { id }),
     onSuccess: () => refreshTasks(queryClient),
   });
   const resumeReplies = useMutation({
@@ -202,13 +202,7 @@ export function BackgroundPage() {
   const { receive, receiving, receiveError, received } = useReceive();
   const [libraryUpdates, setLibraryUpdates] = useState(false);
   const error =
-    work.error ??
-    crawl.error ??
-    matching.error ??
-    pauseTask.error ??
-    resume.error ??
-    resumeReplies.error ??
-    receiveError;
+    work.error ?? crawl.error ?? matching.error ?? task.error ?? resume.error ?? resumeReplies.error ?? receiveError;
   const idle = work.waiting === 0 && work.running === 0 && work.next === null && !work.receiving && work.finished === 0;
   return (
     <div className="flex-1 overflow-y-auto">
@@ -269,9 +263,34 @@ export function BackgroundPage() {
             ))}
             {work.paused.map((t) => (
               <div key={t.id}>
-                <Link to="/tasks/$id" params={{ id: t.id }} className={ITEM}>
-                  <Entry title={t.name} detail={t.pauseReason?.message ?? "已暂停"} />
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Link to="/tasks/$id" params={{ id: t.id }} className={ITEM}>
+                    <Entry title={t.name} detail={t.pauseReason?.message ?? "已暂停"} />
+                  </Link>
+                  {/* Going on writes the letters still to write; with none left, it calls no model. */}
+                  {t.generating > 0 ? (
+                    <ModelAction
+                      feature="writing"
+                      variant="quiet"
+                      size="sm"
+                      modelIds={[t.modelConfigId]}
+                      checked
+                      disabled={task.isPending}
+                      onWrite={() => task.mutate({ op: "resumeTask", id: t.id })}
+                    >
+                      继续
+                    </ModelAction>
+                  ) : (
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      disabled={task.isPending}
+                      onClick={() => task.mutate({ op: "resumeTask", id: t.id })}
+                    >
+                      继续
+                    </Button>
+                  )}
+                </div>
                 {t.pauseReason && <FailureDetails failure={t.pauseReason} />}
               </div>
             ))}
@@ -386,7 +405,12 @@ export function BackgroundPage() {
                 <Link to="/tasks/$id" params={{ id: t.id }} className={ITEM}>
                   <Entry title={t.name} detail={`生成草稿，还剩 ${t.generating} 封`} />
                 </Link>
-                <Button variant="quiet" size="sm" disabled={pauseTask.isPending} onClick={() => pauseTask.mutate(t.id)}>
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  disabled={task.isPending}
+                  onClick={() => task.mutate({ op: "pauseTask", id: t.id })}
+                >
                   暂停
                 </Button>
               </div>

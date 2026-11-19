@@ -123,12 +123,14 @@ pub struct TaskWork {
     pub state: TaskState,
     pub pause_reason: Option<Failure>,
     pub generating: i64,
+    /// The model going on would write the letters still to write with.
+    pub model_config_id: Option<i64>,
 }
 
 pub async fn work(db: &SqlitePool) -> std::result::Result<Vec<TaskWork>, sqlx::Error> {
     let mut tx = db.begin().await?;
     let rows = sqlx::query!(
-        r#"SELECT t.id, t.name, t.state, t.generation_paused_at,
+        r#"SELECT t.id, t.name, t.state, t.generation_paused_at, t.model_config_id,
             t.generation_pause_reason AS "generation_pause_reason: Json<Failure>"
         FROM task t
         WHERE t.state = 'paused'
@@ -155,6 +157,7 @@ pub async fn work(db: &SqlitePool) -> std::result::Result<Vec<TaskWork>, sqlx::E
                 ),
                 pause_reason: r.generation_pause_reason.map(|r| r.0),
                 generating: progress.generating,
+                model_config_id: r.model_config_id,
             }
         })
         .collect())

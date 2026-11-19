@@ -1411,7 +1411,11 @@ export type TaskState = "active" | "paused" | "stopped" | "completed";
 
 export type TaskSummary = { id: number, name: string, writer: Writer, kind: Kind, state: TaskState, createdAt: number, pauseReason: Failure | null, modelConfigId: number | null, progress: Progress, schedule: Schedule, };
 
-export type TaskWork = { id: number, name: string, state: TaskState, pauseReason: Failure | null, generating: number, };
+export type TaskWork = { id: number, name: string, state: TaskState, pauseReason: Failure | null, generating: number,
+/**
+ * The model going on would write the letters still to write with.
+ */
+modelConfigId: number | null, };
 
 export type Template = { id: number, name: string, subject: string, bodyMd: string, };
 

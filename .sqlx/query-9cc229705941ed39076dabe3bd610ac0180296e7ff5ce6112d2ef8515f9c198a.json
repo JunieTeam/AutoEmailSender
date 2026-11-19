@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT t.id, t.name, t.state, t.generation_paused_at,\n            t.generation_pause_reason AS \"generation_pause_reason: Json<Failure>\"\n        FROM task t\n        WHERE t.state = 'paused'\n            OR (t.state <> 'stopped' AND t.generation_paused_at IS NOT NULL)\n            OR t.id IN (SELECT task_id FROM email\n                WHERE state IN ('generating', 'generation_failed', 'failed'))\n        ORDER BY t.id DESC",
+  "query": "SELECT t.id, t.name, t.state, t.generation_paused_at, t.model_config_id,\n            t.generation_pause_reason AS \"generation_pause_reason: Json<Failure>\"\n        FROM task t\n        WHERE t.state = 'paused'\n            OR (t.state <> 'stopped' AND t.generation_paused_at IS NOT NULL)\n            OR t.id IN (SELECT task_id FROM email\n                WHERE state IN ('generating', 'generation_failed', 'failed'))\n        ORDER BY t.id DESC",
   "describe": {
     "columns": [
       {
@@ -48,8 +48,19 @@
         }
       },
       {
-        "name": "generation_pause_reason: Json<Failure>",
+        "name": "model_config_id",
         "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "task",
+            "name": "model_config_id"
+          }
+        }
+      },
+      {
+        "name": "generation_pause_reason: Json<Failure>",
+        "ordinal": 5,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -67,8 +78,9 @@
       false,
       false,
       true,
+      true,
       true
     ]
   },
-  "hash": "7c2a060123d279c8b42412dcba095ba365c8e1d6732683e463b4e04c4c59190e"
+  "hash": "9cc229705941ed39076dabe3bd610ac0180296e7ff5ce6112d2ef8515f9c198a"
 }
