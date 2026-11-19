@@ -251,7 +251,11 @@ export type ContactProgress = { trend: Array<Trend>, contacted: number, replied:
 
 export type ContactStatus = "none" | "contacted" | "replied" | "bounced";
 
-export type Conversation = { mentorId: number, name: string, subject: string | null, at: number, unread: number, };
+export type Conversation = { mentorId: number, name: string, subject: string | null, at: number, unread: number,
+/**
+ * The last letter is the user's: the mentor has not answered it yet.
+ */
+mine: boolean, };
 
 export type ConversationPage = { conversations: Array<Conversation>, total: number, };
 

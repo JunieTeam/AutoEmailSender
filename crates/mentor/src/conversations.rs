@@ -23,6 +23,8 @@ pub struct Conversation {
     pub subject: Option<String>,
     pub at: i64,
     pub unread: i64,
+    /// The last letter is the user's: the mentor has not answered it yet.
+    pub mine: bool,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -40,7 +42,7 @@ pub async fn list(
     let conversations = sqlx::query_as!(
         Conversation,
         r#"SELECT c.mentor_id AS "mentor_id!", c.name AS "name!", c.at AS "at!: i64",
-            c.unread AS "unread!", (
+            c.unread AS "unread!", c.mine AS "mine!: bool", (
             SELECT subject
             FROM (
                 SELECT subject, sent_at
@@ -58,7 +60,8 @@ pub async fn list(
         ) AS "subject?: String"
         FROM (
             SELECT mc.mentor_id, m.name, mc.unread, max(coalesce(mc.last_out_at, 0),
-                coalesce(mc.last_reply_at, 0)) AS at
+                coalesce(mc.last_reply_at, 0)) AS at,
+                coalesce(mc.last_out_at, 0) >= coalesce(mc.last_reply_at, 0) AS mine
             FROM mentor_contact mc
             JOIN mentor m ON m.id = mc.mentor_id
             WHERE m.trashed_at IS NULL AND (NOT ?1 OR mc.unread > 0)

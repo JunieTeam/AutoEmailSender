@@ -198,7 +198,10 @@ export function ConversationsPage() {
                       </span>
                     </div>
                     <div className="mt-1 flex items-center gap-2">
-                      <p className="min-w-0 grow truncate text-sm text-muted-foreground">{c.subject ?? "（无主题）"}</p>
+                      <p className="min-w-0 grow truncate text-sm text-muted-foreground">
+                        {c.mine && "我："}
+                        {c.subject ?? "（无主题）"}
+                      </p>
                       {c.unread > 0 && (
                         <span className="min-w-5 shrink-0 rounded-full bg-unread px-1.5 text-center text-xs leading-5 text-white">
                           {c.unread > 99 ? "99+" : c.unread}

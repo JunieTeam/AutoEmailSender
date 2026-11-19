@@ -82,6 +82,9 @@ async fn latest_correspondence_sorts_and_pages(db: SqlitePool) {
         .collect();
     assert_eq!(sorted, expected);
     assert_eq!(first.conversations[0].at, 20);
+    // Who wrote last: the mentor's reply waits for the user, the others wait for their mentors.
+    assert!(!first.conversations[0].mine);
+    assert!(first.conversations[1].mine);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
