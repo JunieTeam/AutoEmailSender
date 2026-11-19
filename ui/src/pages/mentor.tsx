@@ -144,14 +144,12 @@ export function MentorPage() {
         </Button>
         <Profile mentor={m} />
         <Section title="标签" action={<TagPicker mentorId={m.id} selected={m.tags} />}>
-          {m.tags.length > 0 ? (
+          {m.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {m.tags.map((t) => (
                 <TagChip key={t.id} tag={t} />
               ))}
             </div>
-          ) : (
-            <Missing>未添加标签</Missing>
           )}
           <TagSaveError mentorId={m.id} />
         </Section>
@@ -416,15 +414,19 @@ function Profile({ mentor: m }: { mentor: MentorDetail }) {
             </dd>
           </>
         )}
-        <dt>主页</dt>
-        <dd>
-          {m.homepages.length === 0 && <Missing>未填写</Missing>}
-          {m.homepages.map((url) => (
-            <div key={url}>
-              <ExternalLink url={url} />
-            </div>
-          ))}
-        </dd>
+        {/* docs/ui.md#风格: only what writing to the mentor needs is said to be missing. */}
+        {m.homepages.length > 0 && (
+          <>
+            <dt>主页</dt>
+            <dd>
+              {m.homepages.map((url) => (
+                <div key={url}>
+                  <ExternalLink url={url} />
+                </div>
+              ))}
+            </dd>
+          </>
+        )}
         <dt>研究方向</dt>
         <dd>{m.research ?? <Missing>未填写</Missing>}</dd>
         {m.sourceUrl && (
@@ -521,7 +523,8 @@ function Analysis({ mentor: m }: { mentor: MentorDetail }) {
             <p className="mt-2.5 text-muted-foreground select-text">{a.reason}</p>
           </>
         ) : (
-          <Missing>未分析</Missing>
+          // The button below says as much, and why it cannot run yet.
+          m.trashed && <Missing>未分析</Missing>
         )}
         {state?.state === "failed" && (
           <FailureNote failure={state.error} lead="分析失败：" className="mt-2 text-warning" />
