@@ -1,6 +1,6 @@
 import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Check, RotateCcw, Send, Undo2 } from "lucide-react";
+import { Check } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { call, failureOf } from "@/api/call";
 import type { Email, Entry, Failure, MentorDetail, Message, FollowUpEntry, ReplyOutcome, Todo } from "@/api/types";
@@ -338,16 +338,14 @@ function Sent({
           {e.state === "approved" && <ScheduleActions id={e.id} initial={e.plannedAt ?? undefined} />}
           {e.state === "cloud" && e.cancelReason === null && <WithdrawFromCloud withdraw={{ email: e.id }} />}
           {e.state === "failed" && (
-            <Button variant="ghost" disabled={act.isPending} onClick={() => act.mutate("retryEmail")}>
-              <RotateCcw strokeWidth={1.6} />
+            <Button variant="ghost" size="sm" disabled={act.isPending} onClick={() => act.mutate("retryEmail")}>
               重试
             </Button>
           )}
           {e.state === "maybe_sent" && (
             <Confirm
               trigger={
-                <Button variant="ghost" disabled={act.isPending}>
-                  {e.cancelReason === null && <Send strokeWidth={1.6} />}
+                <Button variant="ghost" size="sm" disabled={act.isPending}>
                   {e.cancelReason === null ? "重新发送" : "确认未发出"}
                 </Button>
               }
@@ -363,8 +361,7 @@ function Sent({
           {e.state === "bounced" && !e.resent && sendTo && (
             <Confirm
               trigger={
-                <Button variant="ghost" disabled={act.isPending}>
-                  <Send strokeWidth={1.6} />
+                <Button variant="ghost" size="sm" disabled={act.isPending}>
                   重新发送
                 </Button>
               }
@@ -378,8 +375,7 @@ function Sent({
             />
           )}
           {(e.state === "approved" || e.state === "failed") && e.resendOf === null && (
-            <Button variant="ghost" disabled={act.isPending} onClick={() => act.mutate("withdrawEmail")}>
-              <Undo2 strokeWidth={1.6} />
+            <Button variant="ghost" size="sm" disabled={act.isPending} onClick={() => act.mutate("withdrawEmail")}>
               改回草稿
             </Button>
           )}
