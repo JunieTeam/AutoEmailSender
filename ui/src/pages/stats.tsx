@@ -203,7 +203,7 @@ function Contact({
       <TrendView trend={p.trend} monthly={range === "all"} />
       <div className="grid grid-cols-[2fr_3fr] gap-10 @max-[780px]:grid-cols-1">
         <div>
-          <h3 className="mb-1 font-medium">首次回复用了多久</h3>
+          <h3 className="mb-1 font-medium">首次回复用时</h3>
           <p className="mb-4 text-sm text-muted-foreground">这段时间联系、已经回复的 {p.replied} 位导师</p>
           <Bars
             rows={[
@@ -284,7 +284,7 @@ function TrendView({ trend, monthly }: { trend: Trend[]; monthly: boolean }) {
         <h3 className="grow font-medium">{title}</h3>
         <Legend series={TREND} />
         <button className="text-sm text-brand-text hover:underline" onClick={() => setTable(!table)}>
-          {table ? "看图表" : "看表格"}
+          {table ? "显示图表" : "显示表格"}
         </button>
       </div>
       {table ? (
