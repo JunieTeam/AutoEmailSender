@@ -219,7 +219,7 @@ function TaskSteps({
               )}
               {vague.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 text-warning">
-                  <p>其中 {vague.length} 位没有研究方向，AI 只能写得笼统</p>
+                  <p>其中 {vague.length} 位未填写研究方向，AI 只能写得笼统</p>
                   <Button
                     variant="quiet"
                     size="sm"
@@ -250,7 +250,7 @@ function TaskSteps({
                         <p className="text-xs text-warning">导师库标为{LIBRARY_STATUS[m.libraryStatus]}</p>
                       )}
                       {kind === "first" && !m.hasResearch && (
-                        <p className="text-xs text-muted-foreground">没有研究方向</p>
+                        <p className="text-xs text-muted-foreground">未填写研究方向</p>
                       )}
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => setExcluded([...excluded, m.id])}>

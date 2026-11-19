@@ -279,7 +279,7 @@ function ChoiceList<T extends string | number>({ label, selected, name, queryKey
         )}
         {listed.length === 0 && !none && (
           <p className="px-2.5 py-2 text-sm text-muted-foreground">
-            {words.length > 0 ? `没有匹配的${label}` : `没有可选的${label}`}
+            {words.length > 0 ? `无匹配的${label}` : `无可选的${label}`}
           </p>
         )}
       </div>

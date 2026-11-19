@@ -396,7 +396,7 @@ export function ChecksSection() {
         get="getAiFactCheck"
         set="setAiFactCheck"
         label="AI 核对"
-        summary="用过 AI 起草或改写的信，由 AI 找出其中没有依据的经历、成果和数字"
+        summary="用过 AI 起草或改写的信，由 AI 找出其中缺少依据的经历、成果和数字"
         help={
           <>
             <p>依据是个人资料和写信参考材料，找到的问题列在正文下方。</p>

@@ -605,7 +605,7 @@ function CrawlUnit({ crawl: c, onEditing }: { crawl: CrawlSummary; onEditing: (e
     const unit = c.university && (c.school ? `${c.university} ${c.school}` : `${c.university}（全校）`);
     return (
       <p className="flex flex-wrap items-center gap-x-2">
-        {unit ? `学校和学院：${unit}` : <span className="text-muted-foreground">没认出学校和学院</span>}
+        {unit ? `学校和学院：${unit}` : <span className="text-muted-foreground">未识别出学校和学院</span>}
         <Button
           variant="ghost"
           size="sm"
@@ -637,7 +637,7 @@ function CrawlUnit({ crawl: c, onEditing }: { crawl: CrawlSummary; onEditing: (e
         </Field>
       </div>
       <p className="text-xs text-muted-foreground">
-        这次整理还没审核的候选跟着改，写着别的学校、学院的不动；已接受的导师不改。
+        这次整理中尚未审核的候选一并修改，写着其他学校、学院的不变；已接受的导师不改。
       </p>
       <ErrorText error={save.error} />
       <div className="flex justify-end gap-2">
@@ -1182,7 +1182,7 @@ export function EnrichMentorsDialog({ ids, onClose }: { ids: number[]; onClose: 
     >
       {started && (
         <p role="status">
-          {started.crawlId === null ? "没有需要补全的导师" : `已开始补全 ${started.ids.length} 位`}
+          {started.crawlId === null ? "无需要补全的导师" : `已开始补全 ${started.ids.length} 位`}
           <SkippedEnrich plan={started} />
           {started.crawlId !== null && (
             <Link
@@ -1413,7 +1413,7 @@ function CandidatePane({
               补到了{[...new Set(d.enrichChanges.map((v) => ENRICH_FIELDS[v.field]))].join("、")}
             </p>
           )}
-          {d.enrichError && <FailureNote failure={d.enrichError} lead="没补到：" className="text-warning" />}
+          {d.enrichError && <FailureNote failure={d.enrichError} lead="未补到：" className="text-warning" />}
           {pending && preview.data && (
             <IntakeChoices
               preview={preview.data}

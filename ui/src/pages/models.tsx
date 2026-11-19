@@ -137,7 +137,7 @@ function FeatureModels({ configs, providers }: { configs: ModelConfig[]; provide
   ];
   return (
     <Row label="各功能用的模型">
-      <p className="text-sm text-muted-foreground">没有单独选的功能用默认的模型</p>
+      <p className="text-sm text-muted-foreground">未单独选择的功能使用默认模型</p>
       <div className="mt-1.5 flex flex-col gap-3">
         {FEATURES.map(([feature, label, detail]) => (
           <div

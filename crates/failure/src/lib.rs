@@ -44,7 +44,7 @@ pub fn file(what: &str, e: &std::io::Error) -> Failure {
         ErrorKind::NotFound => "找不到这个文件或文件夹，可能已被移动或删除",
         // Windows refuses to replace a file another program has open, such as a table in Excel.
         ErrorKind::PermissionDenied | ErrorKind::ResourceBusy => {
-            "没有权限读写这个位置，或文件正被其他程序打开。请关闭打开它的程序，或换一个位置后重试。"
+            "无权读写这个位置，或文件正被其他程序打开。请关闭打开它的程序，或换一个位置后重试。"
         }
         ErrorKind::StorageFull | ErrorKind::QuotaExceeded => "磁盘空间不足，请清理出空间后重试",
         ErrorKind::ReadOnlyFilesystem => "这个位置只能读取，请换一个位置",
