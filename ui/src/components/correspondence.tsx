@@ -133,7 +133,8 @@ export function Correspondence({ mentor }: { mentor: MentorDetail }) {
         <div className="grid flex-1 place-items-center p-6 text-center text-sm text-muted-foreground">
           {mentor.contact.status === "none" ? `尚未联系${mentor.name}老师` : contactDetail(mentor.contact)}
         </div>
-        {!mentor.trashed && (
+        {/* Before any contact there is nothing to do for this mentor yet. */}
+        {!mentor.trashed && mentor.contact.status !== "none" && (
           <div className="flex flex-col px-5 pb-4 phone:px-3">
             <AddTodo mentorId={mentor.id} />
           </div>

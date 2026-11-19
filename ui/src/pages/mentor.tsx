@@ -184,9 +184,7 @@ function Header({
           {m.name}
           {main?.title && <span className="ml-1.5 text-sm font-normal text-muted-foreground">{main.title}</span>}
         </h1>
-        <p className="truncate text-sm text-muted-foreground">
-          {(main && placeOf(main)) || <Missing>未填写学校</Missing>}
-        </p>
+        {main && placeOf(main) && <p className="truncate text-sm text-muted-foreground">{placeOf(main)}</p>}
       </div>
       <ContactLabel contact={m.contact} className="text-sm phone:hidden" />
       <Button variant="ghost" className="hidden px-3 compact:inline-flex" onClick={onProfile}>
@@ -468,8 +466,9 @@ function SendingMailbox({ mentor: m }: { mentor: MentorDetail }) {
             onChange={(mailboxId) => save.mutate(mailboxId)}
           />
         )}
-        {choosing && m.contact.status !== "none" && (
-          <p className="mt-1 text-xs text-muted-foreground">更换发件邮箱后，导师看到的发件地址会随之改变</p>
+        {/* Said once it is changed, not beforehand under every contacted mentor. */}
+        {choosing && save.isSuccess && m.contact.status !== "none" && (
+          <p className="mt-1 text-xs text-muted-foreground">已更换，导师之后看到的发件地址会随之改变</p>
         )}
         {error && <FailureNote className="mt-1 text-xs text-destructive" failure={failureOf(error)} />}
       </dd>

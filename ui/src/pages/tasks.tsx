@@ -203,8 +203,9 @@ function TaskList() {
                   )}
                 </p>
               </div>
+              {/* docs/ui.md#风格: the numbers of each kind show under the pointer, and in full inside. */}
               <div className="phone:col-span-2 phone:row-start-2">
-                <ProgressBar progress={t.progress} labels />
+                <ProgressBar progress={t.progress} />
               </div>
               <TaskStatus state={t.state} />
             </Link>

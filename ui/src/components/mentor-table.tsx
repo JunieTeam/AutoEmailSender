@@ -2,7 +2,7 @@ import { type HistoryState, Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useEffectEvent } from "react";
 import type { MatchSummary, MentorRow } from "@/api/types";
-import { Avatar, ContactLabel, contactDetail, BASIS_CHANGED, Missing } from "@/components/mentor";
+import { Avatar, ContactLabel, contactDetail, BASIS_CHANGED } from "@/components/mentor";
 import { TagChip } from "@/components/tags";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -112,22 +112,21 @@ export function MentorTable({
           </div>
           <div role="cell" className="min-w-0 text-sm cards:flex cards:gap-1.5 cards:[grid-area:place]">
             <div className="truncate cards:max-w-full cards:shrink-0">
-              {m.affiliation?.university ?? <Missing>未填写学校</Missing>}
+              {/* docs/ui.md#风格: what is missing is left blank here; the mentor's page says so. */}
+              {m.affiliation?.university}
               {m.affiliationCount > 1 && (
                 <span className="ml-1.5 text-muted-foreground">等 {m.affiliationCount} 个单位</span>
               )}
             </div>
             <div className="truncate text-muted-foreground">
-              {[m.affiliation?.school, m.affiliation?.department].filter(Boolean).join(" ") || (
-                <Missing>未填写学院</Missing>
-              )}
+              {[m.affiliation?.school, m.affiliation?.department].filter(Boolean).join(" ")}
             </div>
           </div>
           <div
             role="cell"
             className="line-clamp-2 text-sm text-muted-foreground cards:line-clamp-1 cards:[grid-area:research]"
           >
-            {m.research ?? <Missing>未填写研究方向</Missing>}
+            {m.research}
           </div>
           <div role="cell" className="cards:justify-self-end cards:[grid-area:match]">
             <Link to="/mentors/$mentorId" params={{ mentorId: m.id }} state={{ list }} className="relative z-10 block">
@@ -178,10 +177,8 @@ function Match({ state: { result, state } }: { state: MatchSummary }) {
             失败
           </span>
         </Tooltip>
-      ) : state ? (
-        <span className="text-muted-foreground">{state.state === "queued" ? "排队中" : "分析中"}</span>
       ) : (
-        !result && <Missing>未分析</Missing>
+        state && <span className="text-muted-foreground">{state.state === "queued" ? "排队中" : "分析中"}</span>
       )}
     </div>
   );
