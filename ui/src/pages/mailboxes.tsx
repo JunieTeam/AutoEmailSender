@@ -72,7 +72,7 @@ function RotationRow() {
   const saving = useMutationState({ filters: { mutationKey: ["setRotation"], status: "pending" } }).length > 0;
   const error = query.error ?? save.error;
   return (
-    <Row label="轮转">
+    <Row label="轮转" help="在导师资料里指定了发件邮箱的，总是从指定的邮箱发出，不参与轮转。">
       {query.data && (
         <>
           <Segments
@@ -90,7 +90,6 @@ function RotationRow() {
             {query.data === "failover"
               ? "按下面的顺序使用第一个可发信的邮箱，暂停或到达上限后换下一个。"
               : "每封信轮流使用最久未发信的邮箱。"}
-            在导师资料里指定了发件邮箱的，总是从指定的邮箱发出。
           </p>
         </>
       )}
