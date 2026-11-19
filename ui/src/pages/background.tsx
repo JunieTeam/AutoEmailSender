@@ -223,7 +223,7 @@ export function BackgroundPage() {
             )}
             {work.emails > 0 && (
               <Link to="/tasks" search={{ tab: "plan" }} className={ITEM}>
-                <Entry title={`${work.emails} 封邮件待处理`} detail="去发送计划里处理" />
+                <Entry title={`${work.emails} 封邮件待处理`} detail="请在发送计划中处理" />
               </Link>
             )}
             {work.mailboxes.map((m) => (
@@ -463,24 +463,24 @@ export function BackgroundPage() {
                 <Entry
                   title={crawlName(c)}
                   detail={
-                    c.kind === "mentors" ? `补全 ${c.candidates} 位，去审核` : `找到 ${c.candidates} 位候选，去审核`
+                    c.kind === "mentors" ? `补全 ${c.candidates} 位，待审核` : `找到 ${c.candidates} 位候选，待审核`
                   }
                 />
               </Link>
             ))}
             {work.drafted.map((t) => (
               <Link key={t.id} to="/tasks/$id" params={{ id: t.id }} className={ITEM}>
-                <Entry title={t.name} detail={`生成 ${t.generated} 封草稿，去任务`} />
+                <Entry title={t.name} detail={`生成 ${t.generated} 封草稿`} />
               </Link>
             ))}
             {work.matched > 0 && (
               <Link to="/mentors" className={ITEM}>
-                <Entry title="匹配度分析" detail={`分析了 ${work.matched} 位，去导师列表`} />
+                <Entry title="匹配度分析" detail={`分析 ${work.matched} 位导师`} />
               </Link>
             )}
             {work.sent > 0 && (
               <Link to="/tasks" search={{ tab: "plan", column: "history" }} className={ITEM}>
-                <Entry title="发信" detail={`发出 ${work.sent} 封，去发送历史`} />
+                <Entry title="发信" detail={`发出 ${work.sent} 封`} />
               </Link>
             )}
           </Group>
