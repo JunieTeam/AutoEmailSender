@@ -50,8 +50,9 @@ async fn form(db: &SqlitePool, ids: Vec<i64>) -> NewTask {
         attachments: vec![],
     }
 }
+/// The task's letters in the order their mentors were added, whatever their states.
 async fn items(db: &SqlitePool, task: i64) -> Vec<TaskDraft> {
-    let page = drafts(
+    let mut page = drafts(
         db,
         &DraftQuery {
             task_id: task,
@@ -63,6 +64,7 @@ async fn items(db: &SqlitePool, task: i64) -> Vec<TaskDraft> {
     )
     .await
     .unwrap();
+    page.drafts.sort_by_key(|d| d.id);
     let mut result = vec![];
     for d in page.drafts {
         result.push(
@@ -943,6 +945,50 @@ async fn receiving_a_bounce_cancels_only_follow_ups_of_that_parent(db: SqlitePoo
         assert_eq!(d.state, DraftState::Canceled);
         assert_eq!(d.cancel_reason.as_deref(), Some("上一封被退回"));
     }
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn letters_waiting_for_review_come_first(db: SqlitePool) {
+    let mut ids = vec![];
+    for n in 1..=3 {
+        ids.push(mentor(&db, n, true).await);
+    }
+    let task = create(&db, &form(&db, ids).await, T).await.unwrap();
+    let ds = items(&db, task).await;
+    approve(
+        &db,
+        &TaskApprovals {
+            task_id: task,
+            emails: vec![approval(&ds[0])],
+        },
+        T,
+    )
+    .await
+    .unwrap();
+    remove(
+        &db,
+        &TaskEmail {
+            task_id: task,
+            id: ds[1].id,
+        },
+        T,
+    )
+    .await
+    .unwrap();
+    let list = drafts(
+        &db,
+        &DraftQuery {
+            task_id: task,
+            filter: DraftFilter::All,
+            page: std::num::NonZeroU32::MIN,
+        },
+        T,
+        |_| None,
+    )
+    .await
+    .unwrap();
+    let order = list.drafts.iter().map(|d| d.id).collect::<Vec<_>>();
+    assert_eq!(order, [ds[2].id, ds[0].id, ds[1].id]);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

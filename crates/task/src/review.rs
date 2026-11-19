@@ -336,6 +336,8 @@ async fn other_names(
     .await
 }
 
+// What waits for the user comes first, so opening a task and approving one after another
+// both land on the next letter to review.
 // This reads text only inside the core to calculate rules; the list sends short summaries.
 // All rows are needed only for the problem filter. Other filters page before reading text.
 pub async fn drafts(
@@ -443,7 +445,13 @@ async fn review_rows(
         JOIN mentor m ON m.id = e.mentor_id
         LEFT JOIN mentor_contact c ON c.mentor_id = m.id
         WHERE e.task_id = ?1 AND (?2 IS NULL OR e.state = ?2)
-        ORDER BY m.name, e.id
+        ORDER BY CASE e.state
+            WHEN 'review' THEN 0
+            WHEN 'generation_failed' THEN 1 WHEN 'failed' THEN 1 WHEN 'maybe_sent' THEN 1
+            WHEN 'generating' THEN 2
+            WHEN 'approved' THEN 3 WHEN 'cloud' THEN 3 WHEN 'sending' THEN 3
+            ELSE 4
+        END, e.id
         LIMIT ?3
         OFFSET ?4"#,
         task,

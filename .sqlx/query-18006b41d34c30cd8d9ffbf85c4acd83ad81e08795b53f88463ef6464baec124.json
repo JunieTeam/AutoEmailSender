@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT e.id, e.mentor_id, m.name, e.kind AS \"kind: Kind\",\n            (SELECT address FROM mentor_email WHERE mentor_id = m.id AND position = 0) AS address,\n            e.state AS \"state: DraftState\", e.subject, e.body_md,\n            e.fact_check AS \"fact_check: Json<email::fact_check::FactCheck>\", (\n            SELECT json_group_array(name)\n            FROM mentor_alias\n            WHERE mentor_id = m.id\n        ) AS \"aliases!: Json<Vec<String>>\", (\n            SELECT json_group_array(material_id)\n            FROM email_attachment\n            WHERE email_id = e.id AND material_id IS NOT NULL\n        ) AS \"attachments!: Json<Vec<i64>>\", (\n            SELECT json_group_array(size)\n            FROM email_attachment\n            WHERE email_id = e.id AND material_id IS NOT NULL\n        ) AS \"attachment_sizes!: Json<Vec<i64>>\", c.contact_count, c.last_out_at\n        FROM email e\n        JOIN mentor m ON m.id = e.mentor_id\n        LEFT JOIN mentor_contact c ON c.mentor_id = m.id\n        WHERE e.task_id = ?1 AND (?2 IS NULL OR e.state = ?2)\n        ORDER BY m.name, e.id\n        LIMIT ?3\n        OFFSET ?4",
+  "query": "SELECT e.id, e.mentor_id, m.name, e.kind AS \"kind: Kind\",\n            (SELECT address FROM mentor_email WHERE mentor_id = m.id AND position = 0) AS address,\n            e.state AS \"state: DraftState\", e.subject, e.body_md,\n            e.fact_check AS \"fact_check: Json<email::fact_check::FactCheck>\", (\n            SELECT json_group_array(name)\n            FROM mentor_alias\n            WHERE mentor_id = m.id\n        ) AS \"aliases!: Json<Vec<String>>\", (\n            SELECT json_group_array(material_id)\n            FROM email_attachment\n            WHERE email_id = e.id AND material_id IS NOT NULL\n        ) AS \"attachments!: Json<Vec<i64>>\", (\n            SELECT json_group_array(size)\n            FROM email_attachment\n            WHERE email_id = e.id AND material_id IS NOT NULL\n        ) AS \"attachment_sizes!: Json<Vec<i64>>\", c.contact_count, c.last_out_at\n        FROM email e\n        JOIN mentor m ON m.id = e.mentor_id\n        LEFT JOIN mentor_contact c ON c.mentor_id = m.id\n        WHERE e.task_id = ?1 AND (?2 IS NULL OR e.state = ?2)\n        ORDER BY CASE e.state\n            WHEN 'review' THEN 0\n            WHEN 'generation_failed' THEN 1 WHEN 'failed' THEN 1 WHEN 'maybe_sent' THEN 1\n            WHEN 'generating' THEN 2\n            WHEN 'approved' THEN 3 WHEN 'cloud' THEN 3 WHEN 'sending' THEN 3\n            ELSE 4\n        END, e.id\n        LIMIT ?3\n        OFFSET ?4",
   "describe": {
     "columns": [
       {
@@ -163,5 +163,5 @@
       true
     ]
   },
-  "hash": "9feab1c78add44abb42720877889d6151a4e1b34816fb16cde8389657267fc83"
+  "hash": "18006b41d34c30cd8d9ffbf85c4acd83ad81e08795b53f88463ef6464baec124"
 }
