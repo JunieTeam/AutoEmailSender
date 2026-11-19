@@ -208,7 +208,7 @@ export function Shell() {
             <img src={appIcon} alt="" className="size-[30px] shrink-0" />
             <span className={collapsed ? "sr-only" : "whitespace-nowrap"}>Auto Email Sender</span>
           </div>
-          <nav className="flex flex-col gap-0.5">
+          <nav className="flex flex-col gap-1">
             {NAV.map((item) => (
               <NavLink
                 key={item.to}
@@ -220,7 +220,7 @@ export function Shell() {
             ))}
           </nav>
           <div className="grow" />
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col gap-1">
             {desktop && <UpdateEntry collapsed={collapsed} />}
             <BackgroundEntry collapsed={collapsed} onClick={toSection("/background")} />
             <AccountRow collapsed={collapsed} onClick={toSection(SETTINGS.to)} />

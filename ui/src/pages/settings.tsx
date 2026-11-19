@@ -99,7 +99,7 @@ export function SettingsPage() {
           <ChevronRight className="hidden size-[18px] text-muted-foreground compact:block" strokeWidth={1.6} />
         </Link>
         {GROUPS.map((g) => (
-          <div key={g.label} className="flex flex-col gap-0.5">
+          <div key={g.label} className="flex flex-col gap-1">
             <h2 className="px-3 pb-1 text-sm text-muted-foreground">{g.label}</h2>
             {g.sections
               .filter((s) => desktop || !("desktopOnly" in s))
