@@ -223,25 +223,34 @@ function Neighbours({ id }: { id: number }) {
   const here = useQuery({ ...mentorPage(list ?? {}), enabled: list !== undefined });
   const ids = here.data?.mentors.map((m) => m.id) ?? [];
   const index = ids.indexOf(id);
+  // Where it stood: once it leaves the list, say trashed or written to under "未联系", the mentors
+  // either side of that place are still the ones before and after it.
+  const [place, setPlace] = useState<{ id: number; index: number } | null>(null);
+  if (index >= 0 && (place?.id !== id || place.index !== index)) setPlace({ id, index });
+  const left = index < 0 && place?.id === id ? place.index : undefined;
+  // Where the mentors before and after it stand on this page; past either end, on the next page.
+  const prev = index >= 0 ? index - 1 : left === undefined ? undefined : left - 1;
+  const next = index >= 0 ? index + 1 : left;
   const step = useMutation({
     mutationFn: async (delta: 1 | -1) => {
       if (!list) return;
-      let to = ids.at(index + delta);
-      let at = list;
+      const at = delta > 0 ? next : prev;
+      if (at === undefined) return;
+      let to = ids[at];
+      let shown = list;
       // At either end of the page, on to the next or previous page of the list.
-      if (index + delta < 0 || index + delta >= ids.length) {
-        at = { ...list, page: page + delta > 1 ? page + delta : undefined };
-        const other = await queryClient.fetchQuery(mentorPage(at));
+      if (at < 0 || at >= ids.length) {
+        shown = { ...list, page: page + delta > 1 ? page + delta : undefined };
+        const other = await queryClient.fetchQuery(mentorPage(shown));
         to = (delta > 0 ? other.mentors.at(0) : other.mentors.at(-1))?.id;
       }
       if (to !== undefined)
-        await navigate({ to: "/mentors/$mentorId", params: { mentorId: to }, replace: true, state: { list: at } });
+        await navigate({ to: "/mentors/$mentorId", params: { mentorId: to }, replace: true, state: { list: shown } });
     },
   });
-  // Gone from the list, say by its filter, it has no neighbours there.
-  const listed = list !== undefined && index >= 0;
-  const before = listed && (index > 0 || page > 1);
-  const after = listed && (index < ids.length - 1 || page * 50 < (here.data?.total ?? 0));
+  const listed = list !== undefined && (index >= 0 || left !== undefined);
+  const before = prev !== undefined && (prev >= 0 || page > 1);
+  const after = next !== undefined && (next < ids.length || page * 50 < (here.data?.total ?? 0));
   useEffect(() => {
     function key(e: KeyboardEvent) {
       const pressed = pageKey(e);
