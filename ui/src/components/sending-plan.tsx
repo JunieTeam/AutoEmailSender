@@ -261,7 +261,7 @@ function CloudRow({ email: e, cloud }: { email: PlanEmail; cloud: PlanCloud }) {
 /** Why an email waits for the user in 待处理. */
 function pendingReason(e: PlanEmail): string {
   if (e.state === "approved")
-    return e.latestAt !== null ? `${scheduledAt(e.latestAt)} 前未能发出` : "所选窗口已无空位，请修改发送时间或改期";
+    return e.latestAt !== null ? `${scheduledAt(e.latestAt)} 前未能发出` : "无法排期，请修改发送时间或改期";
   const why = e.error?.message ?? "";
   if (e.state === "generation_failed") return `生成失败：${why}`;
   if (e.state === "maybe_sent") return `可能已发出：${why}`;

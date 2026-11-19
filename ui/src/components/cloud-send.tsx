@@ -36,7 +36,7 @@ const REASONS: Record<CloudSendUnfitReason, string> = {
   foreign_mailbox: "境外邮箱",
   other_account: "负责邮箱有其他账号交给云端的邮件",
   no_mailbox: "无可从云端发信的邮箱",
-  too_late: "排不进最晚发送时间",
+  too_late: "无法在最晚发送时间前排期",
   too_large: "超过上限",
 };
 

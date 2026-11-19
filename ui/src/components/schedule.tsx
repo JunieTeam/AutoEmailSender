@@ -63,12 +63,12 @@ export function useScheduleCapacity(schedule: Schedule) {
 export function scheduledAt(at: number): string {
   return `${day(at)} ${time(at)}`;
 }
-export function scheduleText(s: Schedule): string {
+/** Every date, unless `brief`: then more than three days are the first and how many. */
+export function scheduleText(s: Schedule, brief = false): string {
   if (s.kind === "now") return "批准后立即发送";
-  return `${s.dates
-    .toSorted()
-    .map((d) => day(new Date(`${d}T12:00`).getTime()))
-    .join("、")}，每天 ${s.start}–${s.end}，每次最多 ${s.perWindow} 封`;
+  const dates = s.dates.toSorted().map((d) => day(new Date(`${d}T12:00`).getTime()));
+  const days = brief && dates.length > 3 ? `${dates[0]}起 ${dates.length} 天` : dates.join("、");
+  return `${days}，每天 ${s.start}–${s.end}，每次最多 ${s.perWindow} 封`;
 }
 
 export function ScheduleFields({
@@ -146,7 +146,7 @@ export function ScheduleFields({
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            按本机当前时区排期。错过窗口会排进后面的空位，无空位的留待处理。
+            按本机当前时区排期。错过窗口时顺延至下一个可用窗口，无法排期的列入待处理。
           </p>
         </>
       )}
@@ -184,7 +184,7 @@ export function ChangeSchedule({ task, onClose }: { task: TaskSummary; onClose: 
           />
           <p className="text-sm text-muted-foreground">
             保存后，{task.progress.approved - task.progress.cloud}{" "}
-            封已批准且尚未发出的邮件会按批准顺序重新排期；排不进的留待处理。
+            封已批准且尚未发出的邮件会按批准顺序重新排期，无法排期的列入待处理。
             {task.progress.cloud > 0 && `已交给云端的 ${task.progress.cloud} 封不受影响，如需修改，请先撤回到本地。`}
           </p>
           {saved !== null && (
@@ -198,10 +198,7 @@ export function ChangeSchedule({ task, onClose }: { task: TaskSummary; onClose: 
           <Button variant="ghost" disabled={save.isPending} onClick={onClose}>
             {saved !== null ? "关闭" : "取消"}
           </Button>
-          <Button
-            disabled={!scheduleValid(value) || save.isPending || !dirty}
-            onClick={() => save.mutate(value)}
-          >
+          <Button disabled={!scheduleValid(value) || save.isPending || !dirty} onClick={() => save.mutate(value)}>
             保存发送时间
           </Button>
         </DialogFooter>
@@ -250,7 +247,7 @@ export function DateTimeDialog({
           {date && clock && !Number.isFinite(at) && (
             <p className="text-sm text-warning">所选日期的这个时间不存在，请选择其他时间</p>
           )}
-          <p className="text-sm text-muted-foreground">所选时间后一小时内仍未发出的，留待处理</p>
+          <p className="text-sm text-muted-foreground">所选时间后一小时内仍未发出的，列入待处理</p>
           {error != null && <FailureNote className="text-sm text-destructive" failure={failureOf(error)} />}
         </DialogBody>
         <DialogFooter className="justify-end">

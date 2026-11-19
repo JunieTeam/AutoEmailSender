@@ -541,7 +541,13 @@ export function TaskReviewPage() {
             </PopoverContent>
           </Popover>
         </div>
-        <p className="text-sm text-muted-foreground">{scheduleText(t.schedule)}</p>
+        {scheduleText(t.schedule, true) === scheduleText(t.schedule) ? (
+          <p className="text-sm text-muted-foreground">{scheduleText(t.schedule)}</p>
+        ) : (
+          <Tooltip content={scheduleText(t.schedule)}>
+            <p className="w-fit text-sm text-muted-foreground">{scheduleText(t.schedule, true)}</p>
+          </Tooltip>
+        )}
         <ProgressBar progress={t.progress} labels />
         {t.state === "paused" &&
           (t.pauseReason ? (
@@ -803,7 +809,7 @@ function DraftDetail({
             <>
               <p className="w-full text-sm text-muted-foreground">
                 {d.plannedAt === null
-                  ? "所选窗口已无空位，留待处理"
+                  ? "无法排期，已列入待处理"
                   : d.latestAt === null
                     ? "等待发送"
                     : `计划 ${scheduledAt(d.plannedAt)} 发送`}
@@ -925,7 +931,7 @@ function BulkApproval({ task, onClose }: { task: TaskSummary; onClose: () => voi
           {task.schedule.kind === "window" && (
             <p className="text-sm">
               {timing.data
-                ? `预计排进：${timing.data.dates.map((d) => day(new Date(`${d}T12:00`).getTime())).join("、") || "无可用窗口"}。${timing.data.unplaced > 0 ? `${timing.data.unplaced} 封无空位，将留待处理。` : ""}`
+                ? `预计排期：${timing.data.dates.map((d) => day(new Date(`${d}T12:00`).getTime())).join("、") || "无可用窗口"}。${timing.data.unplaced > 0 ? `${timing.data.unplaced} 封无法排期，将列入待处理。` : ""}`
                 : "正在核对剩余窗口…"}
             </p>
           )}
