@@ -125,7 +125,7 @@ export function AccountDialog({
                     <Button
                       type="button"
                       variant="quiet"
-                      className="w-[118px]"
+                      className="w-[118px] tabular-nums"
                       disabled={wait > 0 || send.isPending || email.trim() === ""}
                       onClick={() => {
                         submit.reset();

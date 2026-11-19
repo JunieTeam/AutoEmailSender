@@ -107,7 +107,7 @@ function ProgressBar({ progress, labels = false }: { progress: Progress; labels?
         )}
       </div>
       {labels && (
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums">
           {SEGMENTS.map(
             ([k, label, color]) =>
               progress[k] > 0 && (

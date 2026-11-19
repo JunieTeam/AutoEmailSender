@@ -135,13 +135,15 @@
   --color-avatar-3: var(--avatar-3);
   --color-avatar-4: var(--avatar-4);
   --color-avatar-5: var(--avatar-5);
-  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Segoe UI", sans-serif;
-  /* Spacing in pixels: the 15px root font size (docs/ui.md#字体) would otherwise scale it. */
+  /* Chinese faces first, so letters and digits come from the same face as the Chinese around them
+     (docs/ui.md#字体). */
+  --font-sans: "PingFang SC", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Spacing in pixels: the 14px root font size (docs/ui.md#字体) would otherwise scale it. */
   --spacing: 4px;
   /* docs/ui.md#字体 */
   --text-xs: 12px;
   --text-sm: 13px;
-  --text-base: 15px;
+  --text-base: 14px;
   --text-lg: 17px;
   --text-2xl: 24px;
   --radius-sm: 8px;
@@ -184,7 +186,6 @@
     --title-bar: 0px;
     font-family: var(--font-sans);
     font-size: var(--text-base);
-    font-variant-numeric: tabular-nums;
     background: var(--sidebar);
     color: var(--foreground);
     /* docs/ui.md#控件: the interface's own words are not selected by a drag or ⌘A, and show the arrow. */
