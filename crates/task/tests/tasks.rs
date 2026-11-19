@@ -948,7 +948,7 @@ async fn receiving_a_bounce_cancels_only_follow_ups_of_that_parent(db: SqlitePoo
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
-async fn letters_waiting_for_review_come_first(db: SqlitePool) {
+async fn letters_waiting_for_review_come_first_and_are_counted(db: SqlitePool) {
     let mut ids = vec![];
     for n in 1..=3 {
         ids.push(mentor(&db, n, true).await);
@@ -989,6 +989,7 @@ async fn letters_waiting_for_review_come_first(db: SqlitePool) {
     .unwrap();
     let order = list.drafts.iter().map(|d| d.id).collect::<Vec<_>>();
     assert_eq!(order, [ds[2].id, ds[0].id, ds[1].id]);
+    assert_eq!(review_count(&db).await.unwrap(), 1);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

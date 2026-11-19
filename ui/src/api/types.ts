@@ -1644,6 +1644,7 @@ export interface Operations {
   planTask: { input: NewTask; output: TaskPlan };
   createTask: { input: NewTask; output: TaskId };
   taskWork: { input: Nothing; output: Array<TaskWork> };
+  reviewCount: { input: Nothing; output: number };
   listTasks: { input: TaskQuery; output: TaskPage };
   getTask: { input: TaskId; output: TaskSummary };
   listTaskDrafts: { input: DraftQuery; output: DraftPage };

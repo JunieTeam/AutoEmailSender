@@ -218,6 +218,10 @@ pub async fn task_work(ctx: &Context, _: Nothing) -> Result<Vec<task::TaskWork>,
     Ok(task::work(&ctx.db).await?)
 }
 
+pub async fn review_count(ctx: &Context, _: Nothing) -> Result<i64, CallError> {
+    Ok(task::review_count(&ctx.db).await?)
+}
+
 #[derive(Debug, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskMaterial {

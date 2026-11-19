@@ -759,6 +759,8 @@ operations! {
         "createTask" [none] => create_task(task::NewTask) -> TaskId;
         /// 读取各任务的草稿生成进度。
         "taskWork" [none] => task_work(Nothing) -> Vec<task::TaskWork>;
+        /// 统计各任务里待审核的草稿封数。
+        "reviewCount" [none] => review_count(Nothing) -> i64;
         /// 按筛选条件分页列出任务。
         "listTasks" [none] => list_tasks(task::TaskQuery) -> task::TaskPage;
         /// 读取指定 id 的任务概况。

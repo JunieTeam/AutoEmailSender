@@ -4,6 +4,7 @@ import type { QueryClient } from "@tanstack/react-query";
 export function refreshTasks(client: QueryClient) {
   for (const key of [
     "taskWork",
+    "reviewCount",
     "listTasks",
     "getTask",
     "listTaskDrafts",

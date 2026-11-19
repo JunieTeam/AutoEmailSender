@@ -215,7 +215,7 @@ export function Shell() {
                 {...item}
                 collapsed={collapsed}
                 onClick={toSection(item.to)}
-                count={item.to === "/conversations" ? "unread" : undefined}
+                count={item.to === "/conversations" ? "unread" : item.to === "/tasks" ? "review" : undefined}
               />
             ))}
           </nav>
@@ -261,6 +261,9 @@ export function Shell() {
               <Icon className="size-[22px]" strokeWidth={1.6} />
               {to === "/conversations" && (
                 <UnreadBadge className="absolute -top-1.5 left-3.5 min-w-4 px-1 text-[10px] leading-4" />
+              )}
+              {to === "/tasks" && (
+                <ReviewCount className="absolute -top-1.5 left-3.5 min-w-4 px-1 text-[10px] leading-4" />
               )}
               {to === "/more" && <WaitingDot />}
             </span>
@@ -312,14 +315,16 @@ function NavLink({
   label: string;
   icon: LucideIcon;
   spin?: boolean;
-  /** What the entry counts: new replies, or what waits for the user. */
-  count?: "unread" | "waiting";
+  /** What the entry counts: new replies, letters to review, or what waits for the user. */
+  count?: "unread" | "review" | "waiting";
   collapsed: boolean;
   onClick?: React.MouseEventHandler;
 }) {
   const badge =
     count === "unread" ? (
       <UnreadBadge className={collapsed ? ON_ICON : "ml-auto"} />
+    ) : count === "review" ? (
+      <ReviewCount className={collapsed ? ON_ICON : "ml-auto"} />
     ) : (
       count === "waiting" && <WaitingCount onIcon={collapsed} />
     );
@@ -358,6 +363,27 @@ function UnreadBadge({ className }: { className?: string }) {
         {unread.isError ? "!" : unread.data > 99 ? "99+" : unread.data}
       </span>
     </Tooltip>
+  );
+}
+
+/**
+ * Letters in tasks waiting for review, in grey (docs/ui.md#交互): they wait for the user, but
+ * nothing goes wrong while they do. Generation adds to them in the background.
+ */
+function ReviewCount({ className }: { className?: string }) {
+  const count = useQuery({ queryKey: ["reviewCount"], queryFn: () => call("reviewCount", {}), refetchInterval: 3000 });
+  if (!count.data) return null;
+  return (
+    <span
+      role="status"
+      aria-label={`${count.data} 封草稿待审核`}
+      className={cn(
+        "min-w-5 rounded-full bg-press px-1.5 text-center text-xs leading-5 text-muted-foreground",
+        className,
+      )}
+    >
+      {count.data > 99 ? "99+" : count.data}
+    </span>
   );
 }
 

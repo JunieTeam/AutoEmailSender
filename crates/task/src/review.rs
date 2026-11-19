@@ -127,6 +127,16 @@ pub struct TaskWork {
     pub model_config_id: Option<i64>,
 }
 
+/// Letters in tasks waiting for the user to review them, which the sidebar shows by "任务".
+pub async fn review_count(db: &SqlitePool) -> std::result::Result<i64, sqlx::Error> {
+    // Per task through its index rather than over all letters, every few seconds.
+    sqlx::query_scalar!(
+        "SELECT count(*) FROM task t JOIN email e ON e.task_id = t.id AND e.state = 'review'"
+    )
+    .fetch_one(db)
+    .await
+}
+
 pub async fn work(db: &SqlitePool) -> std::result::Result<Vec<TaskWork>, sqlx::Error> {
     let mut tx = db.begin().await?;
     let rows = sqlx::query!(

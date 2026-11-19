@@ -199,7 +199,7 @@ function TaskList() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {day(t.createdAt)} · {Object.values(t.progress).reduce((n, v) => n + v, 0)} 位导师
                   {t.progress.review > 0 && t.state !== "stopped" && (
-                    <span className="text-warning"> · {t.progress.review} 封待审核</span>
+                    <span className="text-foreground"> · {t.progress.review} 封待审核</span>
                   )}
                 </p>
               </div>
