@@ -232,7 +232,7 @@ function Crawls() {
           aria-invalid={!!urls.trim() && validation.isError}
         />
         <p id="crawl-usage" className="text-sm text-muted-foreground">
-          找到的导师进入候选审核，一位导师
+          由 AI 读网页整理，找到的导师进入候选审核，一位导师
           {chosen?.rate ? costEstimate(chosen.rate, PAGE.input, PAGE.output, 3) : `约 ${PAGE_TOKENS} Token`}
         </p>
         <ModelAction
