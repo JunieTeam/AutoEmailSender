@@ -1,8 +1,8 @@
 import { type MutationState, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouter, useRouterState } from "@tanstack/react-router";
-import { ChevronLeft, RotateCcw, Trash2, UserRound } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronUp, RotateCcw, Trash2, UserRound } from "lucide-react";
 import { BackButton, useBack } from "@/back";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { call, failureOf } from "@/api/call";
 import type { MentorDetail } from "@/api/types";
 import { useChangedElsewhere } from "@/changed-elsewhere";
@@ -29,8 +29,11 @@ import { Notice } from "@/components/notice";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip } from "@/components/ui/tooltip";
 import { day } from "@/format";
 import { Loading } from "@/components/loading";
+import { pageKey } from "@/page-keys";
+import { mentorPage } from "@/pages/mentors";
 
 /** One mentor: the correspondence in the middle, the profile and match analysis on the right (docs/ui.md#页面). */
 export function MentorPage() {
@@ -203,7 +206,81 @@ function Header({
           onConfirm={onTrash}
         />
       )}
+      <Neighbours id={m.id} />
     </header>
+  );
+}
+
+/**
+ * docs/ui.md#交互: opened from the mentor list, the mentors before and after this one there, by its
+ * filters and order, across its pages. Moving to one is no step to go back over.
+ */
+function Neighbours({ id }: { id: number }) {
+  const list = useRouterState({ select: (s) => s.location.state.list });
+  const page = list?.page ?? 1;
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const here = useQuery({ ...mentorPage(list ?? {}), enabled: list !== undefined });
+  const ids = here.data?.mentors.map((m) => m.id) ?? [];
+  const index = ids.indexOf(id);
+  const step = useMutation({
+    mutationFn: async (delta: 1 | -1) => {
+      if (!list) return;
+      let to = ids.at(index + delta);
+      let at = list;
+      // At either end of the page, on to the next or previous page of the list.
+      if (index + delta < 0 || index + delta >= ids.length) {
+        at = { ...list, page: page + delta > 1 ? page + delta : undefined };
+        const other = await queryClient.fetchQuery(mentorPage(at));
+        to = (delta > 0 ? other.mentors.at(0) : other.mentors.at(-1))?.id;
+      }
+      if (to !== undefined)
+        await navigate({ to: "/mentors/$mentorId", params: { mentorId: to }, replace: true, state: { list: at } });
+    },
+  });
+  // Gone from the list, say by its filter, it has no neighbours there.
+  const listed = list !== undefined && index >= 0;
+  const before = listed && (index > 0 || page > 1);
+  const after = listed && (index < ids.length - 1 || page * 50 < (here.data?.total ?? 0));
+  useEffect(() => {
+    function key(e: KeyboardEvent) {
+      const pressed = pageKey(e);
+      if (step.isPending || !((pressed === "j" && after) || (pressed === "k" && before))) return;
+      e.preventDefault();
+      step.mutate(pressed === "j" ? 1 : -1);
+    }
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  });
+  if (!listed) return null;
+  return (
+    <div className="flex items-center phone:hidden">
+      {step.error && (
+        <FailureNote className="mr-2 text-sm text-destructive" lead="未能切换：" failure={failureOf(step.error)} />
+      )}
+      <Tooltip content="上一位（K）">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="上一位"
+          disabled={!before || step.isPending}
+          onClick={() => step.mutate(-1)}
+        >
+          <ChevronUp strokeWidth={1.6} />
+        </Button>
+      </Tooltip>
+      <Tooltip content="下一位（J）">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="下一位"
+          disabled={!after || step.isPending}
+          onClick={() => step.mutate(1)}
+        >
+          <ChevronDown strokeWidth={1.6} />
+        </Button>
+      </Tooltip>
+    </div>
   );
 }
 

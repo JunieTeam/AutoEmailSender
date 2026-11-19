@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { type HistoryState, Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useEffectEvent } from "react";
 import type { MatchSummary, MentorRow } from "@/api/types";
@@ -32,11 +32,14 @@ export function MentorTable({
   selected,
   selectable,
   onSelect,
+  list,
 }: {
   mentors: MentorRow[];
   selected: ReadonlySet<number>;
   selectable: boolean;
   onSelect: (selected: ReadonlySet<number>) => void;
+  /** The mentor list's filters, through which an opened mentor's neighbours are found. */
+  list?: HistoryState["list"];
 }) {
   const ticked = mentors.filter((m) => selected.has(m.id)).length;
   function tick(ids: number[], on: boolean) {
@@ -97,6 +100,7 @@ export function MentorTable({
               <Link
                 to="/mentors/$mentorId"
                 params={{ mentorId: m.id }}
+                state={{ list }}
                 className="font-medium outline-none after:absolute after:inset-0"
               >
                 {m.name}
@@ -126,7 +130,7 @@ export function MentorTable({
             {m.research ?? <Missing>未填写研究方向</Missing>}
           </div>
           <div role="cell" className="cards:justify-self-end cards:[grid-area:match]">
-            <Link to="/mentors/$mentorId" params={{ mentorId: m.id }} className="relative z-10 block">
+            <Link to="/mentors/$mentorId" params={{ mentorId: m.id }} state={{ list }} className="relative z-10 block">
               <Match state={m.matchState} />
             </Link>
           </div>

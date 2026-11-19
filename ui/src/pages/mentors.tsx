@@ -89,15 +89,19 @@ function listFilter(s: MentorSearch): MentorFilter {
   };
 }
 
+/** A page of the list, which a mentor opened from it also reads to find the next one. */
+export function mentorPage(search: MentorSearch) {
+  return {
+    queryKey: ["listMentors", search],
+    queryFn: () => call("listMentors", { ...listFilter(search), sort: search.sort, page: search.page ?? 1 }),
+  };
+}
+
 export function MentorsPage() {
   const search = useSearch({ from: "/mentors" });
   const navigate = useNavigate({ from: "/mentors" });
   const page = search.page ?? 1;
-  const query = useQuery({
-    queryKey: ["listMentors", search],
-    queryFn: () => call("listMentors", { ...listFilter(search), sort: search.sort, page }),
-    placeholderData: keepPreviousData,
-  });
+  const query = useQuery({ ...mentorPage(search), placeholderData: keepPreviousData });
   const scroller = useKeptScroll<HTMLDivElement>(query);
   const total = query.data?.total ?? 0;
   const queryClient = useQueryClient();
@@ -340,6 +344,7 @@ export function MentorsPage() {
               selected={selected}
               selectable={!query.isPlaceholderData}
               onSelect={setSelected}
+              list={search}
             />
           )}
         </div>

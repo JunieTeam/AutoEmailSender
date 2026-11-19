@@ -9,7 +9,7 @@ import { Shell, MorePage } from "./components/shell";
 import { BackgroundPage } from "./pages/background";
 import { RouteError } from "./components/route-error";
 import { MentorPage } from "./pages/mentor";
-import { MentorsPage, mentorSearch } from "./pages/mentors";
+import { MentorsPage, mentorSearch, type MentorSearch } from "./pages/mentors";
 import { MailboxesSection } from "./pages/mailboxes";
 import { ModelsSection } from "./pages/models";
 import { MaterialsSection } from "./pages/materials";
@@ -276,5 +276,7 @@ declare module "@tanstack/react-router" {
     layers?: number;
     /** In a narrow window, a mentor's profile in place of the correspondence: a step of its own. */
     profile?: boolean;
+    /** A mentor opened from the mentor list, whose neighbours there are a key away (docs/ui.md#交互). */
+    list?: MentorSearch;
   }
 }
