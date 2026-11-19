@@ -462,9 +462,7 @@ export function BackgroundPage() {
               <Link key={c.id} to="/find" search={findSearch({ crawl: c.id })} className={ITEM}>
                 <Entry
                   title={crawlName(c)}
-                  detail={
-                    c.kind === "mentors" ? `补全 ${c.candidates} 位，待审核` : `找到 ${c.candidates} 位候选，待审核`
-                  }
+                  detail={`${c.kind === "mentors" ? `补全 ${c.candidates} 位` : `找到 ${c.candidates} 位候选`}${c.pending > 0 ? `，${c.pending} 位待审核` : ""}`}
                 />
               </Link>
             ))}
