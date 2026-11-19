@@ -155,6 +155,7 @@ export function LetterSend({
   onSend,
   buttonRef,
   label = "发送",
+  verb = "发送",
 }: {
   blocker: ReactNode;
   problems: Problem[];
@@ -162,6 +163,8 @@ export function LetterSend({
   onSend: () => void;
   buttonRef?: Ref<HTMLButtonElement>;
   label?: string;
+  /** What the button does, which in a task is approving: a scheduled letter goes out later. */
+  verb?: "发送" | "批准";
 }) {
   const button = (
     <Button ref={buttonRef} disabled={disabled || !!blocker} onClick={problems.length === 0 ? onSend : undefined}>
@@ -175,8 +178,8 @@ export function LetterSend({
       {problems.length > 0 ? (
         <Confirm
           trigger={button}
-          message={`还有 ${problems.length} 个问题，仍要发送？`}
-          action="仍要发送"
+          message={`还有 ${problems.length} 个问题，仍要${verb}？`}
+          action={`仍要${verb}`}
           onConfirm={onSend}
         />
       ) : (

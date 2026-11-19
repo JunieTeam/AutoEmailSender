@@ -306,6 +306,7 @@ export function TaskLetter({
             ) : (
               <LetterSend
                 label="批准并查看下一封"
+                verb="批准"
                 buttonRef={sendButton}
                 blocker={blocker}
                 problems={problems}
