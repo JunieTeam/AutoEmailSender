@@ -159,9 +159,10 @@ export function ChangeSchedule({ task, onClose }: { task: TaskSummary; onClose: 
   const [value, setValue] = useState(task.schedule);
   const [saved, setSaved] = useState<number | null>(null);
   const save = useMutation({
-    mutationFn: () => call("changeTaskSchedule", { id: task.id, schedule: value }),
-    onSuccess: (n) => {
-      setSaved(n);
+    mutationFn: (schedule: Schedule) => call("changeTaskSchedule", { id: task.id, schedule }),
+    onSuccess: (n, schedule) => {
+      // Changed again while it saved: what is shown now is not saved yet.
+      if (schedule === value) setSaved(n);
       refreshSchedule(client);
     },
   });
@@ -194,7 +195,10 @@ export function ChangeSchedule({ task, onClose }: { task: TaskSummary; onClose: 
           <Button variant="ghost" disabled={save.isPending} onClick={onClose}>
             {saved !== null ? "关闭" : "取消"}
           </Button>
-          <Button disabled={!scheduleValid(value) || save.isPending || saved !== null} onClick={() => save.mutate()}>
+          <Button
+            disabled={!scheduleValid(value) || save.isPending || saved !== null}
+            onClick={() => save.mutate(value)}
+          >
             保存发送时间
           </Button>
         </DialogFooter>
