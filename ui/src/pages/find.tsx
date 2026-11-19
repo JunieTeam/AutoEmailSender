@@ -45,6 +45,7 @@ import { Missing, refreshMentors, placeOf } from "@/components/mentor";
 import { Pager, useLastPage } from "@/components/mentor-table";
 import { LibraryTab } from "@/pages/library";
 import { Button } from "@/components/ui/button";
+import { Help } from "@/components/ui/help";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Segments } from "@/components/ui/segments";
 import { StatusLabel, type Tone } from "@/components/ui/status-dot";
@@ -209,9 +210,16 @@ function Crawls() {
   return (
     <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-6 pb-8 phone:px-4">
       <section className="mb-6 max-w-3xl space-y-3 rounded-lg bg-muted p-4">
-        <label className="block font-medium" htmlFor="crawl-urls">
-          学院官网或教师名单网址
-        </label>
+        <div className="flex items-center gap-1">
+          <label className="font-medium" htmlFor="crawl-urls">
+            学院官网或教师名单网址
+          </label>
+          <Help label="智能整理">
+            <p>自动寻找名单和分类，读取个人页后进入候选审核。</p>
+            <p>一位导师约 {PAGE_TOKENS} Token，实际用量随人数和网页长度变化，另计寻找名单的用量。</p>
+            <p>网页标题、文字、链接文字和公开的导师资料会发给模型服务商。</p>
+          </Help>
+        </div>
         <Textarea
           id="crawl-urls"
           // docs/ui.md#控件: on the panel's --muted, the field is white.
@@ -224,11 +232,8 @@ function Crawls() {
           aria-invalid={!!urls.trim() && validation.isError}
         />
         <p id="crawl-usage" className="text-sm text-muted-foreground">
-          一位导师约 {PAGE_TOKENS} Token{chosen?.rate && `，${costEstimate(chosen.rate, PAGE.input, PAGE.output, 3)}`}
-          。实际用量随人数和网页长度变化，另计寻找名单的用量。
-        </p>
-        <p className="text-sm text-muted-foreground">
-          自动寻找名单和分类，读取个人页后进入候选审核。网页标题、文字、链接文字和公开的导师资料会发给模型服务商。
+          找到的导师进入候选审核，一位导师
+          {chosen?.rate ? costEstimate(chosen.rate, PAGE.input, PAGE.output, 3) : `约 ${PAGE_TOKENS} Token`}
         </p>
         <ModelAction
           feature="crawl"
