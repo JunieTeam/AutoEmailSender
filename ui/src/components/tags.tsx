@@ -1,6 +1,6 @@
 import { type MutationState, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, TagIcon } from "lucide-react";
-import { useState } from "react";
+import { type ReactElement, useState } from "react";
 import { call, failureOf } from "@/api/call";
 import { FailureNote } from "@/components/failure";
 import type { Direction, Failure, MentorDetail, Tag } from "@/api/types";
@@ -213,7 +213,23 @@ export function useAddTag() {
 }
 
 /** The batch bar's "添加标签". */
-export function AddTagButton({ mentorIds, add }: { mentorIds: number[]; add: ReturnType<typeof useAddTag> }) {
+export function AddTagButton({
+  mentorIds,
+  add,
+  trigger = (
+    <Button variant="ghost">
+      <TagIcon strokeWidth={1.6} />
+      添加标签
+    </Button>
+  ),
+  onAdded,
+}: {
+  mentorIds: number[];
+  add: ReturnType<typeof useAddTag>;
+  /** In place of the button, say an item of a menu. */
+  trigger?: ReactElement;
+  onAdded?: () => void;
+}) {
   const tags = useTags();
   const [open, setOpen] = useState(false);
   const choose = (tag: AddTag["tag"], clear?: () => void) =>
@@ -223,19 +239,13 @@ export function AddTagButton({ mentorIds, add }: { mentorIds: number[]; add: Ret
         onSuccess: () => {
           clear?.();
           setOpen(false);
+          onAdded?.();
         },
       },
     );
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <Button variant="ghost">
-            <TagIcon strokeWidth={1.6} />
-            添加标签
-          </Button>
-        }
-      />
+      <PopoverTrigger render={trigger} />
       <PopoverContent side="top" className="flex w-64 flex-col gap-1">
         <TagsFailed error={tags.error} />
         {tags.data?.map((t) => (

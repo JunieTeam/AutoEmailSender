@@ -387,17 +387,34 @@ export function MentorsPage() {
           <Button variant="ghost" onClick={() => setTask({ ids: [...selected], kind: "follow_up" })}>
             追问
           </Button>
-          <Button variant="ghost" onClick={() => setMatching([...selected])}>
-            <AiIcon />
-            分析匹配度
-          </Button>
-          <AddTagButton mentorIds={[...selected]} add={addTag} />
-          {/* docs/ui.md#风格: the rest, used less, under "更多". */}
+          {/* docs/ui.md#风格: the rest, used less, under "更多"; on a phone, these two as well. */}
+          <div className="contents phone:hidden">
+            <Button variant="ghost" onClick={() => setMatching([...selected])}>
+              <AiIcon />
+              分析匹配度
+            </Button>
+            <AddTagButton mentorIds={[...selected]} add={addTag} />
+          </div>
           <Popover open={batchMore} onOpenChange={setBatchMore}>
             <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="更多" />}>
               <MoreHorizontal strokeWidth={1.6} />
             </PopoverTrigger>
             <PopoverContent side="top" align="end">
+              <button
+                className={`${MENU_ITEM} hidden phone:flex`}
+                onClick={() => {
+                  setBatchMore(false);
+                  setMatching([...selected]);
+                }}
+              >
+                分析匹配度
+              </button>
+              <AddTagButton
+                mentorIds={[...selected]}
+                add={addTag}
+                trigger={<button className={`${MENU_ITEM} hidden phone:flex`}>添加标签</button>}
+                onAdded={() => setBatchMore(false)}
+              />
               <button
                 className={MENU_ITEM}
                 onClick={() => {
