@@ -1436,22 +1436,24 @@ function CandidatePane({
                 : "未能接受，请查看上面的原因"}
             </p>
           )}
-          <Collapsible>
-            <CollapsibleTrigger>来源与邮箱证据 · {d.evidence.length} 页</CollapsibleTrigger>
-            <CollapsibleContent>
-              {d.evidence.map((e, n) => (
-                <div key={n} className="mt-2 break-words text-muted-foreground">
-                  <WebLink url={e.url} className="text-xs" />
-                  <p>
-                    {e.name} ·{" "}
-                    {e.emails.map((m) => (e.recognized.includes(m) ? `${m}（从图片识别）` : m)).join("、") ||
-                      "未找到可确认归属的邮箱"}
-                  </p>
-                  {e.research && <p>{e.research}</p>}
-                </div>
-              ))}
-            </CollapsibleContent>
-          </Collapsible>
+          {d.evidence.length > 0 && (
+            <Collapsible>
+              <CollapsibleTrigger>来源与邮箱证据 · {d.evidence.length} 页</CollapsibleTrigger>
+              <CollapsibleContent>
+                {d.evidence.map((e, n) => (
+                  <div key={n} className="mt-2 break-words text-muted-foreground">
+                    <WebLink url={e.url} className="text-xs" />
+                    <p>
+                      {e.name} ·{" "}
+                      {e.emails.map((m) => (e.recognized.includes(m) ? `${m}（从图片识别）` : m)).join("、") ||
+                        "未找到可确认归属的邮箱"}
+                    </p>
+                    {e.research && <p>{e.research}</p>}
+                  </div>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          )}
         </div>
       </div>
       <footer className="flex flex-wrap items-center gap-2 border-t border-border px-6 py-3 phone:px-3">
