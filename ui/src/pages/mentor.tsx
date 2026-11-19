@@ -264,9 +264,10 @@ function Neighbours({ id }: { id: number }) {
           const other = await queryClient.fetchQuery(mentorPage(shown));
           to = (delta > 0 ? other.mentors.at(0) : other.mentors.at(-1))?.id;
         }
-        // Not once the user has gone elsewhere, or opened a dialog, while that page was read.
+        // Not once the user has gone elsewhere, or opened a dialog, while that page was read. Not
+        // awaited: a move held back by a save that failed never settles, and the buttons stay usable.
         if (to !== undefined && router.history.location.state.__TSR_key === from)
-          await navigate({ to: "/mentors/$mentorId", params: { mentorId: to }, replace: true, state: { list: shown } });
+          void navigate({ to: "/mentors/$mentorId", params: { mentorId: to }, replace: true, state: { list: shown } });
       } finally {
         moving.current = false;
       }
