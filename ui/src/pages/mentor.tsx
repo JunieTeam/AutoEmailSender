@@ -1,7 +1,7 @@
 import { type MutationState, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouter, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, ChevronLeft, ChevronUp, RotateCcw, Trash2, UserRound } from "lucide-react";
-import { BackButton, useBack } from "@/back";
+import { BackButton, useBack, useBeforeLeave } from "@/back";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { call, failureOf } from "@/api/call";
 import type { MentorDetail } from "@/api/types";
@@ -33,6 +33,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { day } from "@/format";
 import { Loading } from "@/components/loading";
 import { pageKey } from "@/page-keys";
+import { waitForSaves } from "@/components/letter-composer";
 import { mentorPage } from "@/pages/mentors";
 
 /** One mentor: the correspondence in the middle, the profile and match analysis on the right (docs/ui.md#页面). */
@@ -49,6 +50,22 @@ export function MentorPage() {
   const profile = useRouterState({ select: (s) => s.location.state.profile === true });
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  // Leaving, also for the next mentor, waits for what was typed here to be saved. One that fails
+  // meanwhile keeps the user here, where its letter or note says so; leaving again then goes, and
+  // coming back finds the text that failed (docs/development.md#界面).
+  const saves = ["saveFirstDraft", "saveReplyDraft", "saveFollowUpDraft", "setMentorNote"].map((op) => [op, mentorId]);
+  useBeforeLeave(
+    async () => {
+      const pending = saves.filter((key) => queryClient.isMutating({ mutationKey: key }) > 0);
+      try {
+        await Promise.all(pending.map((key) => waitForSaves(queryClient, key)));
+        return false;
+      } catch {
+        return true;
+      }
+    },
+    () => saves.some((key) => queryClient.isMutating({ mutationKey: key }) > 0),
+  );
   const trash = useMutation({
     mutationFn: (op: TrashOp) => call(op, { ids: [mentorId] }),
     onSuccess: async (_, op) => {
