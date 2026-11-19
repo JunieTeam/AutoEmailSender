@@ -36,10 +36,10 @@ async fn message(db: &SqlitePool, mentor: i64, kind: &str, at: i64, subject: Opt
     let id: i64 = sqlx::query_scalar(
         r#"INSERT INTO message (mailbox_id, folder, uidvalidity, uid, kind, sent_at,
             from_address, subject, truncated)
-        VALUES (1, 'INBOX', 1, ?, ?, ?, 'li@example.com', ?, 0)
+        VALUES (1, 'INBOX', 1, (SELECT coalesce(max(uid), 0) + 1 FROM message), ?, ?,
+            'li@example.com', ?, 0)
         RETURNING id"#,
     )
-    .bind(at)
     .bind(kind)
     .bind(at)
     .bind(subject)
@@ -170,4 +170,10 @@ async fn subject_is_from_the_latest_nonautomatic_mail(db: SqlitePool) {
     let page = list(&db, false, 1).await;
     assert_eq!(page.conversations[0].subject, None);
     assert_eq!(page.conversations[0].at, 40);
+    // A reply and the user's answer sent elsewhere at the same time: the user's is the last.
+    message(&db, li, "reply", 70, Some("回信")).await;
+    message(&db, li, "sent", 70, Some("答复")).await;
+    let page = list(&db, false, 1).await;
+    assert!(page.conversations[0].mine);
+    assert_eq!(page.conversations[0].subject.as_deref(), Some("答复"));
 }

@@ -45,17 +45,18 @@ pub async fn list(
             c.unread AS "unread!", c.mine AS "mine!: bool", (
             SELECT subject
             FROM (
-                SELECT subject, sent_at
+                SELECT subject, sent_at, 0 AS reply
                 FROM email
                 WHERE mentor_id = c.mentor_id AND state IN ('maybe_sent', 'sent',
                     'bounced')
                 UNION ALL
-                SELECT m.subject, m.sent_at
+                SELECT m.subject, m.sent_at, m.kind = 'reply'
                 FROM message m
                 JOIN message_mentor mm ON mm.message_id = m.id
                 WHERE mm.mentor_id = c.mentor_id AND m.kind <> 'auto_reply'
             )
-            ORDER BY sent_at DESC
+            -- At the same time, the user's letter is the last, as for `mine`.
+            ORDER BY sent_at DESC, reply
             LIMIT 1
         ) AS "subject?: String"
         FROM (
