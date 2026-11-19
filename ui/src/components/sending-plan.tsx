@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import type { PlanCloud, PlanColumn, PlanEmail, Waiting } from "@/api/types";
 import { call, failureOf } from "@/api/call";
@@ -78,6 +78,7 @@ function PlanList({ column, label, hidden }: { column: PlanColumn; label: string
     queryKey: ["sendingPlan", column, page],
     queryFn: () => call("sendingPlan", { column, page }),
     refetchInterval: 3000,
+    placeholderData: keepPreviousData,
   });
   const scroller = useKeptScroll<HTMLDivElement>(query, `${column} ${page}`);
   return (

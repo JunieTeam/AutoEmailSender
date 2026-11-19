@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   skipToken,
   type UseMutationResult,
   type UseQueryResult,
@@ -189,6 +190,7 @@ function Crawls() {
     queryKey: ["listCrawls", s.recordPage],
     queryFn: () => call("listCrawls", { page: s.recordPage }),
     refetchInterval: 2000,
+    placeholderData: keepPreviousData,
   });
   // The address also holds the other tabs' state.
   const scroller = useKeptScroll<HTMLDivElement>(records, String(s.recordPage));
@@ -414,6 +416,7 @@ function CrawlDialog({ id }: { id: number }) {
     queryKey: ["getCrawl", id, page, true],
     queryFn: () => call("getCrawl", { id, page, failed: true }),
     refetchInterval: 2000,
+    placeholderData: keepPreviousData,
   });
   const c = detail.data?.summary;
   const usage = useQuery({
@@ -688,6 +691,7 @@ function AllPages({ id, total }: { id: number; total: number }) {
     queryFn: () => call("getCrawl", { id, page, failed: false }),
     enabled: open,
     refetchInterval: 2000,
+    placeholderData: keepPreviousData,
   });
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -740,7 +744,11 @@ function Candidates() {
     queryKey: ["listCandidates", q],
     queryFn: () => call("listCandidates", q),
     refetchInterval: 3000,
+    placeholderData: keepPreviousData,
   });
+  // The lines of the filter or page before stay on show, with its counts, until these arrive; they
+  // are not opened, moved through or ticked meanwhile.
+  const waiting = list.isPlaceholderData;
   const scroller = useKeptScroll<HTMLDivElement>(list, JSON.stringify(q));
   // `turn` picks the page and the candidate on it; the list finding its page gone meanwhile does not
   // move first.
@@ -756,7 +764,7 @@ function Candidates() {
   const agentCrawls = new Set(crawls.data?.filter((c) => c.kind === "agent").map((c) => c.id));
   const items = list.data?.candidates ?? [];
   const total = list.data?.total ?? 0;
-  const current = s.candidate ?? items[0]?.id;
+  const current = s.candidate ?? (waiting ? undefined : items[0]?.id);
   useEffect(() => {
     const compact = matchMedia(COMPACT);
     function openFirst() {
@@ -808,6 +816,7 @@ function Candidates() {
     );
   }
   function move(delta: number) {
+    if (waiting) return;
     const next = items[items.findIndex((c) => c.id === current) + delta];
     if (next) choose(next.id, false);
     else if (delta > 0 && s.page * 50 < total) turn(s.page + 1, (shown) => shown.candidates[0]?.id);
@@ -943,7 +952,8 @@ function Candidates() {
                 <Checkbox
                   checked={all}
                   indeterminate={selected.size > 0 && !all}
-                  disabled={tickAll.isPending}
+                  // The count on show is the filter's before until its list arrives; the ids would be the new one's.
+                  disabled={tickAll.isPending || waiting}
                   onCheckedChange={(checked) =>
                     checked ? tickAll.mutate({ selection, from: selected }) : setSelected(new Set())
                   }
@@ -958,7 +968,8 @@ function Candidates() {
                   candidate={c}
                   current={c.id === current}
                   agent={c.crawlId !== null && agentCrawls.has(c.crawlId)}
-                  ticked={s.processed ? null : selected.has(c.id)}
+                  ticked={c.review === "pending" ? selected.has(c.id) : null}
+                  selectable={!waiting}
                   onTick={(ticked) => tick(c.id, ticked)}
                   onChoose={() => choose(c.id)}
                 />
@@ -1068,6 +1079,7 @@ function CandidateLine({
   current,
   agent,
   ticked,
+  selectable,
   onTick,
   onChoose,
 }: {
@@ -1076,6 +1088,7 @@ function CandidateLine({
   agent: boolean;
   /** None among those already reviewed, which are not ticked. */
   ticked: boolean | null;
+  selectable: boolean;
   onTick: (ticked: boolean) => void;
   onChoose: () => void;
 }) {
@@ -1085,7 +1098,7 @@ function CandidateLine({
     <div className={`flex animate-fade-in items-start rounded-md ${current ? "bg-selected" : "hover:bg-muted"}`}>
       {ticked !== null && (
         <label className="flex min-h-[58px] min-w-10 shrink-0 cursor-pointer items-center justify-center">
-          <Checkbox aria-label={`选择${c.name}`} checked={ticked} onCheckedChange={onTick} />
+          <Checkbox aria-label={`选择${c.name}`} checked={ticked} disabled={!selectable} onCheckedChange={onTick} />
         </label>
       )}
       <button

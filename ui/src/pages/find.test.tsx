@@ -204,6 +204,29 @@ it("drops the ticks of another search when going back to the one before", async 
   });
 });
 
+it("keeps the lines and counts on show while another search loads, without ticking the old lines", async () => {
+  remote.ids = [9];
+  await page("/find?keyword=A", async (container, router) => {
+    const tick = (name: string) => container.querySelector<HTMLElement>(`[aria-label="选择${name}"]`);
+    const counts = () => container.querySelector('[aria-label="候选分类"]')?.textContent;
+    await vi.waitFor(() => expect(tick("候选A")).not.toBeNull());
+    const before = counts();
+    const slow: NonNullable<typeof remote.slow> = { keyword: "BB", served: false };
+    remote.slow = slow;
+    await act(async () => router.navigate({ to: "/find", search: findSearch({ keyword: "BB" }) }));
+    await vi.waitFor(() => expect(slow.release).toBeDefined());
+    expect(counts()).toBe(before);
+    await act(async () => tick("候选A")?.closest("label")?.click());
+    // Nor every one the new search finds, which are not on show yet.
+    const all = [...container.querySelectorAll("label")].find((l) => l.textContent?.startsWith("全选筛出的"));
+    await act(async () => all?.click());
+    expect(bar(container)?.closest("[inert]")).not.toBeNull();
+    await act(async () => slow.release?.());
+    await vi.waitFor(() => expect(tick("候选BB")).not.toBeNull());
+    expect(tick("候选A")).toBeNull();
+  });
+});
+
 it("ticks every candidate the filter finds, on the pages not shown too", async () => {
   remote.list = () => [candidate(1, "候选甲")];
   remote.total = 3;

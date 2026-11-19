@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch, useParams, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ListChecks, Mail, MoreHorizontal, SearchX } from "lucide-react";
@@ -169,6 +169,7 @@ function TaskList() {
     queryKey: ["listTasks", page],
     queryFn: () => call("listTasks", { page }),
     refetchInterval: 3000,
+    placeholderData: keepPreviousData,
   });
   // Not the address, which also holds the sending plan's state.
   const scroller = useKeptScroll<HTMLDivElement>(query, String(page));
@@ -289,7 +290,11 @@ export function TaskReviewPage() {
     queryKey: ["listTaskDrafts", id, filter, page],
     queryFn: () => call("listTaskDrafts", { taskId: id, filter, page }),
     refetchInterval: 3000,
+    placeholderData: keepPreviousData,
   });
+  // The letters of the filter or page before stay on show until these arrive; they are not opened or
+  // moved through meanwhile.
+  const waiting = list.isPlaceholderData;
   const scroller = useKeptScroll<HTMLDivElement>(list, `${filter} ${page}`);
   // Every router navigation, including the sidebar and browser back, waits for the current letter's operations.
   useBeforeLeave(
@@ -306,7 +311,7 @@ export function TaskReviewPage() {
       client.isMutating({ mutationKey: ["saveTaskDraft"] }) > 0 ||
       client.isMutating({ mutationKey: ["taskDraftAction", id] }) > 0,
   );
-  const current = search.email ?? list.data?.drafts[0]?.id;
+  const current = search.email ?? (waiting ? undefined : list.data?.drafts[0]?.id);
   useEffect(() => {
     const compact = matchMedia(COMPACT);
     function openFirst() {
@@ -373,6 +378,7 @@ export function TaskReviewPage() {
     };
   }
   function move(delta: 1 | -1) {
+    if (waiting) return;
     const drafts = list.data?.drafts ?? [];
     // In a narrow window with only the list on show, J opens the first letter.
     if (search.email === undefined) {
