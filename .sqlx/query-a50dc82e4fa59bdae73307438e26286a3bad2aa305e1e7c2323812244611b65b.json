@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT count(*) FROM task t JOIN email e ON e.task_id = t.id AND e.state = 'review'",
+  "query": "SELECT count(*)\n        FROM task t\n        CROSS JOIN email e ON e.task_id = t.id AND e.state = 'review'",
   "describe": {
     "columns": [
       {
@@ -17,5 +17,5 @@
       false
     ]
   },
-  "hash": "0b58bd421a048e3cf7cd61dde85bea3c0f83bd6615f548aa4f9e6ffce5ce7c3c"
+  "hash": "a50dc82e4fa59bdae73307438e26286a3bad2aa305e1e7c2323812244611b65b"
 }

@@ -129,9 +129,12 @@ pub struct TaskWork {
 
 /// Letters in tasks waiting for the user to review them, which the sidebar shows by "任务".
 pub async fn review_count(db: &SqlitePool) -> std::result::Result<i64, sqlx::Error> {
-    // Per task through its index rather than over all letters, every few seconds.
+    // Per task through the (task_id, state) index rather than over all letters, every few seconds.
+    // CROSS JOIN keeps that order: without ANALYZE statistics SQLite scans the letters instead.
     sqlx::query_scalar!(
-        "SELECT count(*) FROM task t JOIN email e ON e.task_id = t.id AND e.state = 'review'"
+        "SELECT count(*)
+        FROM task t
+        CROSS JOIN email e ON e.task_id = t.id AND e.state = 'review'"
     )
     .fetch_one(db)
     .await

@@ -372,18 +372,21 @@ function UnreadBadge({ className }: { className?: string }) {
  */
 function ReviewCount({ className }: { className?: string }) {
   const count = useQuery({ queryKey: ["reviewCount"], queryFn: () => call("reviewCount", {}), refetchInterval: 3000 });
-  if (!count.data) return null;
+  if (!count.isError && !count.data) return null;
+  const failed = count.isError ? `待审核数量读取失败：${errorMessage(count.error)}` : undefined;
   return (
-    <span
-      role="status"
-      aria-label={`${count.data} 封草稿待审核`}
-      className={cn(
-        "min-w-5 rounded-full bg-press px-1.5 text-center text-xs leading-5 text-muted-foreground",
-        className,
-      )}
-    >
-      {count.data > 99 ? "99+" : count.data}
-    </span>
+    <Tooltip content={failed}>
+      <span
+        role={failed ? "img" : "status"}
+        aria-label={failed ?? `${count.data} 封草稿待审核`}
+        className={cn(
+          "min-w-5 rounded-full bg-press px-1.5 text-center text-xs leading-5 text-muted-foreground",
+          className,
+        )}
+      >
+        {count.isError ? "!" : count.data > 99 ? "99+" : count.data}
+      </span>
+    </Tooltip>
   );
 }
 
