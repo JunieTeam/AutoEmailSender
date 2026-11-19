@@ -41,7 +41,7 @@ export function TaskLetter({
   materials,
   placeholders,
   actions,
-  onApproved,
+  onApprove,
   replacing,
   ref,
 }: {
@@ -51,7 +51,8 @@ export function TaskLetter({
   materials: Material[];
   placeholders: string[];
   actions?: ReactNode;
-  onApproved: () => void;
+  /** Called as the user approves; what it returns runs once the approval has gone through. */
+  onApprove: () => () => void;
   replacing: boolean;
   ref?: Ref<ComposerHandle>;
 }) {
@@ -123,6 +124,7 @@ export function TaskLetter({
   const approve = useMutation({
     mutationKey: approveKey,
     scope,
+    onMutate: onApprove,
     mutationFn: async (current: DraftEdit) => {
       await saved();
       if (!style.data) throw new UiError("信件样式尚未加载，请稍后再试");
@@ -138,7 +140,7 @@ export function TaskLetter({
         ],
       });
     },
-    onSuccess: onApproved,
+    onSuccess: (_done, _letter, next) => next(),
   });
   const locked = readOnly || busy || uploading || approving || approve.isSuccess || review !== undefined || replacing;
   const sendButton = useRef<HTMLButtonElement>(null);

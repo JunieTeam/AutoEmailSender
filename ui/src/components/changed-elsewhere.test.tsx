@@ -109,7 +109,7 @@ function letter(draft: TaskDraft) {
       task={task}
       materials={[]}
       placeholders={[]}
-      onApproved={() => undefined}
+      onApprove={() => () => undefined}
       replacing={false}
     />
   );

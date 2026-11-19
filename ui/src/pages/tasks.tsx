@@ -10,6 +10,7 @@ import type {
   DraftFilter,
   DraftPage,
   DraftState,
+  DraftSummary,
   Failure,
   PlanColumn,
   Progress,
@@ -245,6 +246,8 @@ const DRAFT_STATE: Record<DraftState, [string, Tone]> = {
   canceled: ["已取消", "faint"],
 };
 
+const awaitingReview = (d: DraftSummary) => d.state === "review";
+
 function DraftStatus({ state, className }: { state: DraftState; className?: string }) {
   const [label, tone] = DRAFT_STATE[state];
   return <StatusLabel tone={tone} label={label} className={cn("text-xs text-muted-foreground", className)} />;
@@ -328,19 +331,18 @@ export function TaskReviewPage() {
   }
   /**
    * Shows a page of the list as it is now, and on it the letter `pick` chooses; unless the user has
-   * moved on meanwhile, to another letter, page or filter, which stays.
+   * moved on since `from`, the history entry then, to another letter, page or filter, which stays.
    */
-  function turn(to: number, from: number, pick: (shown: DraftPage) => number | undefined) {
+  function turn(to: number, from: string | undefined, pick: (shown: DraftPage) => number | undefined) {
     void client
       .fetchQuery({
         queryKey: ["listTaskDrafts", id, filter, to],
         queryFn: () => call("listTaskDrafts", { taskId: id, filter, page: to }),
       })
       .then((shown) => {
-        // One emptied since, as by approving the last letter on it: the page before, at its end.
-        if (shown.drafts.length === 0 && to > 1) return turn(to - 1, from, (before) => before.drafts.at(-1)?.id);
-        const { location } = router.state;
-        if (location.pathname === `/tasks/${id}` && location.search.email === from)
+        // One emptied since, as by approving the last letter on it: the page before.
+        if (shown.drafts.length === 0 && to > 1) return turn(to - 1, from, pick);
+        if (router.history.location.state.__TSR_key === from)
           void navigate({
             search: (s) => ({ ...s, page: to > 1 ? to : undefined, email: pick(shown) }),
             replace: true,
@@ -349,37 +351,37 @@ export function TaskReviewPage() {
       .catch((e: unknown) => setError(failureOf(e)));
   }
   /**
-   * docs/ui.md#任务: an approved letter moves down the list, and the one after it takes its place,
-   * from the next page too; that one is shown next.
+   * docs/ui.md#任务: notes where the letter stands as the user approves it, since the list may be
+   * read again before the approval returns. Once approved, the next letter waiting for review from
+   * that place on, else the first one on the page; with none left, this one stays.
    */
-  function approved(email: number) {
-    const index = (list.data?.drafts ?? []).findIndex((d) => d.id === email);
-    refreshTasks(client);
-    turn(page, email, (shown) => (shown.drafts[index] ?? shown.drafts.at(-1))?.id);
+  function approving(email: number) {
+    const index = Math.max(
+      0,
+      (list.data?.drafts ?? []).findIndex((d) => d.id === email),
+    );
+    const from = router.history.location.state.__TSR_key;
+    return () => {
+      refreshTasks(client);
+      turn(
+        page,
+        from,
+        (shown) => (shown.drafts.slice(index).find(awaitingReview) ?? shown.drafts.find(awaitingReview))?.id ?? email,
+      );
+    };
   }
-  function move(delta: number) {
+  function move(delta: 1 | -1) {
     const drafts = list.data?.drafts ?? [];
     // In a narrow window with only the list on show, J opens the first letter.
     if (search.email === undefined) {
       if (delta > 0 && drafts[0]) choose(drafts[0].id);
       return;
     }
-    const index = drafts.findIndex((d) => d.id === current);
-    const next = drafts[index + delta];
+    const next = drafts[drafts.findIndex((d) => d.id === current) + delta];
+    const from = router.history.location.state.__TSR_key;
     if (next) choose(next.id, false);
-    else if (delta > 0 && page * 50 < (list.data?.total ?? 0))
-      void navigate({ search: (s) => ({ ...s, page: page + 1, email: undefined }), replace: true });
-    else if (delta < 0 && page > 1) {
-      void client
-        .fetchQuery({
-          queryKey: ["listTaskDrafts", id, filter, page - 1],
-          queryFn: () => call("listTaskDrafts", { taskId: id, filter, page: page - 1 }),
-        })
-        .then((previous) =>
-          navigate({ search: (s) => ({ ...s, page: page - 1, email: previous.drafts.at(-1)?.id }), replace: true }),
-        )
-        .catch((e: unknown) => setError(failureOf(e)));
-    }
+    else if (delta > 0 && page * 50 < (list.data?.total ?? 0)) turn(page + 1, from, (shown) => shown.drafts[0]?.id);
+    else if (delta < 0 && page > 1) turn(page - 1, from, (shown) => shown.drafts.at(-1)?.id);
   }
   useEffect(() => {
     function key(e: KeyboardEvent) {
@@ -645,7 +647,7 @@ export function TaskReviewPage() {
             composer={composer}
             chosen={search.email !== undefined}
             onBack={() => choose(undefined, false)}
-            onApproved={() => approved(current)}
+            onApprove={() => approving(current)}
           />
         ) : (
           <section className="compact:hidden">
@@ -665,7 +667,7 @@ function DraftDetail({
   composer,
   chosen,
   onBack,
-  onApproved,
+  onApprove,
 }: {
   id: number;
   task: TaskSummary;
@@ -673,7 +675,7 @@ function DraftDetail({
   /** Whether the user chose this letter, which a narrow window then shows in place of the list. */
   chosen: boolean;
   onBack: () => void;
-  onApproved: () => void;
+  onApprove: () => () => void;
 }) {
   const client = useQueryClient();
   const key = { taskId: task.id, id };
@@ -771,7 +773,7 @@ function DraftDetail({
             placeholders={placeholders.data}
             materials={materials.data}
             task={task}
-            onApproved={onApproved}
+            onApprove={onApprove}
             replacing={action.isPending}
             actions={
               editable && (
