@@ -372,14 +372,18 @@ function TaskSteps({
                   {eligible.length} 位导师 · {form.writer === "ai" ? "AI 逐一撰写" : "使用模板"}
                 </p>
                 <p>
-                  {form.templateSourceId !== null
-                    ? "原任务保存的模板"
-                    : form.templateId
-                      ? templates.find((t) => t.id === form.templateId)?.name
-                      : "从头起草"}{" "}
-                  · {form.references.length} 份参考材料 · {attached.length} 个附件
+                  {[
+                    form.templateSourceId !== null
+                      ? "原任务保存的模板"
+                      : form.templateId
+                        ? templates.find((t) => t.id === form.templateId)?.name
+                        : "从头起草",
+                    form.references.length > 0 && `${form.references.length} 份参考材料`,
+                    attached.length > 0 && `${attached.length} 个附件`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
-
                 <p className="text-muted-foreground">
                   创建后先审核草稿。每封邮件经你批准后，按邮箱的余量和最短间隔依次发出。
                 </p>
