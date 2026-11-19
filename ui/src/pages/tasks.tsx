@@ -198,6 +198,9 @@ function TaskList() {
                 <h2 className="truncate font-medium">{t.name}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {day(t.createdAt)} · {Object.values(t.progress).reduce((n, v) => n + v, 0)} 位导师
+                  {t.progress.review > 0 && t.state !== "stopped" && (
+                    <span className="text-warning"> · {t.progress.review} 封待审核</span>
+                  )}
                 </p>
               </div>
               <div className="phone:col-span-2 phone:row-start-2">
@@ -683,6 +686,19 @@ function DraftDetail({
             <p className="truncate text-sm text-muted-foreground">{mentor.emails[0] ?? "未填写邮箱"}</p>
           </div>
           <DraftStatus state={d.state} />
+          {["generating", "generation_failed", "review", "approved", "failed"].includes(d.state) &&
+            task.state !== "stopped" && (
+              <Confirm
+                trigger={
+                  <Button variant="ghost" size="sm" disabled={action.isPending}>
+                    移出任务
+                  </Button>
+                }
+                message="移出这位导师？这封邮件将取消，导师资料保留。"
+                action="移出任务"
+                onConfirm={() => action.mutate("removeTaskEmail")}
+              />
+            )}
         </div>
         {d.state === "generating" ? (
           <Notice
@@ -730,20 +746,7 @@ function DraftDetail({
             }
           />
         )}
-        <div className="flex flex-wrap gap-2 px-5 pb-5 phone:px-3">
-          {["generating", "generation_failed", "review", "approved", "failed"].includes(d.state) &&
-            task.state !== "stopped" && (
-              <Confirm
-                trigger={
-                  <Button variant="ghost" disabled={action.isPending}>
-                    移出任务
-                  </Button>
-                }
-                message="移出这位导师？这封邮件将取消，导师资料保留。"
-                action="移出任务"
-                onConfirm={() => action.mutate("removeTaskEmail")}
-              />
-            )}
+        <div className="flex flex-wrap gap-2 px-5 pb-5 empty:hidden phone:px-3">
           {d.state === "approved" && (
             <>
               <p className="w-full text-sm text-muted-foreground">
