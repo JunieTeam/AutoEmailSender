@@ -89,7 +89,7 @@ const letterCount = (progress: Progress) => SEGMENTS.reduce((n, [k]) => n + prog
 function ProgressBar({ progress, labels = false }: { progress: Progress; labels?: boolean }) {
   return (
     <div className="min-w-0">
-      {/* docs/ui.md#图表: parts apart by a 2px gap of the page's colour, shares of the room left. */}
+      {/* docs/ui.md#图表: parts apart by a 2px gap of the page's colour, shares of the room left, a few letters still in sight. */}
       <div
         className="flex h-2.5 gap-0.5 overflow-hidden rounded-full"
         aria-label={SEGMENTS.map(([k, label]) => `${label} ${progress[k]} 封`).join("，")}
@@ -99,7 +99,7 @@ function ProgressBar({ progress, labels = false }: { progress: Progress; labels?
             progress[k] > 0 && (
               <Tooltip key={k} content={`${label} ${progress[k]} 封`}>
                 <div
-                  className={`${color} basis-0 transition-[flex-grow] duration-240`}
+                  className={`${color} min-w-1 basis-0 transition-[flex-grow] duration-240`}
                   style={{ flexGrow: progress[k] }}
                 />
               </Tooltip>

@@ -14,6 +14,7 @@ import { ConversationsPage, conversationSearch } from "./pages/conversations";
 import { Shell, MorePage } from "./components/shell";
 import { BackgroundPage } from "./pages/background";
 import { RouteError } from "./components/route-error";
+import { Loading } from "./components/loading";
 import { MentorPage } from "./pages/mentor";
 import { MentorsPage, mentorSearch, type MentorSearch } from "./pages/mentors";
 import { MailboxesSection } from "./pages/mailboxes";
@@ -104,6 +105,7 @@ const statsRoute = createRoute({
   path: "stats",
   // Loaded on first visit: the chart library is the bulk of it and nothing else needs it.
   component: lazyRouteComponent(() => import("./pages/stats"), "StatsPage"),
+  pendingComponent: Loading,
 });
 const moreRoute = createRoute({ getParentRoute: () => rootRoute, path: "more", component: MorePage });
 const backgroundPageRoute = createRoute({

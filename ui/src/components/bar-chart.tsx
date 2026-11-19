@@ -4,7 +4,7 @@ export type Series = { name: string; unit: string; color: string };
 /** A group of columns: its axis label, its full name for the tooltip, one value per series. */
 export type Point = { label: string; title: string; values: readonly number[] };
 
-const AXIS_TEXT = { fill: "var(--faint)", fontSize: 11 };
+const AXIS_TEXT = { fill: "var(--muted-foreground)", fontSize: 11 };
 
 /**
  * Grouped columns over time (docs/ui.md#图表): hairline gridlines, columns rounded at the top and
@@ -17,8 +17,9 @@ export function BarChart({ series, points, caption }: { series: readonly Series[
       responsive
       style={{ width: "100%", height: 200 }}
       margin={{ top: 4, right: 0, bottom: 0, left: 0 }}
-      barGap={2}
-      barCategoryGap="20%"
+      // Dense, as 90 days on a phone, the gaps shrink with the columns instead of squeezing them out.
+      barGap={points.length > 31 ? "10%" : 2}
+      barCategoryGap={points.length > 31 ? "10%" : "20%"}
       title={caption}
     >
       <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -31,7 +32,7 @@ export function BarChart({ series, points, caption }: { series: readonly Series[
         minTickGap={20}
         interval="preserveStartEnd"
       />
-      <YAxis allowDecimals={false} tick={AXIS_TEXT} tickLine={false} axisLine={false} width={28} tickCount={4} />
+      <YAxis allowDecimals={false} tick={AXIS_TEXT} tickLine={false} axisLine={false} width="auto" tickCount={4} />
       <Tooltip
         cursor={{ fill: "var(--muted)" }}
         isAnimationActive={false}
@@ -61,7 +62,12 @@ function Tip({
   const point = activeIndex == null ? undefined : points[Number(activeIndex)];
   if (!active || !point) return null;
   return (
-    <div className="rounded-lg bg-background px-3 py-2 text-xs whitespace-nowrap shadow-[0_4px_16px_var(--pop-shadow)] ring-1 ring-border">
+    // Read out as the arrow keys move along the chart, as Recharts' own tooltip is.
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-lg bg-background px-3 py-2 text-xs whitespace-nowrap shadow-[0_4px_16px_var(--pop-shadow)] ring-1 ring-border"
+    >
       <p className="mb-1 font-medium">{point.title}</p>
       {series.map((s, i) => (
         <p key={s.name} className="flex items-center gap-1.5 text-muted-foreground">
