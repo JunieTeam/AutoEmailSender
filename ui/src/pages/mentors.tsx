@@ -345,7 +345,8 @@ export function MentorsPage() {
               selected={selected}
               selectable={!query.isPlaceholderData}
               onSelect={setSelected}
-              list={search}
+              // Rows of the previous filter, shown until this one's arrive, are not on its pages.
+              list={query.isPlaceholderData ? undefined : search}
             />
           )}
         </div>

@@ -2,7 +2,7 @@ import { type MutationState, useMutation, useMutationState, useQuery, useQueryCl
 import { Link, useNavigate, useParams, useRouter, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, ChevronLeft, ChevronUp, RotateCcw, Trash2, UserRound } from "lucide-react";
 import { BackButton, useBack } from "@/back";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { call, failureOf } from "@/api/call";
 import type { MentorDetail } from "@/api/types";
 import { useChangedElsewhere } from "@/changed-elsewhere";
@@ -218,6 +218,9 @@ function Neighbours({ id }: { id: number }) {
   const page = list?.page ?? 1;
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const router = useRouter();
+  // One move at a time, also between key presses that come before React re-renders.
+  const moving = useRef(false);
   const here = useQuery({ ...mentorPage(list ?? {}), enabled: list !== undefined });
   const ids = here.data?.mentors.map((m) => m.id) ?? [];
   const index = ids.indexOf(id);
@@ -231,19 +234,25 @@ function Neighbours({ id }: { id: number }) {
   const next = index >= 0 ? index + 1 : left;
   const step = useMutation({
     mutationFn: async (delta: 1 | -1) => {
-      if (!list) return;
       const at = delta > 0 ? next : prev;
-      if (at === undefined) return;
-      let to = ids[at];
-      let shown = list;
-      // At either end of the page, on to the next or previous page of the list.
-      if (at < 0 || at >= ids.length) {
-        shown = { ...list, page: page + delta > 1 ? page + delta : undefined };
-        const other = await queryClient.fetchQuery(mentorPage(shown));
-        to = (delta > 0 ? other.mentors.at(0) : other.mentors.at(-1))?.id;
+      if (!list || at === undefined || moving.current) return;
+      moving.current = true;
+      try {
+        const from = router.history.location.state.__TSR_key;
+        let to = ids[at];
+        let shown = list;
+        // At either end of the page, on to the next or previous page of the list.
+        if (at < 0 || at >= ids.length) {
+          shown = { ...list, page: page + delta > 1 ? page + delta : undefined };
+          const other = await queryClient.fetchQuery(mentorPage(shown));
+          to = (delta > 0 ? other.mentors.at(0) : other.mentors.at(-1))?.id;
+        }
+        // Not once the user has gone elsewhere, or opened a dialog, while that page was read.
+        if (to !== undefined && router.history.location.state.__TSR_key === from)
+          await navigate({ to: "/mentors/$mentorId", params: { mentorId: to }, replace: true, state: { list: shown } });
+      } finally {
+        moving.current = false;
       }
-      if (to !== undefined)
-        await navigate({ to: "/mentors/$mentorId", params: { mentorId: to }, replace: true, state: { list: shown } });
     },
   });
   const listed = list !== undefined && (index >= 0 || left !== undefined);

@@ -13,7 +13,7 @@
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
     "react/react-in-jsx-scope": "off",
-    "no-underscore-dangle": ["error", { "allow": ["__TSR_index"] }]
+    "no-underscore-dangle": ["error", { "allow": ["__TSR_index", "__TSR_key"] }]
   },
   "ignorePatterns": ["dist"]
 }

@@ -13,7 +13,9 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => () => undefined,
   useRouter: () => ({ history: { back: () => undefined } }),
   useSearch: () => ({}),
-  useRouterState: () => false,
+  // A mentor opened on its own: no profile step, no list it was opened from.
+  useRouterState: ({ select }: { select: (s: { location: { state: object } }) => unknown }) =>
+    select({ location: { state: {} } }),
 }));
 vi.mock("@/api/call", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/call")>()),
