@@ -166,6 +166,8 @@
   --animate-fade-in: fade-in 180ms var(--ease-out);
   /* A loading state that shows only if loading takes longer than a moment. */
   --animate-appear: fade-in 180ms 300ms var(--ease-out) both;
+  /* A bar of a chart growing from its start, with `origin-left`. */
+  --animate-grow: grow 480ms var(--ease-out) both;
   @keyframes enter {
     from {
       opacity: 0;
@@ -175,6 +177,11 @@
   @keyframes fade-in {
     from {
       opacity: 0;
+    }
+  }
+  @keyframes grow {
+    from {
+      scale: 0 1;
     }
   }
 }

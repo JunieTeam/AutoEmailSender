@@ -1,27 +1,43 @@
-import { Bar, BarChart as Chart, CartesianGrid, Tooltip, type TooltipContentProps, XAxis, YAxis } from "recharts";
+import { useId } from "react";
+import { Area, AreaChart, CartesianGrid, Tooltip, type TooltipContentProps, XAxis, YAxis } from "recharts";
 
 export type Series = { name: string; unit: string; color: string };
-/** A group of columns: its axis label, its full name for the tooltip, one value per series. */
+/** A point in time: its axis label, its full name for the tooltip, one value per series. */
 export type Point = { label: string; title: string; values: readonly number[] };
 
 const AXIS_TEXT = { fill: "var(--muted-foreground)", fontSize: 11 };
 
 /**
- * Grouped columns over time (docs/ui.md#图表): hairline gridlines, columns rounded at the top and
- * apart by a 2px gap, a band and the numbers on the group under the pointer or keyboard focus.
+ * Series over time as smooth lines over a fading wash (docs/ui.md#图表). A thin line follows the
+ * pointer or keyboard focus, with a dot on each series and the numbers gliding along beside it.
  */
-export function BarChart({ series, points, caption }: { series: readonly Series[]; points: Point[]; caption: string }) {
+export function TrendChart({
+  series,
+  points,
+  caption,
+}: {
+  series: readonly Series[];
+  points: Point[];
+  caption: string;
+}) {
+  // Gradient ids are document-wide; React's own ids hold characters `url(#…)` does not take.
+  const fill = `fill-${useId().replaceAll(/\W/g, "")}`;
   return (
-    <Chart
+    <AreaChart
       data={points}
       responsive
       style={{ width: "100%", height: 200 }}
-      margin={{ top: 4, right: 0, bottom: 0, left: 0 }}
-      // Dense, as 90 days on a phone, the gaps shrink with the columns instead of squeezing them out.
-      barGap={points.length > 31 ? "10%" : 2}
-      barCategoryGap={points.length > 31 ? "10%" : "20%"}
+      margin={{ top: 8, right: 4, bottom: 0, left: 0 }}
       title={caption}
     >
+      <defs>
+        {series.map((s, i) => (
+          <linearGradient key={s.name} id={`${fill}-${i}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={s.color} stopOpacity={0.2} />
+            <stop offset="100%" stopColor={s.color} stopOpacity={0} />
+          </linearGradient>
+        ))}
+      </defs>
       <CartesianGrid vertical={false} stroke="var(--border)" />
       <XAxis
         dataKey="label"
@@ -34,21 +50,26 @@ export function BarChart({ series, points, caption }: { series: readonly Series[
       />
       <YAxis allowDecimals={false} tick={AXIS_TEXT} tickLine={false} axisLine={false} width="auto" tickCount={4} />
       <Tooltip
-        cursor={{ fill: "var(--muted)" }}
-        isAnimationActive={false}
+        cursor={{ stroke: "var(--faint)", strokeWidth: 1 }}
+        animationDuration={200}
+        animationEasing="ease-out"
         content={<Tip series={series} points={points} />}
       />
       {series.map((s, i) => (
-        <Bar
+        <Area
           key={s.name}
           name={s.name}
+          type="monotone"
           dataKey={(p: Point) => p.values[i]}
-          fill={s.color}
-          radius={[4, 4, 0, 0]}
-          maxBarSize={14}
+          stroke={s.color}
+          strokeWidth={2}
+          fill={`url(#${fill}-${i})`}
+          // A single point, such as the first month under 全部, has no line or area to show it.
+          dot={points.length === 1 && { r: 3, fill: s.color, strokeWidth: 0 }}
+          activeDot={{ r: 4, fill: s.color, stroke: "var(--background)", strokeWidth: 2 }}
         />
       ))}
-    </Chart>
+    </AreaChart>
   );
 }
 

@@ -15,7 +15,7 @@ import type {
   TokenUsage,
   UsagePurpose,
 } from "@/api/types";
-import { BarChart, Legend, type Point, type Series } from "@/components/bar-chart";
+import { Legend, type Point, type Series, TrendChart } from "@/components/trend-chart";
 import { Pager } from "@/components/mentor-table";
 import { findSearch } from "@/pages/find";
 import { mentorSearch } from "@/pages/mentors";
@@ -309,7 +309,7 @@ function TrendView({ trend, monthly }: { trend: Trend[]; monthly: boolean }) {
           </table>
         </div>
       ) : (
-        <BarChart series={TREND} points={points} caption={title} />
+        <TrendChart series={TREND} points={points} caption={title} />
       )}
     </div>
   );
@@ -388,8 +388,8 @@ function Mentors({ overview: o }: { overview: MentorOverview }) {
 }
 
 /**
- * A list of bars, one row each, its name on the bar and its count beside it, so no axis or table is
- * needed. Neutral, as is all data that is not a series (docs/ui.md#颜色).
+ * A list of bars: each row its name and count, a thin bar under them growing in from the left, so no
+ * axis or table is needed (docs/ui.md#图表).
  */
 function Bars({
   rows,
@@ -404,22 +404,24 @@ function Bars({
   share?: boolean;
 }) {
   return (
-    <ul className="space-y-1 text-sm">
+    <ul className="space-y-3.5 text-sm">
       {rows.map((r) => (
-        <li key={r.label} className="flex items-center gap-3">
-          <div className="relative h-8 min-w-0 flex-1">
+        <li key={r.label}>
+          <div className="flex items-baseline gap-3">
+            <Tooltip content={r.label}>
+              <span className="min-w-0 grow truncate">{r.label}</span>
+            </Tooltip>
+            <span className="shrink-0 text-muted-foreground tabular-nums">
+              {share ? `${Math.round((r.value / max) * 100)}%` : `${r.value} ${unit}`}
+            </span>
+            {r.after !== undefined && <span className="w-16 shrink-0 text-right">{r.after}</span>}
+          </div>
+          <div className="mt-1.5 h-1.5 rounded-full bg-muted">
             <div
-              className="absolute inset-y-0 left-0 rounded-md bg-muted-foreground/15 transition-[width] duration-240"
+              className="h-full origin-left animate-grow rounded-full bg-chart-1 transition-[width] duration-240"
               style={{ width: `${(r.value / max) * 100}%` }}
             />
-            <Tooltip content={r.label}>
-              <span className="relative block truncate px-2.5 leading-8">{r.label}</span>
-            </Tooltip>
           </div>
-          <span className="w-14 shrink-0 text-right tabular-nums">
-            {share ? `${Math.round((r.value / max) * 100)}%` : `${r.value} ${unit}`}
-          </span>
-          {r.after !== undefined && <span className="w-16 shrink-0">{r.after}</span>}
         </li>
       ))}
     </ul>
