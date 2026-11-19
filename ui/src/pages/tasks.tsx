@@ -332,23 +332,22 @@ export function TaskReviewPage() {
     void navigate({ search: (s) => ({ ...s, email }), replace: !step });
   }
   /**
-   * Shows a page of the list as it is now, and on it the letter `pick` chooses; unless the user has
-   * moved on since `from`, the history entry then, to another letter, page or filter, which stays.
+   * Shows a page of the list as it is now, and on it the letter `pick` chooses, if any; unless the
+   * user has moved on since `from`, the history entry then, to another letter, page or filter, which
+   * stays. With `back`, a page emptied since, as by approving its last letter, gives way to the one
+   * before; J and K stay where they are.
    */
-  function turn(to: number, from: string | undefined, pick: (shown: DraftPage) => number | undefined) {
+  function turn(to: number, from: string | undefined, pick: (shown: DraftPage) => number | undefined, back = false) {
     void client
       .fetchQuery({
         queryKey: ["listTaskDrafts", id, filter, to],
         queryFn: () => call("listTaskDrafts", { taskId: id, filter, page: to }),
       })
       .then((shown) => {
-        // One emptied since, as by approving the last letter on it: the page before.
-        if (shown.drafts.length === 0 && to > 1) return turn(to - 1, from, pick);
-        if (router.history.location.state.__TSR_key === from)
-          void navigate({
-            search: (s) => ({ ...s, page: to > 1 ? to : undefined, email: pick(shown) }),
-            replace: true,
-          });
+        if (back && shown.drafts.length === 0 && to > 1) return turn(to - 1, from, pick, back);
+        const email = pick(shown);
+        if (email !== undefined && router.history.location.state.__TSR_key === from)
+          void navigate({ search: (s) => ({ ...s, page: to > 1 ? to : undefined, email }), replace: true });
       })
       .catch((e: unknown) => setError(failureOf(e)));
   }
@@ -369,6 +368,7 @@ export function TaskReviewPage() {
         page,
         from,
         (shown) => (shown.drafts.slice(index).find(awaitingReview) ?? shown.drafts.find(awaitingReview))?.id ?? email,
+        true,
       );
     };
   }
