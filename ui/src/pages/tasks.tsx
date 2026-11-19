@@ -87,11 +87,11 @@ const SEGMENTS: [keyof Progress, string, string][] = [
 /** The task's letters, each in one of the segments: `cloud` is part of `approved`. */
 const letterCount = (progress: Progress) => SEGMENTS.reduce((n, [k]) => n + progress[k], 0);
 function ProgressBar({ progress, labels = false }: { progress: Progress; labels?: boolean }) {
-  const total = letterCount(progress);
   return (
     <div className="min-w-0">
+      {/* docs/ui.md#图表: parts apart by a 2px gap of the page's colour, shares of the room left. */}
       <div
-        className="flex h-2.5 overflow-hidden rounded-full bg-muted"
+        className="flex h-2.5 gap-0.5 overflow-hidden rounded-full"
         aria-label={SEGMENTS.map(([k, label]) => `${label} ${progress[k]} 封`).join("，")}
       >
         {SEGMENTS.map(
@@ -99,8 +99,8 @@ function ProgressBar({ progress, labels = false }: { progress: Progress; labels?
             progress[k] > 0 && (
               <Tooltip key={k} content={`${label} ${progress[k]} 封`}>
                 <div
-                  className={`${color} transition-[width] duration-240`}
-                  style={{ width: `${(progress[k] / total) * 100}%` }}
+                  className={`${color} basis-0 transition-[flex-grow] duration-240`}
+                  style={{ flexGrow: progress[k] }}
                 />
               </Tooltip>
             ),

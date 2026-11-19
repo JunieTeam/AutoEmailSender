@@ -46,6 +46,8 @@
   --unread: #e5383b;
   --info: #3f6aa8;
   --success: #2c7a4f;
+  --chart-1: #3f6aa8;
+  --chart-2: #2c7a4f;
   --success-soft: #e4f2e8;
   --warning: #985a0c;
   --warning-soft: #fdf1da;
@@ -82,6 +84,8 @@
   --unread: #ff5b52;
   --info: #88a9dd;
   --success: #7cc79a;
+  --chart-1: #5f8ddc;
+  --chart-2: #4fa874;
   --success-soft: #18291f;
   --warning: #e8b25a;
   --warning-soft: #2f2416;
@@ -117,6 +121,8 @@
   --color-unread: var(--unread);
   --color-info: var(--info);
   --color-success: var(--success);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);

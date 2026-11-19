@@ -467,7 +467,7 @@ V3 的产品范围和全局决定。
   - 访问过的页面存进数据库，内存里的缓存有上限，长时间整理时内存不随页数增长。
   - 基准：V2 在 113 个学院上的实测结果（`git show v2.6.5:website/data/crawl-benchmark.json`），中位数是每位导师约 4,700 token、19 秒，一个学院 26 分钟，邮箱覆盖率 88%。V3 用同一批学院对比，不能比它差。
 - 表格：用 calamine 读、rust_xlsxwriter 写。
-- 界面：React、Vite、TanStack Router、TanStack Query、Tailwind CSS、shadcn/ui；编辑器用 TipTap，Markdown 用 marked 解析、写回由界面自己的序列化器完成（`ui/src/markdown.ts`），图表是几种简单的柱状图和横条，用 HTML 和 CSS 画，不引入图表库。
+- 界面：React、Vite、TanStack Router、TanStack Query、Tailwind CSS、shadcn/ui；编辑器用 TipTap，Markdown 用 marked 解析、写回由界面自己的序列化器完成（`ui/src/markdown.ts`），有坐标轴的图用 Recharts，只在统计页按需加载；条形列表和分段条用 HTML 和 CSS 画（见[图表](ui.md#图表)）。
 - CLI 和 MCP：一个 Rust 小程序，MCP 用官方的 Rust SDK。用户在设置里开启后装到 PATH，也可以一键写进 Claude、Cursor 等工具的 MCP 配置。在 Windows 的 PowerShell 和 cmd 里读到的中文输出不能乱码。
   - `autoemail` 按 [Tauri 2 的 externalBin](https://v2.tauri.app/develop/sidecar/) 随应用打包，位于 macOS 的 `.app/Contents/MacOS` 或 Windows 安装目录；开发版使用 target 中的程序。核心使用与应用可执行文件同目录的普通绝对路径，Windows 不向 PATH、客户端或界面传扩展路径前缀。安装命令行时，macOS 在 `/usr/local/bin/autoemail` 建符号链接，目录缺失或权限不足时请求系统管理员授权，取消即返回取消原因。状态区分未安装、已安装、旧位置和被其他文件占用；失效链接或指向其他位置 `Auto Email Sender.app/Contents/MacOS/autoemail` 的链接算旧位置，安装时更新，卸载时删除，其他文件和有效的其他工具链接不碰。Windows 只把安装目录加入当前用户 PATH 并广播变化，记录自己添加的项；卸载只撤回自己添加的 PATH 项。
   - MCP 配置先预览目标文件、完整的 `autoemail` 服务项及是否替换已有项，用户确认后写入；预览后文件变化则重新预览。命令是应用内 `autoemail` 的绝对路径，参数为 `["mcp"]`，类型为 `stdio`。CLI 安装和 MCP 配置操作只供界面调用。

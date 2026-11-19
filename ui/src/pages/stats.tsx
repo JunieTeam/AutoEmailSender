@@ -32,9 +32,9 @@ const RANGES: [Range, string][] = [
   ["quarter", "90 天"],
   ["all", "全部"],
 ];
-const TREND: readonly [Series, Series] = [
-  { name: "发出", unit: "封", color: "var(--primary)" },
-  { name: "回信", unit: "封", color: "var(--info)" },
+const TREND: readonly Series[] = [
+  { name: "发出", unit: "封", color: "var(--chart-1)" },
+  { name: "回信", unit: "封", color: "var(--chart-2)" },
 ];
 const PURPOSES: Record<UsagePurpose, string> = {
   crawl: "智能整理",
@@ -265,7 +265,7 @@ function Figure({
   return (
     <div className="border-l border-border px-5 first:border-l-0 @max-[640px]:nth-3:border-l-0">
       <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-[28px] leading-9 font-semibold tabular-nums">
+      <p className="mt-1 text-[28px] leading-9 font-semibold">
         {value}
         {unit && <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>}
       </p>
@@ -387,7 +387,10 @@ function Mentors({ overview: o }: { overview: MentorOverview }) {
   );
 }
 
-/** Labelled horizontal bars; the count is written beside each bar, so no axis or table is needed. */
+/**
+ * A list of bars, one row each, its name on the bar and its count beside it, so no axis or table is
+ * needed. Neutral, as is all data that is not a series (docs/ui.md#颜色).
+ */
 function Bars({
   rows,
   unit,
@@ -400,30 +403,23 @@ function Bars({
   max?: number;
   share?: boolean;
 }) {
-  const after = rows.some((r) => r.after);
   return (
-    <ul className="space-y-3 text-sm">
+    <ul className="space-y-1 text-sm">
       {rows.map((r) => (
-        <li
-          key={r.label}
-          className={cn(
-            "grid items-center gap-3",
-            after ? "grid-cols-[minmax(4.5rem,8rem)_1fr_auto_4.5rem]" : "grid-cols-[minmax(4.5rem,8rem)_1fr_auto]",
-          )}
-        >
-          <Tooltip content={r.label}>
-            <span className="truncate text-muted-foreground">{r.label}</span>
-          </Tooltip>
-          <span className="h-2 rounded-full bg-muted">
-            <span
-              className="block h-full rounded-full bg-muted-foreground/60 transition-[width] duration-240"
+        <li key={r.label} className="flex items-center gap-3">
+          <div className="relative h-8 min-w-0 flex-1">
+            <div
+              className="absolute inset-y-0 left-0 rounded-md bg-muted-foreground/15 transition-[width] duration-240"
               style={{ width: `${(r.value / max) * 100}%` }}
             />
-          </span>
-          <span className="w-16 text-right tabular-nums">
+            <Tooltip content={r.label}>
+              <span className="relative block truncate px-2.5 leading-8">{r.label}</span>
+            </Tooltip>
+          </div>
+          <span className="w-14 shrink-0 text-right tabular-nums">
             {share ? `${Math.round((r.value / max) * 100)}%` : `${r.value} ${unit}`}
           </span>
-          {after && <span>{r.after}</span>}
+          {r.after !== undefined && <span className="w-16 shrink-0">{r.after}</span>}
         </li>
       ))}
     </ul>

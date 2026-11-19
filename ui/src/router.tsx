@@ -1,6 +1,12 @@
-import { StatsPage } from "./pages/stats";
 import { FindPage, findSearch } from "./pages/find";
-import { createHashHistory, createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import {
+  createHashHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+  redirect,
+} from "@tanstack/react-router";
 import { call } from "./api/call";
 import { queryClient } from "./query-client";
 import { TasksPage, TaskReviewPage, tasksSearch, taskSearch } from "./pages/tasks";
@@ -96,7 +102,8 @@ const findRoute = createRoute({
 const statsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "stats",
-  component: StatsPage,
+  // Loaded on first visit: the chart library is the bulk of it and nothing else needs it.
+  component: lazyRouteComponent(() => import("./pages/stats"), "StatsPage"),
 });
 const moreRoute = createRoute({ getParentRoute: () => rootRoute, path: "more", component: MorePage });
 const backgroundPageRoute = createRoute({
