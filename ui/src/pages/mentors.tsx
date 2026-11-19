@@ -1,7 +1,7 @@
 import { findSearch } from "@/pages/find";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Download, Merge, Plus, SearchX, Trash2, UsersRound } from "lucide-react";
+import { Download, MoreHorizontal, Plus, SearchX, Trash2, UsersRound } from "lucide-react";
 import { BackButton } from "@/back";
 import { type ReactElement, useState } from "react";
 import { call, failureOf } from "@/api/call";
@@ -119,6 +119,7 @@ export function MentorsPage() {
   // Ticks belong to one filter: changing it, including by going back, starts over.
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [merging, setMerging] = useState<[number, number] | null>(null);
+  const [batchMore, setBatchMore] = useState(false);
   const [first, second] = selected;
   const filter = JSON.stringify(listFilter(search));
   const [shownFilter, setShownFilter] = useState(filter);
@@ -389,39 +390,63 @@ export function MentorsPage() {
             <AiIcon />
             分析匹配度
           </Button>
-          <Button variant="ghost" onClick={() => setEnriching([...selected])}>
-            <AiIcon />
-            补全资料
-          </Button>
           <AddTagButton mentorIds={[...selected]} add={addTag} />
-          {desktop && (
-            <Button
-              variant="ghost"
-              onClick={() =>
-                setExporting({ scope: { kind: "ids", value: [...selected] }, sort: search.sort, count: selected.size })
-              }
-            >
-              <Download strokeWidth={1.6} />
-              导出
-            </Button>
-          )}
-          {selected.size === 2 && first !== undefined && second !== undefined && (
-            <Button variant="ghost" onClick={() => setMerging([first, second])}>
-              <Merge strokeWidth={1.6} />
-              合并
-            </Button>
-          )}
-          <Confirm
-            trigger={
-              <Button variant="danger" disabled={trash.isPending}>
-                <Trash2 strokeWidth={1.6} />
-                移入回收站
-              </Button>
-            }
-            message={`把选中的 ${selected.size} 位导师移入回收站？未发出的邮件会取消，恢复导师后也不会恢复。`}
-            action="移入回收站"
-            onConfirm={() => trash.mutate([...selected])}
-          />
+          {/* docs/ui.md#风格: the rest, used less, under "更多". */}
+          <Popover open={batchMore} onOpenChange={setBatchMore}>
+            <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="更多" />}>
+              <MoreHorizontal strokeWidth={1.6} />
+            </PopoverTrigger>
+            <PopoverContent side="top" align="end">
+              <button
+                className={MENU_ITEM}
+                onClick={() => {
+                  setBatchMore(false);
+                  setEnriching([...selected]);
+                }}
+              >
+                补全资料
+              </button>
+              {selected.size === 2 && first !== undefined && second !== undefined && (
+                <button
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    setBatchMore(false);
+                    setMerging([first, second]);
+                  }}
+                >
+                  合并
+                </button>
+              )}
+              {desktop && (
+                <button
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    setBatchMore(false);
+                    setExporting({
+                      scope: { kind: "ids", value: [...selected] },
+                      sort: search.sort,
+                      count: selected.size,
+                    });
+                  }}
+                >
+                  导出
+                </button>
+              )}
+              <Confirm
+                trigger={
+                  <button className={`${MENU_ITEM} hover:text-destructive`} disabled={trash.isPending}>
+                    移入回收站
+                  </button>
+                }
+                message={`把选中的 ${selected.size} 位导师移入回收站？未发出的邮件会取消，恢复导师后也不会恢复。`}
+                action="移入回收站"
+                onConfirm={() => {
+                  setBatchMore(false);
+                  trash.mutate([...selected]);
+                }}
+              />
+            </PopoverContent>
+          </Popover>
         </BatchBar>
         {task && <CreateTaskDialog {...task} onClose={() => setTask(null)} />}
         {matching && <MatchingDialog ids={matching} onClose={() => setMatching(null)} />}
