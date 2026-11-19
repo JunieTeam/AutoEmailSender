@@ -127,13 +127,13 @@ export function Correspondence({ mentor }: { mentor: MentorDetail }) {
     );
   }
   if (!entries.data) return <Loading />;
+  // Before any contact, a first letter only planned, there is nothing to do for this mentor yet.
   if (entries.data.length === 0) {
     return (
       <>
         <div className="grid flex-1 place-items-center p-6 text-center text-sm text-muted-foreground">
           {mentor.contact.status === "none" ? `尚未联系${mentor.name}老师` : contactDetail(mentor.contact)}
         </div>
-        {/* Before any contact there is nothing to do for this mentor yet. */}
         {!mentor.trashed && mentor.contact.status !== "none" && (
           <div className="flex flex-col px-5 pb-4 phone:px-3">
             <AddTodo mentorId={mentor.id} />
@@ -172,7 +172,7 @@ export function Correspondence({ mentor }: { mentor: MentorDetail }) {
             />
           ),
         )}
-        {!mentor.trashed && <AddTodo mentorId={mentor.id} />}
+        {!mentor.trashed && mentor.contact.status !== "none" && <AddTodo mentorId={mentor.id} />}
       </div>
       {/* Shown here, as the composer would load the draft again each time it came up. */}
       {!mentor.trashed &&

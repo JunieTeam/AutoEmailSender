@@ -129,9 +129,16 @@ export function MentorTable({
             {m.research}
           </div>
           <div role="cell" className="cards:justify-self-end cards:[grid-area:match]">
-            <Link to="/mentors/$mentorId" params={{ mentorId: m.id }} state={{ list }} className="relative z-10 block">
-              <Match state={m.matchState} />
-            </Link>
+            {(m.matchState.result || m.matchState.state) && (
+              <Link
+                to="/mentors/$mentorId"
+                params={{ mentorId: m.id }}
+                state={{ list }}
+                className="relative z-10 block"
+              >
+                <Match state={m.matchState} />
+              </Link>
+            )}
           </div>
           <div role="cell" className="min-w-0 text-sm cards:max-w-[45cqw] cards:text-right cards:[grid-area:contact]">
             <ContactLabel contact={m.contact} outcome={m.outcome} className="cards:justify-end" />
