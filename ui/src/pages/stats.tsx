@@ -289,12 +289,13 @@ function TrendView({ trend, monthly }: { trend: Trend[]; monthly: boolean }) {
       </div>
       {table ? (
         <div className="max-h-72 overflow-y-auto">
-          <table className="w-full text-sm">
+          {/* docs/ui.md#控件: short columns share the width evenly. */}
+          <table className="w-full table-fixed text-sm">
             <thead className="sticky top-0 bg-background text-left text-muted-foreground">
               <tr className="border-b border-border">
                 <th className="py-2 font-normal">{monthly ? "月份" : "日期"}</th>
-                <th className="w-24 py-2 text-right font-normal">发出（封）</th>
-                <th className="w-24 py-2 text-right font-normal">回信（封）</th>
+                <th className="py-2 text-right font-normal">发出（封）</th>
+                <th className="py-2 text-right font-normal">回信（封）</th>
               </tr>
             </thead>
             <tbody>
@@ -433,25 +434,24 @@ function Tokens({ usage }: { usage: TokenUsage }) {
   const unpriced = usage.total.unpricedCalls;
   return (
     <>
-      <div className="max-w-3xl">
-        <table className="w-full text-sm">
-          <thead className="text-left text-muted-foreground">
-            <tr className="border-b border-border">
-              <th className="py-2 font-normal">用途</th>
-              <th className="py-2 text-right font-normal">输入</th>
-              <th className="py-2 text-right font-normal phone:hidden">其中缓存命中</th>
-              <th className="py-2 text-right font-normal">输出</th>
-              <th className="py-2 text-right font-normal">估算费用</th>
-            </tr>
-          </thead>
-          <tbody>
-            {usage.purposes.map((u) => (
-              <TokenRow key={u.purpose} label={PURPOSES[u.purpose]} row={u} />
-            ))}
-            <TokenRow label="合计" row={usage.total} total />
-          </tbody>
-        </table>
-      </div>
+      {/* docs/ui.md#控件: short columns share the width evenly. */}
+      <table className="w-full table-fixed text-sm">
+        <thead className="text-left text-muted-foreground">
+          <tr className="border-b border-border">
+            <th className="py-2 font-normal">用途</th>
+            <th className="py-2 text-right font-normal">输入</th>
+            <th className="py-2 text-right font-normal phone:hidden">其中缓存命中</th>
+            <th className="py-2 text-right font-normal">输出</th>
+            <th className="py-2 text-right font-normal">估算费用</th>
+          </tr>
+        </thead>
+        <tbody>
+          {usage.purposes.map((u) => (
+            <TokenRow key={u.purpose} label={PURPOSES[u.purpose]} row={u} />
+          ))}
+          <TokenRow label="合计" row={usage.total} total />
+        </tbody>
+      </table>
       {unpriced > 0 && (
         <p className="mt-3 text-sm text-muted-foreground">有 {unpriced} 次调用的模型配置未填单价或已删除，未计入费用</p>
       )}
