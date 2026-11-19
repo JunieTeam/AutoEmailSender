@@ -80,7 +80,7 @@ function TaskSteps({
   const [step, setStep] = useState(0);
   const [openedAt] = useState(() => Date.now());
   const [excluded, setExcluded] = useState<number[]>([]);
-  const [form, setForm] = useState<NewTask>(() => {
+  const [blank] = useState<NewTask>(() => {
     if (initial) return initial;
     const date = new Date();
     return {
@@ -104,6 +104,7 @@ function TaskSteps({
         .map((m) => m.id),
     };
   });
+  const [form, setForm] = useState(blank);
   const requested = ids.filter((id) => !excluded.includes(id));
   const plan = useQuery({
     queryKey: [
@@ -144,8 +145,10 @@ function TaskSteps({
   const valid =
     eligible.length > 0 &&
     (step !== 1 || form.writer === "ai" || form.templateId !== null || form.templateSourceId !== null);
+  // Moving on through the steps counts as input too, so a stray click does not lose the place.
+  const dirty = step > 0 || excluded.length > 0 || JSON.stringify(form) !== JSON.stringify(blank);
   return (
-    <Dialog open {...formClose(true, create.isPending, onClose)}>
+    <Dialog open {...formClose(dirty, create.isPending, onClose)}>
       <DialogContent className="w-[620px]">
         <DialogHeader>{kind === "follow_up" ? "新建追问任务" : "新建任务"}</DialogHeader>
         {/* docs/ui.md#控件: numbered circles, a tick once done, the current step in the brand's colour. */}

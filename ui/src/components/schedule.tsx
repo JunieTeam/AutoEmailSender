@@ -165,8 +165,9 @@ export function ChangeSchedule({ task, onClose }: { task: TaskSummary; onClose: 
       refreshSchedule(client);
     },
   });
+  const dirty = saved === null && JSON.stringify(value) !== JSON.stringify(task.schedule);
   return (
-    <Dialog open {...formClose(true, save.isPending, onClose)}>
+    <Dialog open {...formClose(dirty, save.isPending, onClose)}>
       <DialogContent className="w-[620px]">
         <DialogHeader>修改发送时间</DialogHeader>
         <DialogBody className="space-y-4 py-4">
@@ -229,8 +230,9 @@ export function DateTimeDialog({
     selected && date && time(selected.getTime()) === clock && localDate(selected) === localDate(date)
       ? selected.getTime()
       : NaN;
+  const dirty = date === undefined || localDate(date) !== localDate(start) || clock !== time(start.getTime());
   return (
-    <Dialog open {...formClose(true, pending, onClose)}>
+    <Dialog open {...formClose(dirty, pending, onClose)}>
       <DialogContent className="w-[380px]">
         <DialogHeader>{title}</DialogHeader>
         <DialogBody className="space-y-4 py-4">
