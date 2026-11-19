@@ -137,8 +137,13 @@ pub async fn write_task_draft(
             subject: edit.subject,
             body_md: edit.body_md,
         },
-        |purpose, usage, at| {
-            model::usage::record_for_email(&ctx.db, &chosen, purpose, Some(edit.id), usage, at)
+        |purpose, call| {
+            let about = About {
+                crawl: None,
+                mentor: Some(d.mentor_id),
+                email: Some(edit.id),
+            };
+            model::usage::record(&ctx.db, &chosen, purpose, about, call)
         },
     )
     .await

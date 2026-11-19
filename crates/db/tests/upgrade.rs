@@ -65,11 +65,12 @@ async fn rebuilding_the_email_table_keeps_emails_and_what_refers_to_them() {
             .await
             .unwrap();
     assert_eq!(attached, 1);
-    let used: Option<i64> = sqlx::query_scalar("SELECT email_id FROM usage")
+    // Later upgrades put a call for an email down to its mentor too.
+    let used: (Option<i64>, Option<i64>) = sqlx::query_as("SELECT email_id, mentor_id FROM usage")
         .fetch_one(&db)
         .await
         .unwrap();
-    assert_eq!(used, Some(1));
+    assert_eq!(used, (Some(1), Some(1)));
     let broken: Vec<(String,)> = sqlx::query_as("PRAGMA foreign_key_check")
         .fetch_all(&db)
         .await

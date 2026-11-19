@@ -307,6 +307,13 @@ pub async fn merge(
     )
     .execute(&mut *tx)
     .await?;
+    sqlx::query!(
+        "UPDATE usage SET mentor_id = ? WHERE mentor_id = ?",
+        keep,
+        other
+    )
+    .execute(&mut *tx)
+    .await?;
     sqlx::query!("DELETE FROM mentor_search WHERE rowid = ?", other)
         .execute(&mut *tx)
         .await?;

@@ -144,6 +144,11 @@ async fn generate(
     // The round the latest request went out in; the check asks again from inside.
     let sent = AtomicU64::new(0);
     let note_sent = || sent.store(generator.round(claim.task), Ordering::Relaxed);
+    let about = model::usage::About {
+        crawl: None,
+        mentor: Some(claim.mentor),
+        email: Some(claim.id),
+    };
     let answer = async {
         let input = writing::prepare(
             db,
@@ -168,19 +173,12 @@ async fn generate(
             },
         };
         note_sent();
-        writing::write(net, &turn, &input, &current, |purpose, usage, at| {
+        writing::write(net, &turn, &input, &current, |purpose, call| {
             let chosen = &chosen;
             async move {
                 writes
                     .retry("record draft usage", || {
-                        model::usage::record_for_email(
-                            db,
-                            chosen,
-                            purpose,
-                            Some(claim.id),
-                            usage,
-                            at,
-                        )
+                        model::usage::record(db, chosen, purpose, about, call.clone())
                     })
                     .await;
                 Ok(())
@@ -222,18 +220,17 @@ async fn generate(
                                 note_sent();
                                 Ok(go_on)
                             },
-                            |usage, at| {
+                            |call| {
                                 let chosen = &check_config;
                                 async move {
                                     writes
                                         .retry("record fact check usage", || {
-                                            model::usage::record_for_email(
+                                            model::usage::record(
                                                 db,
                                                 chosen,
                                                 model::usage::Purpose::FactCheck,
-                                                Some(claim.id),
-                                                usage,
-                                                at,
+                                                about,
+                                                call.clone(),
                                             )
                                         })
                                         .await;

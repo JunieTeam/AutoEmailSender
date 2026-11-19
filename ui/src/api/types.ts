@@ -66,6 +66,10 @@ export type CallError = { code: ErrorCode, message: string,
  */
 details: string | null, };
 
+export type CallMentor = { id: number, name: string, };
+
+export type CallResult = { "kind": "answered", tokens: Usage | null, cost: Costs, } | { "kind": "failed", failure: Failure, };
+
 export type Candidate = { id: number, name: string, reason: string | null, contactCount: number, lastContactAt: number | null, libraryStatus: LibraryStatus | null,
 /**
  * Without one, AI can only write in general terms.
@@ -879,6 +883,20 @@ export type Missing = "email" | "research" | "papers" | "homepage";
 
 export type ModelAgreement = { id: number, provider: string, region: string | null, baseUrl: string | null, };
 
+export type ModelCall = { id: number, at: number, purpose: UsagePurpose, model: string,
+/**
+ * None for a call for no mentor, or once theirs is deleted.
+ */
+mentor: CallMentor | null, crawlId: number | null, result: CallResult, };
+
+export type ModelCallPage = { calls: Array<ModelCall>, total: number,
+/**
+ * The models called in the window, to filter by.
+ */
+models: Array<string>, };
+
+export type ModelCallQuery = { purpose: UsagePurpose | null, model: string | null, page: number, range: Range, timezone: string, now: number, };
+
 export type ModelConfig = { id: number,
 /**
  * None: known by the model's name.
@@ -1527,6 +1545,12 @@ export type UpdateStatus = { "kind": "current" } | { "kind": "available", update
 
 export type UploadedFile = { fileName: string, data: string, };
 
+export type Usage = {
+/**
+ * With the cached ones.
+ */
+input: number, cached: number, output: number, };
+
 export type UsagePurpose = "crawl" | "match" | "draft" | "rewrite" | "fact_check" | "reply_outcome" | "reply_todos";
 
 export type Waiting = "time" | "mailbox_limit" | "mailbox_paused" | "task_paused" | "mailbox_interval" | "no_mailbox" | "mailbox_secret" | "ready";
@@ -1609,6 +1633,7 @@ export interface Operations {
   contactStats: { input: StatsQuery; output: ContactProgress };
   mentorStats: { input: Nothing; output: MentorOverview };
   tokenStats: { input: StatsPeriod; output: TokenUsage };
+  listModelCalls: { input: ModelCallQuery; output: ModelCallPage };
   todayWork: { input: TodayWorkQuery; output: TodayWork };
   submitCandidates: { input: SubmitCandidates; output: Submitted };
   checkCrawlUrls: { input: CrawlUrls; output: Array<string> };

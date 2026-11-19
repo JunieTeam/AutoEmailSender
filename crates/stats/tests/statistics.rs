@@ -1,4 +1,5 @@
 #![cfg(test)]
+use model::usage::About;
 use sqlx::SqlitePool;
 use stats::{Range, Window};
 use std::num::NonZeroU32;
@@ -29,6 +30,26 @@ async fn mentor(db: &SqlitePool, n: i64) {
         .execute(db)
         .await
         .unwrap();
+}
+/// A model configured at 1 USD per million tokens in and 2 out.
+async fn chosen(db: &SqlitePool, model: &str) -> model::Chosen {
+    let form = model::ModelForm {
+        name: String::new(),
+        provider: "openai".into(),
+        region: None,
+        base_url: String::new(),
+        model: model.into(),
+        currency: None,
+        prices: model::pricing::Prices::official(1.0, None, 2.0),
+        off_peak: model::pricing::Prices::default(),
+    };
+    let id = model::create(db, &form.check().unwrap(), "k", 0)
+        .await
+        .unwrap();
+    model::selected(db, Some(id), model::Feature::Match)
+        .await
+        .unwrap()
+        .unwrap()
 }
 async fn sent(db: &SqlitePool, n: i64, time: i64, state: &str) {
     let id = test_fixtures::mail::first_email(db, n, "sent", time)
@@ -438,7 +459,11 @@ async fn costs_take_cache_prices_and_off_peak_hours_and_keep_currencies_apart(db
             "2026-11-14T10:00:00+08:00",
         ),
     ] {
-        model::usage::record(&db, chosen, purpose, usage, at(time))
+        let call = model::usage::Outcome::Answered {
+            at: at(time),
+            usage: Some(usage),
+        };
+        model::usage::record(&db, chosen, purpose, About::default(), call)
             .await
             .unwrap();
     }
@@ -567,4 +592,173 @@ async fn contact_schools_are_sorted_and_paginated(db: SqlitePool) {
     assert_eq!(first_page.schools[0].university, "学校00");
     assert_eq!(second_page.schools.len(), 3);
     assert_eq!(second_page.schools[0].university, "学校10");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn every_call_is_listed_and_the_totals_take_those_with_tokens(db: SqlitePool) {
+    use model::usage::{Outcome, Purpose, Usage};
+    use stats::CallResult;
+    mentor(&db, 1).await;
+    let (m, n) = (chosen(&db, "m").await, chosen(&db, "n").await);
+    let now = at("2026-11-14T12:00:00+08:00");
+    let mentor = About {
+        mentor: Some(1),
+        ..About::default()
+    };
+    let answered = |minutes: i64, usage| Outcome::Answered {
+        at: now - minutes * 60_000,
+        usage,
+    };
+    let tokens = Usage {
+        input: 1_000_000,
+        cached: 0,
+        output: 1_000_000,
+    };
+    for (chosen, purpose, about, call) in [
+        (&m, Purpose::Match, mentor, answered(4, Some(tokens))),
+        (
+            &m,
+            Purpose::Draft,
+            mentor,
+            Outcome::Failed {
+                at: now - 3 * 60_000,
+                failure: failure::Failure::new("连不上服务商"),
+            },
+        ),
+        // The provider did not say what it took.
+        (&n, Purpose::Crawl, About::default(), answered(2, None)),
+        (&n, Purpose::Match, mentor, answered(1, Some(tokens))),
+    ] {
+        model::usage::record(&db, chosen, purpose, about, call)
+            .await
+            .unwrap();
+    }
+    let w = Window::new(Range::Week, "Asia/Shanghai", now, None).unwrap();
+    let first = NonZeroU32::MIN;
+
+    let all = stats::calls(&db, &w, None, None, first).await.unwrap();
+    assert_eq!(
+        (all.total, all.models),
+        (4, vec!["m".to_owned(), "n".to_owned()])
+    );
+    let shown: Vec<_> = all
+        .calls
+        .iter()
+        .map(|c| {
+            let result = match &c.result {
+                CallResult::Answered { tokens, cost } => {
+                    format!("{:?} {:?}", tokens.map(|t| t.input), cost.usd)
+                }
+                CallResult::Failed { failure } => failure.message.clone(),
+            };
+            (
+                c.purpose,
+                c.model.as_str(),
+                c.mentor.as_ref().map(|m| m.id),
+                result,
+            )
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            (
+                Purpose::Match,
+                "n",
+                Some(1),
+                "Some(1000000) Some(3.0)".to_owned()
+            ),
+            (Purpose::Crawl, "n", None, "None None".to_owned()),
+            (Purpose::Draft, "m", Some(1), "连不上服务商".to_owned()),
+            (
+                Purpose::Match,
+                "m",
+                Some(1),
+                "Some(1000000) Some(3.0)".to_owned()
+            ),
+        ]
+    );
+    let matched = stats::calls(&db, &w, Some(Purpose::Match), Some("m"), first)
+        .await
+        .unwrap();
+    assert_eq!((matched.total, matched.calls.len()), (1, 1));
+
+    // The totals hold the two calls whose tokens are known.
+    let totals = stats::tokens(&db, &w).await.unwrap().total;
+    assert_eq!(
+        (totals.input, totals.output, totals.unpriced_calls),
+        (2_000_000, 2_000_000, 0)
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn calls_are_paged_fifty_at_a_time(db: SqlitePool) {
+    let now = at("2026-11-14T12:00:00+08:00");
+    for i in 0..51 {
+        sqlx::query(
+            r#"INSERT INTO usage (at, model, purpose, input_tokens, cached_tokens, output_tokens)
+            VALUES (?, 'm', 'match', 1, 0, 1)"#,
+        )
+        .bind(now - i)
+        .execute(&db)
+        .await
+        .unwrap();
+    }
+    let w = Window::new(Range::Week, "Asia/Shanghai", now, None).unwrap();
+    let page = |n| stats::calls(&db, &w, None, None, NonZeroU32::new(n).unwrap());
+    let (first, second) = (page(1).await.unwrap(), page(2).await.unwrap());
+    assert_eq!(
+        (first.calls.len(), second.calls.len(), second.total),
+        (50, 1, 51)
+    );
+    assert_eq!(second.calls[0].at, now - 50);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_call_is_for_its_mentor_or_the_one_kept_if_merged_meanwhile(db: SqlitePool) {
+    use model::usage::{Outcome, Purpose};
+    mentor(&db, 1).await;
+    mentor(&db, 2).await;
+    let to_one = test_fixtures::mail::first_email(&db, 1, "sent", 0)
+        .await
+        .unwrap();
+    let draft = test_fixtures::mail::first_email(&db, 2, "review", 0)
+        .await
+        .unwrap();
+    let m = chosen(&db, "m").await;
+    let call = || Outcome::Answered { at: 1, usage: None };
+    let w = Window::new(Range::All, "Asia/Shanghai", 2, Some(0)).unwrap();
+    let mentor_of_latest = async || {
+        let page = stats::calls(&db, &w, None, None, NonZeroU32::MIN)
+            .await
+            .unwrap();
+        page.calls
+            .iter()
+            .max_by_key(|c| c.id)
+            .unwrap()
+            .mentor
+            .as_ref()
+            .map(|m| m.id)
+    };
+    // Mentor 2 answered in the thread of the letter to mentor 1: the reply is mentor 2's.
+    let reply = About {
+        mentor: Some(2),
+        email: Some(to_one),
+        ..About::default()
+    };
+    model::usage::record(&db, &m, Purpose::ReplyOutcome, reply, call())
+        .await
+        .unwrap();
+    assert_eq!(mentor_of_latest().await, Some(2));
+    // A rewrite began for mentor 2; the merge went in before its answer.
+    mentor::merge::merge(&db, 1, 2, &[], 0).await.unwrap();
+    let rewrite = About {
+        mentor: Some(2),
+        email: Some(draft),
+        ..About::default()
+    };
+    model::usage::record(&db, &m, Purpose::Rewrite, rewrite, call())
+        .await
+        .unwrap();
+    assert_eq!(mentor_of_latest().await, Some(1));
 }

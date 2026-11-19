@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT model FROM usage WHERE (?1 IS NULL OR at>=?1) AND at<?2 ORDER BY model",
+  "describe": {
+    "columns": [
+      {
+        "name": "model",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "usage",
+            "name": "model"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f8b9378b4d06d730756749a36223507c3d039597949768c53e6385597b957b63"
+}

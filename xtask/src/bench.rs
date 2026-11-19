@@ -450,6 +450,39 @@ pub async fn run(path: &Path) -> Result {
             median(async || stats::tokens(&db, &window).await.map(drop)).await?,
             stats_budget,
         );
+        let calls = async |purpose, model, page| {
+            stats::calls(&db, &window, purpose, model, page)
+                .await
+                .map(drop)
+        };
+        let total = stats::calls(&db, &window, None, None, NonZeroU32::MIN)
+            .await?
+            .total;
+        let last = NonZeroU32::new(u32::try_from(total)?.div_ceil(stats::CALLS_PER_PAGE))
+            .unwrap_or(NonZeroU32::MIN);
+        report(
+            &format!("统计，调用记录首页，{label}"),
+            median(async || calls(None, None, NonZeroU32::MIN).await).await?,
+            stats_budget,
+        );
+        report(
+            &format!("统计，调用记录末页，{label}"),
+            median(async || calls(None, None, last).await).await?,
+            stats_budget,
+        );
+        report(
+            &format!("统计，调用记录按用途和模型，{label}"),
+            median(async || {
+                calls(
+                    Some(model::usage::Purpose::Match),
+                    Some("deepseek-chat"),
+                    NonZeroU32::MIN,
+                )
+                .await
+            })
+            .await?,
+            stats_budget,
+        );
     }
     report(
         "统计，全部趋势的起点",

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT mentor_id AS \"mentor_id!\" FROM message_mentor WHERE message_id = ?\n        ORDER BY mentor_id LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "mentor_id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "message_mentor",
+            "name": "mentor_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "f1bdd761510ceb57af96f222be4a21524bf66dc1a9ff4988dd379cf08466f1fc"
+}

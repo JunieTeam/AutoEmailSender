@@ -2,6 +2,7 @@
 
 use email::fact_check::Finding;
 use failure::Failure;
+use model::usage::Outcome;
 use serde_json::json;
 use sqlx::SqlitePool;
 use std::future::Future;
@@ -95,7 +96,7 @@ pub async fn check<G, F>(
     chosen: &model::Chosen,
     references: &[material::Reference],
     go_on: impl Fn() -> G,
-    record_usage: impl Fn(model::usage::Usage, i64) -> F,
+    record_usage: impl Fn(Outcome) -> F,
 ) -> Result<Option<Vec<Finding>>, Error>
 where
     G: Future<Output = Result<bool, sqlx::Error>>,
@@ -114,9 +115,9 @@ where
             return Err(Error::NotAgreed);
         }
         // JSON mode only produces objects; fact checks return a top-level array.
-        let answer = model::ask(net, turn, &system, &message, false)
-            .await
-            .map_err(Error::Model)?;
+        let answer = model::ask(net, turn, &system, &message, false).await;
+        record_usage(Outcome::of(&answer)).await?;
+        let answer = answer.map_err(Error::Model)?;
         tracing::info!(
             email_id,
             model = chosen.model,
@@ -124,10 +125,6 @@ where
             finish_reason = ?answer.finish_reason,
             "the model checked the letter"
         );
-        if let Some(usage) = answer.usage {
-            // Each call by the time it was sent: one may be retried past an hour charged otherwise.
-            record_usage(usage, answer.sent_at).await?;
-        }
         if answer.finish_reason == Some(model::Finish::Length) {
             return Err(Error::InvalidAnswer);
         }

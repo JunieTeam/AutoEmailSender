@@ -6,6 +6,7 @@
 use email::fact_check::Finding;
 use mentor::{Affiliation, MentorForm};
 use model::background::{Priority, Turn, Turns};
+use model::usage::About;
 use model::{ModelError, ModelForm};
 use net::Net;
 use serde_json::Value;
@@ -133,7 +134,7 @@ async fn follow_up_uses_prior_letters_without_private_mentor_fields(db: SqlitePo
         &turn(&chosen).await,
         &prepared,
         &blank(),
-        |purpose, usage, _| model::usage::record_for_email(&db, &chosen, purpose, None, usage, T),
+        |purpose, call| model::usage::record(&db, &chosen, purpose, About::default(), call),
     )
     .await
     .unwrap();
@@ -215,9 +216,7 @@ async fn a_body_alone_may_come_back_without_its_tags(db: SqlitePool) {
             &turn(&chosen).await,
             &prepared,
             &blank(),
-            |purpose, usage, _| {
-                model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
-            },
+            |purpose, call| model::usage::record(&db, &chosen, purpose, About::default(), call),
         )
         .await
     };
@@ -235,8 +234,8 @@ async fn a_body_alone_may_come_back_without_its_tags(db: SqlitePool) {
     }
 }
 
-/// The purpose and tokens of each call recorded.
-async fn usage(db: &SqlitePool) -> Vec<(String, i64, i64, i64)> {
+/// The purpose and tokens of each call recorded; none for a failed one.
+async fn usage(db: &SqlitePool) -> Vec<(String, Option<i64>, Option<i64>, Option<i64>)> {
     sqlx::query!(
         "SELECT purpose, input_tokens, cached_tokens, output_tokens FROM usage ORDER BY id"
     )
@@ -260,7 +259,7 @@ async fn a_blank_letter_is_drafted_from_the_user_and_the_mentor(db: SqlitePool) 
     model(&db, &address, true).await;
     let net = Net::new(Vec::new()).unwrap();
 
-    let letter = current_write(&db, &net, mentor, &blank(), &[resume], T)
+    let letter = current_write(&db, &net, mentor, &blank(), &[resume])
         .await
         .unwrap();
     assert_eq!(letter.subject, "申请攻读博士学位");
@@ -305,7 +304,10 @@ async fn a_blank_letter_is_drafted_from_the_user_and_the_mentor(db: SqlitePool) 
             },
         })
     );
-    assert_eq!(usage(&db).await, [("draft".into(), 2000, 1500, 400)]);
+    assert_eq!(
+        usage(&db).await,
+        [("draft".into(), Some(2000), Some(1500), Some(400))]
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -334,7 +336,7 @@ async fn a_written_letter_is_rewritten_and_must_come_back_as_one(db: SqlitePool)
         subject: "申请读研".into(),
         body_md: "老师您好，我是林晓。".into(),
     };
-    let write = async || current_write(&db, &net, mentor, &current, &[], T).await;
+    let write = async || current_write(&db, &net, mentor, &current, &[]).await;
 
     let letter = write().await.unwrap();
     assert_eq!(letter.subject, "申请攻读 博士学位");
@@ -386,12 +388,12 @@ async fn a_written_letter_is_rewritten_and_must_come_back_as_one(db: SqlitePool)
 async fn nothing_is_sent_until_the_user_agrees(db: SqlitePool) {
     let (mentor, _) = setup(&db).await;
     let net = Net::new(Vec::new()).unwrap();
-    let result = current_write(&db, &net, mentor, &blank(), &[], T).await;
+    let result = current_write(&db, &net, mentor, &blank(), &[]).await;
     assert!(matches!(result, Err(Error::NoModel)), "{result:?}");
 
     let (address, received) = provider(Vec::new()).await.unwrap();
     model(&db, &address, false).await;
-    let result = current_write(&db, &net, mentor, &blank(), &[], T).await;
+    let result = current_write(&db, &net, mentor, &blank(), &[]).await;
     assert!(matches!(result, Err(Error::NotAgreed)), "{result:?}");
     assert!(received.lock().unwrap().is_empty());
 }
@@ -413,16 +415,9 @@ async fn writing_reads_only_the_first_ten_thousand_characters_of_a_material(db: 
     .await
     .unwrap();
     model(&db, &address, true).await;
-    current_write(
-        &db,
-        &Net::new(Vec::new()).unwrap(),
-        mentor,
-        &blank(),
-        &[],
-        T,
-    )
-    .await
-    .unwrap();
+    current_write(&db, &Net::new(Vec::new()).unwrap(), mentor, &blank(), &[])
+        .await
+        .unwrap();
     let message = &received.lock().unwrap()[0].1;
     let data: Value = serde_json::from_str(message).unwrap();
     assert_eq!(
@@ -438,7 +433,6 @@ async fn current_write(
     mentor: i64,
     current: &writing::Letter,
     attachments: &[i64],
-    now: i64,
 ) -> Result<writing::Letter, writing::Error> {
     let chosen = model::chosen(db, model::Feature::Writing)
         .await?
@@ -460,7 +454,7 @@ async fn current_write(
         &turn(&chosen).await,
         &prepared,
         current,
-        |purpose, usage, _| model::usage::record_for_email(db, &chosen, purpose, None, usage, now),
+        |purpose, call| model::usage::record(db, &chosen, purpose, About::default(), call),
     )
     .await
 }
@@ -482,14 +476,16 @@ async fn check(
         chosen,
         references,
         || async { Ok(true) },
-        |usage, _| {
-            model::usage::record_for_email(
+        |call| {
+            model::usage::record(
                 db,
                 chosen,
                 model::usage::Purpose::FactCheck,
-                Some(email),
-                usage,
-                T,
+                About {
+                    email: Some(email),
+                    ..About::default()
+                },
+                call,
             )
         },
     )
@@ -621,9 +617,7 @@ async fn reply_drafts_and_rewrites_use_the_fixed_target_and_record_their_purpose
             &turn(&chosen).await,
             &prepared,
             letter,
-            |purpose, usage, _| {
-                model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
-            },
+            |purpose, call| model::usage::record(&db, &chosen, purpose, About::default(), call),
         )
         .await
         .unwrap();
@@ -718,9 +712,7 @@ async fn reply_context_stops_at_twenty_letters_and_ten_thousand_characters(db: S
             &turn(&chosen).await,
             &prepared,
             &blank(),
-            |purpose, usage, _| {
-                model::usage::record_for_email(&db, &chosen, purpose, None, usage, T)
-            },
+            |purpose, call| model::usage::record(&db, &chosen, purpose, About::default(), call),
         )
         .await
         .unwrap();
@@ -855,7 +847,7 @@ async fn fact_check_keeps_only_exact_distinct_quotes_and_caps_findings(db: Sqlit
     assert_eq!(findings[1].reason.chars().count(), 200);
     assert_eq!(
         usage(&db).await,
-        vec![("fact_check".into(), 2000, 1500, 400)]
+        vec![("fact_check".into(), Some(2000), Some(1500), Some(400))]
     );
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT email_id FROM usage")
@@ -937,7 +929,7 @@ async fn a_check_no_longer_wanted_when_it_would_go_out_neither_goes_nor_fails(db
             &chosen,
             &[],
             || async { Ok(false) },
-            |_, _| async { Ok(()) },
+            |_| async { Ok(()) },
         )
         .await
         .unwrap();

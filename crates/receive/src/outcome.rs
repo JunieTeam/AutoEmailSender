@@ -113,8 +113,7 @@ async fn analyze(
         ));
     }
     let todos = claim.action == queue::Action::Todos;
-    let Some((message, email_id, reply_date)) =
-        super::reply_input::input(db, claim.id, todos).await?
+    let Some((message, about, reply_date)) = super::reply_input::input(db, claim.id, todos).await?
     else {
         return Ok(Outcome::Gone);
     };
@@ -125,7 +124,19 @@ async fn analyze(
             return Ok(Outcome::Wait);
         }
         let round = processor.round();
-        let answer = match model::ask(net, &turn, &system, &message, true).await {
+        let answer = model::ask(net, &turn, &system, &message, true).await;
+        let purpose = if todos {
+            model::usage::Purpose::ReplyTodos
+        } else {
+            model::usage::Purpose::ReplyOutcome
+        };
+        let call = model::usage::Outcome::of(&answer);
+        writes
+            .retry("record reply processing usage", || {
+                model::usage::record(db, &chosen, purpose, about, call.clone())
+            })
+            .await;
+        let answer = match answer {
             Ok(answer) => answer,
             Err(error) => {
                 tracing::warn!(
@@ -145,24 +156,6 @@ async fn analyze(
             finish_reason = ?answer.finish_reason,
             "reply processing model answered"
         );
-        if let Some(usage) = answer.usage {
-            writes
-                .retry("record reply processing usage", || {
-                    model::usage::record_for_email(
-                        db,
-                        &chosen,
-                        if todos {
-                            model::usage::Purpose::ReplyTodos
-                        } else {
-                            model::usage::Purpose::ReplyOutcome
-                        },
-                        email_id,
-                        usage,
-                        answer.sent_at,
-                    )
-                })
-                .await;
-        }
         if answer.finish_reason == Some(model::Finish::Length) {
             return Ok(Outcome::Failed(Failure::new(model::CUT_OFF)));
         }

@@ -529,12 +529,20 @@ pub async fn fill(db: &SqlitePool, scale: Scale, now: i64) -> Result {
         UNION ALL
         SELECT n + 1
         FROM calls
-        WHERE n < ?1) INSERT INTO usage (at, model_config_id, model, purpose,
-            input_tokens, cached_tokens, output_tokens)
+        WHERE n < ?1) INSERT INTO usage (at, model_config_id, model, purpose, mentor_id,
+            input_tokens, cached_tokens, output_tokens, error)
         SELECT ?2 -(n % 180) * 86400000, CASE WHEN n % 5 = 0 THEN NULL
         ELSE(SELECT min(id) FROM model_config) END, 'deepseek-chat', CASE n % 4
         WHEN 0 THEN 'crawl' WHEN 1 THEN 'match' WHEN 2 THEN 'draft'
-        ELSE 'rewrite' END, 1200 + n % 800, 300, 200 + n % 400
+        ELSE 'rewrite' END,
+        CASE WHEN n % 4 != 0 THEN (SELECT id FROM mentor
+          WHERE id >= (SELECT min(id) FROM mentor) + n % 97 ORDER BY id LIMIT 1) END,
+        -- Now and then a call fails, or its provider does not say what it took.
+        CASE WHEN n % 23 != 0 AND n % 31 != 0 THEN 1200 + n % 800 END,
+        CASE WHEN n % 23 != 0 AND n % 31 != 0 THEN 300 END,
+        CASE WHEN n % 23 != 0 AND n % 31 != 0 THEN 200 + n % 400 END,
+        CASE WHEN n % 23 = 0 THEN json_object('message',
+          'api.deepseek.com 长时间未响应。请稍后再试；在国内使用 OpenAI、Gemini 这类国外服务需要开启代理。', 'details', NULL) END
         FROM calls"#,
     )
     .bind(scale.emails as i64)
@@ -565,6 +573,11 @@ pub async fn crawls(db: &SqlitePool, at: i64) -> Result {
     .bind(at - 300000)
     .execute(&mut *tx)
     .await?;
+    // Every real call to read pages is some crawl's; the sample ones are this one's.
+    sqlx::query("UPDATE usage SET crawl_id = ? WHERE purpose = 'crawl'")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
     let known: (String, String) = sqlx::query_as(
         r#"SELECT m.name, e.address
         FROM mentor m

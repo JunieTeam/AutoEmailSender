@@ -4572,11 +4572,18 @@ async fn a_long_list_limited_in_one_part_holds_back_at_once_and_pays_for_the_res
         outcome = page => assert!(matches!(outcome.unwrap(), Outcome::RateLimit(..))),
         _ = p.requests.recv() => panic!("the part waiting for its turn was sent after the limit"),
     }
-    let calls = sqlx::query_scalar::<_, i64>("SELECT count(*) FROM usage")
-        .fetch_one(&db)
-        .await
-        .unwrap();
-    assert_eq!(calls, 2, "the route and the part that was answered");
+    let calls: (i64, i64) = sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE error IS NULL), count(*) FILTER (WHERE error IS NOT NULL)
+        FROM usage",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        calls,
+        (2, 1),
+        "the route and the part that was answered, and the part limited"
+    );
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
@@ -4743,7 +4750,7 @@ async fn regression_retry_after_blocks_inflight_pages_next_request(db: SqlitePoo
     );
     // The in-flight route's usage is saved while further extraction waits.
     loop {
-        if sqlx::query_scalar::<_, i64>("SELECT count(*) FROM usage")
+        if sqlx::query_scalar::<_, i64>("SELECT count(*) FROM usage WHERE error IS NULL")
             .fetch_one(&db)
             .await
             .unwrap()

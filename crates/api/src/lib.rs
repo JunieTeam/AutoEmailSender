@@ -49,6 +49,7 @@ use writing_turns::{Writing, WritingRequest, cancel_writing};
 
 use base64::prelude::{BASE64_STANDARD, Engine};
 use failure::Failure;
+use model::usage::About;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use ts_rs::{Config, TS, TypeVisitor};
@@ -656,6 +657,8 @@ operations! {
         "mentorStats" [none] => mentor_stats(Nothing) -> stats::MentorOverview;
         /// 统计指定时段的模型用量。
         "tokenStats" [none] => token_stats(StatsPeriod) -> stats::TokenUsage;
+        /// 列出指定时段内每次调用模型的记录，最近的在前，可按用途和模型筛选。
+        "listModelCalls" [none] => list_model_calls(ModelCallQuery) -> stats::ModelCallPage;
         /// 查询今天待处理的邮件和任务。
         "todayWork" [none] => today_work(TodayWorkQuery) -> stats::TodayWork;
     }
@@ -2456,16 +2459,15 @@ async fn write_letter(
     let email_id = email::first_draft(&ctx.db, input.mentor_id)
         .await?
         .map(|draft| draft.id);
+    let about = About {
+        crawl: None,
+        mentor: Some(input.mentor_id),
+        email: email_id,
+    };
     let model = turn.send()?;
-    writing::write(
-        &ctx.net,
-        model,
-        &prepared,
-        &current,
-        |purpose, usage, at| {
-            model::usage::record_for_email(&ctx.db, &chosen, purpose, email_id, usage, at)
-        },
-    )
+    writing::write(&ctx.net, model, &prepared, &current, |purpose, call| {
+        model::usage::record(&ctx.db, &chosen, purpose, about, call)
+    })
     .await
     .map_err(|e| writing_failed(e, input.mentor_id, chosen.id))
 }
@@ -2856,6 +2858,11 @@ async fn write_follow_up(
     let email_id = email::follow_up::draft(&ctx.db, input.mentor_id)
         .await?
         .map(|draft| draft.id);
+    let about = About {
+        crawl: None,
+        mentor: Some(input.mentor_id),
+        email: email_id,
+    };
     let model = turn.send()?;
     writing::write(
         &ctx.net,
@@ -2865,9 +2872,7 @@ async fn write_follow_up(
             subject: String::new(),
             body_md: input.body_md,
         },
-        |purpose, usage, at| {
-            model::usage::record_for_email(&ctx.db, &chosen, purpose, email_id, usage, at)
-        },
+        |purpose, call| model::usage::record(&ctx.db, &chosen, purpose, about, call),
     )
     .await
     .map_err(|e| writing_failed(e, input.mentor_id, chosen.id))
@@ -2912,6 +2917,11 @@ async fn write_reply(
         .await?
         .filter(|draft| draft.reply_to == input.reply_to)
         .map(|draft| draft.id);
+    let about = About {
+        crawl: None,
+        mentor: Some(input.mentor_id),
+        email: email_id,
+    };
     let model = turn.send()?;
     writing::write(
         &ctx.net,
@@ -2921,9 +2931,7 @@ async fn write_reply(
             subject: String::new(),
             body_md: input.body_md,
         },
-        |purpose, usage, at| {
-            model::usage::record_for_email(&ctx.db, &chosen, purpose, email_id, usage, at)
-        },
+        |purpose, call| model::usage::record(&ctx.db, &chosen, purpose, about, call),
     )
     .await
     .map_err(|e| writing_failed(e, input.mentor_id, chosen.id))

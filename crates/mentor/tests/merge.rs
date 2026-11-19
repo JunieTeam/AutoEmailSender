@@ -73,6 +73,13 @@ async fn a_mentor_listed_twice_becomes_one(db: SqlitePool) {
         ming,
     )
     .await;
+    exec(
+        &db,
+        "INSERT INTO usage (at, model, purpose, mentor_id, input_tokens, cached_tokens, output_tokens)
+         VALUES (1, 'm', 'match', ?, 1, 0, 1)",
+        ming,
+    )
+    .await;
     first_email(&db, li, "sent", 100).await.unwrap();
     first_email(&db, ming, "sent", 200).await.unwrap();
     let drafts = [
@@ -116,9 +123,10 @@ async fn a_mentor_listed_twice_becomes_one(db: SqlitePool) {
         merged.contact,
         mentor::Contact::Replied { count: 3, .. }
     ));
-    let mail: (i64, i64) = sqlx::query_as(
+    let mail: (i64, i64, i64) = sqlx::query_as(
         "SELECT (SELECT count(*) FROM email WHERE mentor_id = ?1),
-                (SELECT count(*) FROM message_mentor WHERE mentor_id = ?1)",
+                (SELECT count(*) FROM message_mentor WHERE mentor_id = ?1),
+                (SELECT count(*) FROM usage WHERE mentor_id = ?1)",
     )
     .bind(li)
     .fetch_one(&db)
@@ -130,8 +138,8 @@ async fn a_mentor_listed_twice_becomes_one(db: SqlitePool) {
             .await
             .unwrap();
     assert_eq!(bounces, 0);
-    // One draft each can be kept: the kept mentor's.
-    assert_eq!(mail, (3, 3));
+    // One draft each can be kept: the kept mentor's. The calls for the other are for this one now.
+    assert_eq!(mail, (3, 3, 1));
     let kept: Vec<i64> = sqlx::query_scalar("SELECT id FROM email WHERE state = 'review'")
         .fetch_all(&db)
         .await

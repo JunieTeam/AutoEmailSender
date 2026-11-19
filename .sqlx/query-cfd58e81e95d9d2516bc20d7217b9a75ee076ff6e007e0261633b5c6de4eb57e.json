@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE usage SET mentor_id = ? WHERE mentor_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "cfd58e81e95d9d2516bc20d7217b9a75ee076ff6e007e0261633b5c6de4eb57e"
+}

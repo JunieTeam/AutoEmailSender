@@ -5,6 +5,7 @@ pub use period::{Range, Window, first_event};
 mod today;
 pub use today::{TodayDrafts, TodayWork, today_work};
 
+use failure::Failure;
 use model::pricing::{Currency, Prices, Pricing};
 use model::usage::{Purpose, Usage};
 use serde::{Deserialize, Serialize};
@@ -235,21 +236,43 @@ pub struct Costs {
     pub usd: Option<f64>,
 }
 
+impl Costs {
+    fn add(&mut self, (currency, amount): (Currency, f64)) {
+        let sum = match currency {
+            Currency::Cny => &mut self.cny,
+            Currency::Usd => &mut self.usd,
+        };
+        *sum.get_or_insert(0.0) += amount;
+    }
+}
+
 impl TokenTotals {
     fn add(&mut self, usage: Usage, cost: Option<(Currency, f64)>, calls: i64) {
         self.input += usage.input;
         self.cached += usage.cached;
         self.output += usage.output;
-        let Some((currency, amount)) = cost else {
-            self.unpriced_calls += calls;
-            return;
-        };
-        let sum = match currency {
-            Currency::Cny => &mut self.estimated_cost.cny,
-            Currency::Usd => &mut self.estimated_cost.usd,
-        };
-        *sum.get_or_insert(0.0) += amount;
+        match cost {
+            Some(cost) => self.estimated_cost.add(cost),
+            None => self.unpriced_calls += calls,
+        }
     }
+}
+
+/// What `usage` costs at a configuration's prices now, and in the peak or off-peak hours it was
+/// called in: none once the configuration is deleted, which takes its prices, or without them.
+fn cost(
+    currency: Option<Currency>,
+    prices: Prices,
+    off_peak_prices: Prices,
+    off_peak: bool,
+    usage: Usage,
+) -> Option<(Currency, f64)> {
+    let pricing = Pricing {
+        currency: currency?,
+        prices,
+        off_peak: off_peak_prices,
+    };
+    Some((pricing.currency, pricing.cost(off_peak, usage)?))
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -294,23 +317,21 @@ async fn usage(
             cached: r.cached,
             output: r.output,
         };
-        // A deleted configuration leaves its calls unpriced.
-        let cost = r.currency.and_then(|currency| {
-            let pricing = Pricing {
-                currency,
-                prices: Prices {
-                    input: r.input_price,
-                    cache: r.cache_price,
-                    output: r.output_price,
-                },
-                off_peak: Prices {
-                    input: r.off_peak_input_price,
-                    cache: r.off_peak_cache_price,
-                    output: r.off_peak_output_price,
-                },
-            };
-            Some((currency, pricing.cost(r.off_peak, usage)?))
-        });
+        let cost = cost(
+            r.currency,
+            Prices {
+                input: r.input_price,
+                cache: r.cache_price,
+                output: r.output_price,
+            },
+            Prices {
+                input: r.off_peak_input_price,
+                cache: r.off_peak_cache_price,
+                output: r.off_peak_output_price,
+            },
+            r.off_peak,
+            usage,
+        );
         match purposes.last_mut() {
             Some(last) if last.purpose == r.purpose => last.tokens.add(usage, cost, r.calls),
             _ => {
@@ -325,4 +346,150 @@ async fn usage(
         total.add(usage, cost, r.calls);
     }
     Ok(TokenUsage { purposes, total })
+}
+
+/// One call to a model (docs/ui.md 统计).
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCall {
+    pub id: i64,
+    pub at: i64,
+    pub purpose: Purpose,
+    pub model: String,
+    /// None for a call for no mentor, or once theirs is deleted.
+    pub mentor: Option<CallMentor>,
+    pub crawl_id: Option<i64>,
+    pub result: CallResult,
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct CallMentor {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum CallResult {
+    /// With what it took if the provider said, and its cost estimated as `tokens` estimates it.
+    Answered {
+        tokens: Option<Usage>,
+        cost: Costs,
+    },
+    Failed {
+        failure: Failure,
+    },
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct ModelCallPage {
+    pub calls: Vec<ModelCall>,
+    pub total: i64,
+    /// The models called in the window, to filter by.
+    pub models: Vec<String>,
+}
+
+pub const CALLS_PER_PAGE: u32 = 50;
+
+/// The calls in `window`, the newest first, for `purpose` and `model` where given.
+pub async fn calls(
+    db: &SqlitePool,
+    window: &Window,
+    purpose: Option<Purpose>,
+    model: Option<&str>,
+    page: std::num::NonZeroU32,
+) -> Result<ModelCallPage, sqlx::Error> {
+    let limit = i64::from(CALLS_PER_PAGE);
+    let offset = i64::from(page.get() - 1) * limit;
+    let mut tx = db.begin().await?;
+    let rows = sqlx::query_file!(
+        "src/calls.sql",
+        window.start,
+        window.end,
+        purpose,
+        model,
+        limit,
+        offset
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let total = sqlx::query_scalar!(
+        r#"SELECT count(*) AS "total!: i64" FROM usage
+        WHERE (?1 IS NULL OR at>=?1) AND at<?2 AND (?3 IS NULL OR purpose=?3)
+          AND (?4 IS NULL OR model=?4)"#,
+        window.start,
+        window.end,
+        purpose,
+        model
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    let models = sqlx::query_scalar!(
+        "SELECT DISTINCT model FROM usage WHERE (?1 IS NULL OR at>=?1) AND at<?2 ORDER BY model",
+        window.start,
+        window.end
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let calls = rows
+        .into_iter()
+        .map(|r| {
+            let result = match r.error {
+                Some(Json(failure)) => CallResult::Failed { failure },
+                None => {
+                    // The table keeps the three counts together.
+                    let tokens = match (r.input_tokens, r.cached_tokens, r.output_tokens) {
+                        (Some(input), Some(cached), Some(output)) => Some(Usage {
+                            input,
+                            cached,
+                            output,
+                        }),
+                        _ => None,
+                    };
+                    let mut estimated = Costs::default();
+                    if let Some(usage) = tokens
+                        && let Some(c) = cost(
+                            r.currency,
+                            Prices {
+                                input: r.input_price,
+                                cache: r.cache_price,
+                                output: r.output_price,
+                            },
+                            Prices {
+                                input: r.off_peak_input_price,
+                                cache: r.off_peak_cache_price,
+                                output: r.off_peak_output_price,
+                            },
+                            r.off_peak,
+                            usage,
+                        )
+                    {
+                        estimated.add(c);
+                    }
+                    CallResult::Answered {
+                        tokens,
+                        cost: estimated,
+                    }
+                }
+            };
+            ModelCall {
+                id: r.id,
+                at: r.at,
+                purpose: r.purpose,
+                model: r.model,
+                mentor: r
+                    .mentor_id
+                    .zip(r.mentor_name)
+                    .map(|(id, name)| CallMentor { id, name }),
+                crawl_id: r.crawl_id,
+                result,
+            }
+        })
+        .collect();
+    Ok(ModelCallPage {
+        calls,
+        total,
+        models,
+    })
 }

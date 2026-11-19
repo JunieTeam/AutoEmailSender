@@ -67,3 +67,35 @@ pub(super) async fn token_stats(
         .map_err(CallError::invalid)?;
     Ok(stats::tokens(&ctx.db, &window).await?)
 }
+
+#[derive(Debug, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCallQuery {
+    #[serde(flatten)]
+    #[ts(flatten)]
+    pub period: StatsPeriod,
+    pub purpose: Option<model::usage::Purpose>,
+    pub model: Option<String>,
+    pub page: std::num::NonZeroU32,
+}
+
+pub(super) async fn list_model_calls(
+    ctx: &Context,
+    input: ModelCallQuery,
+) -> Result<stats::ModelCallPage, CallError> {
+    let window = stats::Window::new(
+        input.period.range,
+        &input.period.timezone,
+        input.period.now,
+        None,
+    )
+    .map_err(CallError::invalid)?;
+    Ok(stats::calls(
+        &ctx.db,
+        &window,
+        input.purpose,
+        input.model.as_deref(),
+        input.page,
+    )
+    .await?)
+}

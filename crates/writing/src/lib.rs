@@ -5,7 +5,7 @@ pub mod reply;
 
 use mentor::MentorDetail;
 use model::ModelError;
-use model::usage::Purpose;
+use model::usage::{Outcome, Purpose};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sqlx::SqlitePool;
@@ -118,13 +118,13 @@ pub async fn prepare<'a>(
 /// Drafts a letter when `current` is blank, and otherwise rewrites it using the same inputs that
 /// filled its template, in `turn` at the model of the configuration `input` was prepared for.
 /// The caller controls usage persistence so background retries keep the answer in memory; it is
-/// given the time the request was sent (`model::Answer::sent_at`).
+/// given every call, answered or failed.
 pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
     net: &net::Net,
     turn: &model::background::Turn,
     input: &Prepared<'_>,
     current: &Letter,
-    record_usage: impl Fn(Purpose, model::usage::Usage, i64) -> F,
+    record_usage: impl Fn(Purpose, Outcome) -> F,
 ) -> Result<Letter, Error> {
     let Prepared {
         mentor,
@@ -141,9 +141,14 @@ pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
     let blank = current.is_none();
     let system = system(me, kind, current.is_some());
     let message = message(me, references, attached, mentor, current, kind);
-    let answer = model::ask(net, turn, &system, &message, false)
-        .await
-        .map_err(Error::Model)?;
+    let answer = model::ask(net, turn, &system, &message, false).await;
+    let purpose = if blank {
+        Purpose::Draft
+    } else {
+        Purpose::Rewrite
+    };
+    record_usage(purpose, Outcome::of(&answer)).await?;
+    let answer = answer.map_err(Error::Model)?;
     tracing::info!(
         mentor_id = mentor.id,
         model = turn.model(),
@@ -151,14 +156,6 @@ pub async fn write<F: Future<Output = Result<(), sqlx::Error>>>(
         finish_reason = ?answer.finish_reason,
         "the model answered"
     );
-    if let Some(usage) = answer.usage {
-        let purpose = if blank {
-            Purpose::Draft
-        } else {
-            Purpose::Rewrite
-        };
-        record_usage(purpose, usage, answer.sent_at).await?;
-    }
     let finish_reason = answer.finish_reason;
     if answer.text.trim().is_empty() {
         return Err(Error::Model(ModelError::NoAnswer { finish_reason }));

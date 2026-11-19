@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO usage (at, model_config_id, model, purpose, crawl_id, mentor_id, email_id,\n           input_tokens, cached_tokens, output_tokens, off_peak, error)\n         VALUES (?1, (SELECT id FROM model_config WHERE id = ?2), ?3, ?4,\n           (SELECT id FROM crawl WHERE id = ?5),\n           coalesce((SELECT id FROM mentor WHERE id = ?6), (SELECT mentor_id FROM email WHERE id = ?7)),\n           (SELECT id FROM email WHERE id = ?7), ?8, ?9, ?10, ?11, ?12)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 12
+    },
+    "nullable": []
+  },
+  "hash": "684141ec4f66fd60c1fed8e2a72b62f1f7689496d71b7509907f168476808b75"
+}

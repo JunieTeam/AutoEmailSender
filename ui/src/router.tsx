@@ -39,6 +39,7 @@ import { BackupSection } from "./pages/backup";
 import { desktop } from "./host";
 import { TrackingSection } from "./pages/tracking";
 import { WelcomePage } from "./pages/welcome";
+import { statsSearch } from "./pages/stats-search";
 
 const rootRoute = createRootRoute({ component: Shell });
 
@@ -103,6 +104,7 @@ const findRoute = createRoute({
 const statsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "stats",
+  validateSearch: statsSearch,
   // Loaded on first visit: the chart library is the bulk of it and nothing else needs it.
   component: lazyRouteComponent(() => import("./pages/stats"), "StatsPage"),
   pendingComponent: Loading,

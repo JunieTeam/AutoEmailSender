@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 chrono-tz = "0.10.4"
+failure = { workspace = true, features = ["ts-rs"] }
 model.workspace = true
 serde.workspace = true
 serde_json.workspace = true

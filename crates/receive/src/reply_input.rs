@@ -1,5 +1,6 @@
 //! The shared, limited material for automatic reply processing.
 
+use model::usage::About;
 use serde::Serialize;
 use sqlx::{SqlitePool, types::Json};
 
@@ -29,7 +30,7 @@ pub async fn input(
     db: &SqlitePool,
     id: i64,
     todos: bool,
-) -> Result<Option<(String, Option<i64>, Option<String>)>, sqlx::Error> {
+) -> Result<Option<(String, About, Option<String>)>, sqlx::Error> {
     let mut tx = db.begin().await?;
     let Some(reply) = sqlx::query!(
         r#"SELECT subject, body_text, in_reply_to, refs, sent_at
@@ -86,7 +87,19 @@ pub async fn input(
             &mut remaining,
         ),
     };
-    let email_id = parent.as_ref().and_then(|p| p.email_id);
+    // A reply from an address two mentors share is put down to the first.
+    let mentor = sqlx::query_scalar!(
+        r#"SELECT mentor_id AS "mentor_id!" FROM message_mentor WHERE message_id = ?
+        ORDER BY mentor_id LIMIT 1"#,
+        id
+    )
+    .fetch_optional(&mut *tx)
+    .await?;
+    let about = About {
+        crawl: None,
+        mentor,
+        email: parent.as_ref().and_then(|p| p.email_id),
+    };
     let student = parent.map(|p| {
         let body = p.body.unwrap_or_default();
         // Application drafts already exclude the quote appended when sending.
@@ -108,5 +121,5 @@ pub async fn input(
         reply_weekday,
     })
     .unwrap_or_else(|_| unreachable!("string fields"));
-    Ok(Some((message, email_id, reply_date)))
+    Ok(Some((message, about, reply_date)))
 }

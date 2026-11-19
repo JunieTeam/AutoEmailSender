@@ -464,51 +464,65 @@ impl Reader<'_> {
             };
             let round = self.cooldown.round(&self.claim.crawl);
             let started = Instant::now();
-            let answer = model::ask(self.net, &turn, &rules, &data, true)
-                .await
-                .map_err(|e| {
-                    let category = match &e {
-                        model::ModelError::MissingKey => "missing_key",
-                        model::ModelError::Unreachable { .. } => "unreachable",
-                        model::ModelError::TimedOut { .. } => "timeout",
-                        model::ModelError::Refused { .. } => "refused",
-                        model::ModelError::Failed(_) => "stream_failed",
-                        model::ModelError::NoAnswer { .. } => "no_answer",
-                        model::ModelError::Broken(_) => "invalid_response",
-                    };
-                    let status = match &e {
-                        model::ModelError::Refused { status, .. } => Some(*status),
-                        _ => None,
-                    };
-                    let (error, diagnostic) = (e.to_string(), e.diagnostic());
-                    let failure = model::background::classify(&e, &self.chosen.access);
-                    let action = match &failure {
-                        Effect::Pause(_) => "pause",
-                        Effect::RateLimit(_) => "cooldown",
-                        Effect::Failed(_) => "fail_page",
-                    };
-                    tracing::info!(
-                        url = self.claim.url.as_str(),
-                        step,
-                        attempt,
-                        category,
-                        status,
-                        %error,
-                        diagnostic,
-                        action,
-                        elapsed_ms = started.elapsed().as_millis(),
-                        "model call failed"
-                    );
-                    match failure {
-                        Effect::Pause(r) => ReadError::Pause(r),
-                        Effect::RateLimit(limit) => {
-                            tracing::info!(wait_ms = limit.wait.as_millis(), "model cooldown");
-                            hold_back(self.cooldown, self.claim.crawl, round, limit.wait);
-                            ReadError::RateLimit(limit, round)
-                        }
-                        Effect::Failed(r) => ReadError::Failed(r),
+            let answer = model::ask(self.net, &turn, &rules, &data, true).await;
+            let call = model::usage::Outcome::of(&answer);
+            self.writes
+                .retry("record crawl usage", || {
+                    model::usage::record(
+                        self.db,
+                        self.chosen,
+                        model::usage::Purpose::Crawl,
+                        model::usage::About {
+                            crawl: Some(self.claim.crawl),
+                            ..model::usage::About::default()
+                        },
+                        call.clone(),
+                    )
+                })
+                .await;
+            let answer = answer.map_err(|e| {
+                let category = match &e {
+                    model::ModelError::MissingKey => "missing_key",
+                    model::ModelError::Unreachable { .. } => "unreachable",
+                    model::ModelError::TimedOut { .. } => "timeout",
+                    model::ModelError::Refused { .. } => "refused",
+                    model::ModelError::Failed(_) => "stream_failed",
+                    model::ModelError::NoAnswer { .. } => "no_answer",
+                    model::ModelError::Broken(_) => "invalid_response",
+                };
+                let status = match &e {
+                    model::ModelError::Refused { status, .. } => Some(*status),
+                    _ => None,
+                };
+                let (error, diagnostic) = (e.to_string(), e.diagnostic());
+                let failure = model::background::classify(&e, &self.chosen.access);
+                let action = match &failure {
+                    Effect::Pause(_) => "pause",
+                    Effect::RateLimit(_) => "cooldown",
+                    Effect::Failed(_) => "fail_page",
+                };
+                tracing::info!(
+                    url = self.claim.url.as_str(),
+                    step,
+                    attempt,
+                    category,
+                    status,
+                    %error,
+                    diagnostic,
+                    action,
+                    elapsed_ms = started.elapsed().as_millis(),
+                    "model call failed"
+                );
+                match failure {
+                    Effect::Pause(r) => ReadError::Pause(r),
+                    Effect::RateLimit(limit) => {
+                        tracing::info!(wait_ms = limit.wait.as_millis(), "model cooldown");
+                        hold_back(self.cooldown, self.claim.crawl, round, limit.wait);
+                        ReadError::RateLimit(limit, round)
                     }
-                })?;
+                    Effect::Failed(r) => ReadError::Failed(r),
+                }
+            })?;
             tracing::info!(
                 url = self.claim.url.as_str(),
                 step,
@@ -520,19 +534,6 @@ impl Reader<'_> {
                 elapsed_ms = started.elapsed().as_millis(),
                 "model call completed"
             );
-            if let Some(usage) = answer.usage {
-                self.writes
-                    .retry("record crawl usage", || {
-                        model::usage::record_crawl(
-                            self.db,
-                            self.chosen,
-                            self.claim.crawl,
-                            usage,
-                            answer.sent_at,
-                        )
-                    })
-                    .await;
-            }
             if answer.finish_reason == Some(model::Finish::Length) {
                 tracing::info!(step, reason = "output_truncated", "model output rejected");
                 return Err(ReadError::Failed(Failure::new(model::CUT_OFF)));

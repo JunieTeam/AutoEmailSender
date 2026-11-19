@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT u.purpose AS \"purpose!: model::usage::Purpose\", u.off_peak AS \"off_peak!: bool\",\n c.currency AS \"currency?: model::pricing::Currency\", c.input_price, c.cache_price, c.output_price,\n c.off_peak_input_price, c.off_peak_cache_price, c.off_peak_output_price,\n sum(u.input_tokens) AS \"input!: i64\", sum(u.cached_tokens) AS \"cached!: i64\",\n sum(u.output_tokens) AS \"output!: i64\", count(*) AS \"calls!: i64\"\nFROM usage u LEFT JOIN model_config c ON c.id=u.model_config_id\nWHERE (?1 IS NULL OR u.at>=?1) AND u.at<?2 AND (?3 IS NULL OR u.crawl_id=?3)\nGROUP BY u.purpose, u.model_config_id, u.off_peak ORDER BY u.purpose\n",
+  "query": "SELECT u.purpose AS \"purpose!: model::usage::Purpose\", u.off_peak AS \"off_peak!: bool\",\n c.currency AS \"currency?: model::pricing::Currency\", c.input_price, c.cache_price, c.output_price,\n c.off_peak_input_price, c.off_peak_cache_price, c.off_peak_output_price,\n sum(u.input_tokens) AS \"input!: i64\", sum(u.cached_tokens) AS \"cached!: i64\",\n sum(u.output_tokens) AS \"output!: i64\", count(*) AS \"calls!: i64\"\nFROM usage u LEFT JOIN model_config c ON c.id=u.model_config_id\nWHERE (?1 IS NULL OR u.at>=?1) AND u.at<?2 AND (?3 IS NULL OR u.crawl_id=?3)\n AND u.input_tokens IS NOT NULL\nGROUP BY u.purpose, u.model_config_id, u.off_peak ORDER BY u.purpose\n",
   "describe": {
     "columns": [
       {
@@ -140,11 +140,11 @@
       true,
       true,
       true,
-      false,
-      false,
-      false,
+      true,
+      true,
+      true,
       false
     ]
   },
-  "hash": "e7fc5eac6f08b48850385abba1aa508e1eb7a76113910793a11ea2111e562a80"
+  "hash": "00e28d849ac01c5e06a5b475091221268c3dafebdc7ba80d6def63afa143c8fb"
 }

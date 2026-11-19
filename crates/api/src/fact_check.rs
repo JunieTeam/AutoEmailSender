@@ -74,14 +74,18 @@ pub async fn fact_check_email(
                 Ok(profile::ai_fact_check(&ctx.db).await?
                     && email::fact_check::wanted(&ctx.db, id, claim).await?)
             },
-            |usage, at| {
-                model::usage::record_for_email(
+            |call| {
+                let about = About {
+                    crawl: None,
+                    mentor: Some(row.mentor_id),
+                    email: Some(input.id),
+                };
+                model::usage::record(
                     &ctx.db,
                     &chosen,
                     model::usage::Purpose::FactCheck,
-                    Some(input.id),
-                    usage,
-                    at,
+                    about,
+                    call,
                 )
             },
         )

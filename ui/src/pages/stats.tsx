@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { BackButton } from "@/back";
 import { cn } from "cn";
 import { call, failureOf } from "@/api/call";
@@ -9,20 +9,25 @@ import type {
   ContactProgress,
   Costs,
   MentorOverview,
+  ModelCall,
+  ModelCallPage,
   Range,
   Trend,
   TokenTotals,
   TokenUsage,
-  UsagePurpose,
 } from "@/api/types";
 import { Legend, type Point, type Series, TrendChart } from "@/components/trend-chart";
-import { Pager } from "@/components/mentor-table";
-import { findSearch } from "@/pages/find";
+import { Pager, useLastPage } from "@/components/mentor-table";
+import { crawlName, findSearch } from "@/pages/find";
+import { isPurpose, PURPOSES } from "@/pages/stats-search";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { PillSelect } from "@/components/ui/pill";
+import { useKeptScroll } from "@/kept-scroll";
 import { mentorSearch } from "@/pages/mentors";
 import { Segments } from "@/components/ui/segments";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Loading } from "@/components/loading";
-import { money } from "@/format";
+import { day, money, time } from "@/format";
 
 // docs/ui.md 统计. Only the contact progress and token sections follow the range.
 
@@ -36,15 +41,6 @@ const TREND: readonly Series[] = [
   { name: "发出", unit: "封", color: "var(--chart-1)" },
   { name: "回信", unit: "封", color: "var(--chart-2)" },
 ];
-const PURPOSES: Record<UsagePurpose, string> = {
-  crawl: "智能整理",
-  match: "匹配分析",
-  draft: "AI 起草",
-  rewrite: "AI 改写",
-  fact_check: "AI 核对",
-  reply_outcome: "回信标记",
-  reply_todos: "回信待办",
-};
 const SCHOOLS_PER_PAGE = 10;
 
 function savedRange(): Range {
@@ -53,7 +49,7 @@ function savedRange(): Range {
 }
 
 export function StatsPage() {
-  const navigate = useNavigate();
+  const navigate = useNavigate({ from: "/stats" });
   const [range, setRange] = useState(savedRange);
   const [now, setNow] = useState(Date.now);
   const [page, setPage] = useState(1);
@@ -65,10 +61,11 @@ export function StatsPage() {
       if (new Date().toDateString() !== new Date(now).toDateString()) {
         setNow(Date.now());
         setPage(1);
+        void navigate({ search: (s) => ({ ...s, callPage: undefined }), replace: true });
       }
     }, 60_000);
     return () => clearInterval(timer);
-  }, [now]);
+  }, [now, navigate]);
   const contact = useQuery({
     queryKey: ["stats", "contact", range, now, timezone, page],
     queryFn: () => call("contactStats", { ...period, page }),
@@ -78,8 +75,30 @@ export function StatsPage() {
   });
   const mentors = useQuery({ queryKey: ["stats", "mentors"], queryFn: () => call("mentorStats", {}) });
   const usage = useQuery({ queryKey: ["stats", "tokens", period], queryFn: () => call("tokenStats", period) });
+  const search = useSearch({ from: "/stats" });
+  const callQuery = {
+    ...period,
+    purpose: search.purpose ?? null,
+    model: search.model ?? null,
+    page: search.callPage ?? 1,
+  };
+  const calls = useQuery({
+    queryKey: ["stats", "calls", callQuery],
+    queryFn: () => call("listModelCalls", callQuery),
+    enabled: search.calls === true,
+    placeholderData: keepPreviousData,
+  });
+  // Back from a mentor opened from the list of calls, where the page was, once all is in.
+  const scroller = useKeptScroll<HTMLDivElement>(
+    {
+      isSuccess:
+        contact.isSuccess && mentors.isSuccess && usage.isSuccess && (search.calls !== true || calls.isSuccess),
+      isPlaceholderData: contact.isPlaceholderData || calls.isPlaceholderData,
+    },
+    "stats",
+  );
   return (
-    <div className="@container flex-1 overflow-y-auto">
+    <div ref={scroller} className="@container flex-1 overflow-y-auto">
       <header className="mx-auto flex w-full max-w-[1120px] flex-wrap items-center gap-x-4 gap-y-3 px-7 pt-6 pb-2 phone:px-4 phone:pt-3.5">
         <div className="flex grow items-center gap-1">
           <BackButton
@@ -97,6 +116,7 @@ export function StatsPage() {
             setRange(r);
             setNow(Date.now());
             setPage(1);
+            void navigate({ search: (s) => ({ ...s, callPage: undefined }), replace: true });
           }}
         />
       </header>
@@ -125,6 +145,7 @@ export function StatsPage() {
               </div>
             )}
           </Loaded>
+          <Calls calls={calls} />
         </Section>
       </div>
     </div>
@@ -430,7 +451,7 @@ function Bars({
 }
 
 function Tokens({ usage }: { usage: TokenUsage }) {
-  if (usage.purposes.length === 0) return <Empty>这段时间未使用模型</Empty>;
+  if (usage.purposes.length === 0) return <Empty>这段时间无 Token 用量</Empty>;
   const unpriced = usage.total.unpricedCalls;
   return (
     <>
@@ -468,6 +489,198 @@ function TokenRow({ label, row, total = false }: { label: string; row: TokenTota
       <td className="py-2.5 text-right tabular-nums">{tokens(row.output)}</td>
       <td className="py-2.5 text-right tabular-nums">{cost(row.estimatedCost)}</td>
     </tr>
+  );
+}
+
+/** docs/ui.md 统计: every call to a model in the range, folded away until opened. */
+function Calls({ calls }: { calls: UseQueryResult<ModelCallPage> }) {
+  const s = useSearch({ from: "/stats" });
+  const navigate = useNavigate({ from: "/stats" });
+  const open = s.calls === true;
+  const page = s.callPage ?? 1;
+  const crawls = useQuery({
+    queryKey: ["crawlOptions"],
+    queryFn: () => call("crawlOptions", {}),
+    enabled: open,
+  });
+  const crawlNames = new Map(crawls.data?.map((c) => [c.id, crawlName(c)]));
+  // One chosen before the range changed stays to be taken off.
+  const models = [...new Set([...(calls.data?.models ?? []), ...(s.model === undefined ? [] : [s.model])])];
+  const show = (part: typeof s) => void navigate({ search: (old) => ({ ...old, ...part }), replace: true });
+  useLastPage(calls.isSuccess && !calls.isFetching ? calls.data.total : undefined, page, (n) =>
+    show({ callPage: n > 1 ? n : undefined }),
+  );
+  const filtered = s.purpose !== undefined || s.model !== undefined;
+  const top = useRef<HTMLDivElement>(null);
+  return (
+    <Collapsible
+      ref={top}
+      className="mt-6 scroll-mt-4"
+      open={open}
+      onOpenChange={(o) => show({ calls: o ? true : undefined })}
+    >
+      <CollapsibleTrigger>调用记录</CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="space-y-3 pt-3">
+          <div className="flex flex-wrap gap-2">
+            <PillSelect
+              label="用途"
+              options={[
+                [undefined, "不限"],
+                ...Object.keys(PURPOSES)
+                  .filter(isPurpose)
+                  .map((p) => [p, PURPOSES[p]] as const),
+              ]}
+              value={s.purpose}
+              active={s.purpose !== undefined}
+              onChange={(purpose) => show({ purpose, callPage: undefined })}
+            />
+            <PillSelect
+              label="模型"
+              options={[[undefined, "不限"], ...models.map((m) => [m, m] as const)]}
+              value={s.model}
+              active={s.model !== undefined}
+              onChange={(model) => show({ model, callPage: undefined })}
+            />
+          </div>
+          {calls.error ? (
+            <FailureNote className="text-sm text-destructive" failure={failureOf(calls.error)} />
+          ) : !calls.data ? (
+            <div className="flex h-24">
+              <Loading />
+            </div>
+          ) : calls.data.total === 0 ? (
+            <Empty>{filtered ? "无符合条件的调用，可更换筛选条件查看" : "这段时间未调用模型"}</Empty>
+          ) : (
+            <>
+              {/* Two lines each where the columns would leave the names no room, as on a phone. */}
+              <table className="w-full table-fixed text-sm @max-[900px]:hidden">
+                <thead className="text-left text-muted-foreground">
+                  <tr className="border-b border-border">
+                    <th className="w-28 py-2 font-normal">时间</th>
+                    <th className="w-20 py-2 font-normal">用途</th>
+                    <th className="py-2 font-normal">对象</th>
+                    <th className="py-2 font-normal">模型</th>
+                    <th className="w-24 py-2 text-right font-normal">输入</th>
+                    <th className="w-24 py-2 text-right font-normal">其中缓存命中</th>
+                    <th className="w-24 py-2 text-right font-normal">输出</th>
+                    <th className="w-28 py-2 text-right font-normal">估算费用</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {calls.data.calls.map((c) => (
+                    <tr key={c.id} className="border-b border-border align-top last:border-b-0">
+                      <td className="py-2.5 text-muted-foreground tabular-nums">{`${day(c.at)} ${time(c.at)}`}</td>
+                      <td className="py-2.5">{PURPOSES[c.purpose]}</td>
+                      <td className="truncate py-2.5 pr-3">
+                        <Subject call={c} crawls={crawlNames} />
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        <Tooltip content={c.model}>
+                          <p className="truncate">{c.model}</p>
+                        </Tooltip>
+                      </td>
+                      <Result call={c} />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <ul className="hidden divide-y divide-border text-sm @max-[900px]:block">
+                {calls.data.calls.map((c) => (
+                  <li key={c.id} className="space-y-1 py-2.5">
+                    <div className="flex gap-3">
+                      <p className="min-w-0 grow truncate">
+                        {PURPOSES[c.purpose]} <Subject call={c} crawls={crawlNames} />
+                      </p>
+                      {c.result.kind === "answered" && (
+                        <span className="shrink-0 tabular-nums">{cost(c.result.cost)}</span>
+                      )}
+                    </div>
+                    <div className="flex gap-3 text-muted-foreground">
+                      <p className="min-w-0 grow truncate">{`${day(c.at)} ${time(c.at)} · ${c.model}`}</p>
+                      {c.result.kind === "answered" && c.result.tokens && (
+                        <span className="shrink-0 tabular-nums">
+                          输入 {tokens(c.result.tokens.input)} / 输出 {tokens(c.result.tokens.output)}
+                        </span>
+                      )}
+                    </div>
+                    {c.result.kind === "answered" && !c.result.tokens && (
+                      <p className="text-muted-foreground">服务商未返回用量</p>
+                    )}
+                    {c.result.kind === "failed" && (
+                      <FailureNote className="text-destructive" lead="失败：" failure={c.result.failure} />
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <div className="flex justify-end">
+                <Pager
+                  page={page}
+                  total={calls.data.total}
+                  onPage={(n) => {
+                    // The next page starts at its first call, not down where these buttons are.
+                    top.current?.scrollIntoView({ block: "start" });
+                    show({ callPage: n > 1 ? n : undefined });
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/**
+ * Whom or what a call was for, which opens on a click; nothing once deleted. Cut short where it does
+ * not fit, as a crawl named by its address may not, and whole on hover.
+ */
+function Subject({ call: c, crawls }: { call: ModelCall; crawls: ReadonlyMap<number, string> }) {
+  if (c.mentor)
+    return (
+      <Tooltip content={c.mentor.name}>
+        <Link to="/mentors/$mentorId" params={{ mentorId: c.mentor.id }} className="text-brand-text hover:underline">
+          {c.mentor.name}
+        </Link>
+      </Tooltip>
+    );
+  const crawl = c.crawlId === null ? undefined : crawls.get(c.crawlId);
+  return crawl === undefined || c.crawlId === null ? null : (
+    <Tooltip content={crawl}>
+      <Link
+        to="/find"
+        search={findSearch({ tab: "crawl", detail: c.crawlId })}
+        className="text-brand-text hover:underline"
+      >
+        {crawl}
+      </Link>
+    </Tooltip>
+  );
+}
+
+/** The tokens and cost of an answered call, or why it failed, across those four columns. */
+function Result({ call: c }: { call: ModelCall }) {
+  if (c.result.kind === "failed")
+    return (
+      <td colSpan={4} className="py-2.5">
+        <FailureNote className="text-destructive" lead="失败：" failure={c.result.failure} />
+      </td>
+    );
+  const { tokens: t, cost: estimated } = c.result;
+  if (!t)
+    return (
+      <td colSpan={4} className="py-2.5 text-right text-muted-foreground">
+        服务商未返回用量
+      </td>
+    );
+  return (
+    <>
+      <td className="py-2.5 text-right tabular-nums">{tokens(t.input)}</td>
+      <td className="py-2.5 text-right text-muted-foreground tabular-nums">{tokens(t.cached)}</td>
+      <td className="py-2.5 text-right tabular-nums">{tokens(t.output)}</td>
+      <td className="py-2.5 text-right tabular-nums">{cost(estimated)}</td>
+    </>
   );
 }
 

@@ -5,7 +5,7 @@ use mentor::{MentorDetail, matching as queue};
 use model::{
     Chosen, Feature, ModelError,
     background::{Cooldown, Limited, Priority, RateLimit, Rounds, Turns},
-    usage::Purpose,
+    usage::{About, Purpose},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -257,7 +257,23 @@ async fn analyze(
     let mut system = SYSTEM.to_owned();
     for attempt in 0..2 {
         let round = matcher.round();
-        let answer = match model::ask(net, &turn, &system, &message, true).await {
+        let answer = model::ask(net, &turn, &system, &message, true).await;
+        let call = model::usage::Outcome::of(&answer);
+        writes
+            .retry("record match usage", || {
+                model::usage::record(
+                    db,
+                    &chosen,
+                    Purpose::Match,
+                    About {
+                        mentor: Some(id),
+                        ..About::default()
+                    },
+                    call.clone(),
+                )
+            })
+            .await;
+        let answer = match answer {
             Ok(a) => a,
             Err(e) => {
                 tracing::warn!(
@@ -276,13 +292,6 @@ async fn analyze(
             finish_reason = ?answer.finish_reason,
             "match model answered"
         );
-        if let Some(usage) = answer.usage {
-            writes
-                .retry("record match usage", || {
-                    model::usage::record(db, &chosen, Purpose::Match, usage, answer.sent_at)
-                })
-                .await;
-        }
         if answer.text.trim().is_empty() {
             return Ok(classify(
                 &ModelError::NoAnswer {
