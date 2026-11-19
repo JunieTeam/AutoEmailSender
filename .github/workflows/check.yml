@@ -1,12 +1,13 @@
 name: 检查
 
 # GitHub compares the whole push or pull request against these patterns, not just its last commit.
+# Later patterns win: CHANGELOG.md ships inside the app and is checked by the tests.
 on:
   pull_request:
-    paths-ignore: ["docs/**", "site/**", "*.md", "LICENSE", ".github/FUNDING.yml"]
+    paths: ["**", "!docs/**", "!site/**", "!*.md", "CHANGELOG.md", "!LICENSE", "!.github/FUNDING.yml"]
   push:
     branches: [master]
-    paths-ignore: ["docs/**", "site/**", "*.md", "LICENSE", ".github/FUNDING.yml"]
+    paths: ["**", "!docs/**", "!site/**", "!*.md", "CHANGELOG.md", "!LICENSE", "!.github/FUNDING.yml"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
