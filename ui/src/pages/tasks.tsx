@@ -396,7 +396,8 @@ export function TaskReviewPage() {
         e.preventDefault();
         move(-1);
       }
-      if (pressed === "a") {
+      // Not the letter behind the list in a narrow window, which the user has not opened.
+      if (pressed === "a" && search.email !== undefined) {
         e.preventDefault();
         composer.current?.approve();
       }
