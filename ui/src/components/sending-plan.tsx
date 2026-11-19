@@ -34,13 +34,31 @@ export function SendingPlan() {
   const search = useSearch({ from: "/tasks" });
   const navigate = useNavigate({ from: "/tasks" });
   const selected = search.column ?? "pending";
+  // On a phone only one column shows: what waits stays in sight on its tab, as on the desktop's column.
+  const pending = useQuery({
+    queryKey: ["scheduledWork"],
+    queryFn: () => call("scheduledWork", {}),
+    refetchInterval: 3000,
+  }).data?.pending;
   return (
     <>
       <div className="mx-4 mb-3 hidden phone:block">
         <Segments
           label="发送计划"
           value={selected}
-          options={COLUMNS}
+          options={COLUMNS.map(([column, label]) => [
+            column,
+            column === "pending" && pending ? (
+              <>
+                {label}
+                <span className="min-w-5 rounded-full bg-warning-soft px-1.5 text-center text-xs leading-5 font-medium text-warning">
+                  {pending > 99 ? "99+" : pending}
+                </span>
+              </>
+            ) : (
+              label
+            ),
+          ])}
           onChange={(column) => void navigate({ search: (s) => ({ ...s, column }), replace: true })}
         />
       </div>
