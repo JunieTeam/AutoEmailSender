@@ -157,16 +157,19 @@ export function ScheduleFields({
 export function ChangeSchedule({ task, onClose }: { task: TaskSummary; onClose: () => void }) {
   const client = useQueryClient();
   const [value, setValue] = useState(task.schedule);
+  // The task's schedule as the dialog opened, then as last saved here; not what polling brings.
+  const [base, setBase] = useState(task.schedule);
   const [saved, setSaved] = useState<number | null>(null);
   const save = useMutation({
     mutationFn: (schedule: Schedule) => call("changeTaskSchedule", { id: task.id, schedule }),
     onSuccess: (n, schedule) => {
+      setBase(schedule);
       // Changed again while it saved: what is shown now is not saved yet.
       if (schedule === value) setSaved(n);
       refreshSchedule(client);
     },
   });
-  const dirty = saved === null && JSON.stringify(value) !== JSON.stringify(task.schedule);
+  const dirty = JSON.stringify(value) !== JSON.stringify(base);
   return (
     <Dialog open {...formClose(dirty, save.isPending, onClose)}>
       <DialogContent className="w-[620px]">
@@ -196,7 +199,7 @@ export function ChangeSchedule({ task, onClose }: { task: TaskSummary; onClose: 
             {saved !== null ? "关闭" : "取消"}
           </Button>
           <Button
-            disabled={!scheduleValid(value) || save.isPending || saved !== null}
+            disabled={!scheduleValid(value) || save.isPending || !dirty}
             onClick={() => save.mutate(value)}
           >
             保存发送时间
