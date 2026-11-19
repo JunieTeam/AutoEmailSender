@@ -823,13 +823,16 @@ function Candidates() {
     else if (delta < 0 && s.page > 1) turn(s.page - 1, (shown) => shown.candidates.at(-1)?.id);
   }
   /**
-   * docs/ui.md#找导师: once one is reviewed, the one after it is on show, which takes its place on the
-   * list, from the next page too; after the last one, the one before it.
+   * docs/ui.md#找导师: notes where the candidate stands as the user reviews them, since the list may
+   * be read again before the review returns. Once reviewed, the one after takes their place on the
+   * list, from the next page too; after the last one, the one before.
    */
-  function reviewed(id: number) {
+  function reviewing(id: number) {
     const index = items.findIndex((c) => c.id === id);
-    refreshCrawls(client);
-    turn(s.page, (shown) => (shown.candidates[index] ?? shown.candidates.at(-1))?.id);
+    return () => {
+      refreshCrawls(client);
+      turn(s.page, (shown) => (shown.candidates[index] ?? shown.candidates.at(-1))?.id);
+    };
   }
   useEffect(() => {
     function key(e: KeyboardEvent) {
@@ -1029,7 +1032,7 @@ function Candidates() {
               }
               onBack={() => choose(undefined, false)}
               onMove={move}
-              onReviewed={() => reviewed(current)}
+              onReview={() => reviewing(current)}
               onEnrich={() => setEnrich([current])}
             />
           )}
@@ -1308,7 +1311,7 @@ function CandidatePane({
   onChange,
   onBack,
   onMove,
-  onReviewed,
+  onReview,
   onEnrich,
 }: {
   id: number;
@@ -1321,7 +1324,8 @@ function CandidatePane({
   onChange: (next: Decisions | ((previous: Decisions) => Decisions)) => void;
   onBack: () => void;
   onMove: (delta: number) => void;
-  onReviewed: () => void;
+  /** Called as the user accepts or rejects them; what it returns, once that is done. */
+  onReview: () => () => void;
   onEnrich: () => void;
 }) {
   const client = useQueryClient();
@@ -1341,13 +1345,20 @@ function CandidatePane({
   });
   const accept = useMutation({
     mutationFn: () => call("acceptCandidates", { ids: [id], decisions }),
-    onSuccess: (r) => {
+    onMutate: onReview,
+    onSuccess: (r, _, next) => {
       refreshMentors(client);
-      if (r.accepted > 0) onReviewed();
+      if (r.accepted > 0) next();
       else void preview.refetch();
     },
   });
-  const reject = useMutation({ mutationFn: () => call("rejectCandidates", { ids: [id] }), onSuccess: onReviewed });
+  const reject = useMutation({
+    mutationFn: () => call("rejectCandidates", { ids: [id] }),
+    onMutate: onReview,
+    onSuccess: (_r, _, next) => next(),
+  });
+  // One review at a time: the first to land would decide it, and each would move on.
+  const reviewing = accept.isPending || reject.isPending;
   const pane = `flex min-h-0 min-w-0 flex-col ${chosen ? "" : "compact:hidden"}`;
   const back = <BackButton up={onBack} className="-ml-2 hidden compact:inline-flex" />;
   if (!d)
@@ -1472,14 +1483,14 @@ function CandidatePane({
       <footer className="flex flex-wrap items-center gap-2 border-t border-border px-6 py-3 phone:px-3">
         {pending ? (
           <>
-            <Button disabled={!!issue || !preview.data || accept.isPending} onClick={() => accept.mutate()}>
+            <Button disabled={!!issue || !preview.data || reviewing} onClick={() => accept.mutate()}>
               {row?.category === "supplement" ? "补充" : "接受"}
             </Button>
-            <Button variant="ghost" disabled={reject.isPending} onClick={() => reject.mutate()}>
+            <Button variant="ghost" disabled={reviewing} onClick={() => reject.mutate()}>
               拒绝
             </Button>
             {(f.emails.length === 0 || !f.research) && (
-              <Button variant="quiet" onClick={onEnrich}>
+              <Button variant="quiet" disabled={reviewing} onClick={onEnrich}>
                 补全
               </Button>
             )}

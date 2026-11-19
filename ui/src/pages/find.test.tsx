@@ -15,19 +15,21 @@ import { FindPage, findSearch, ResumeCrawl } from "./find";
 
 // What the candidates' list shows, 50 to a page: by default one candidate named after the keyword.
 // The list for `slow.keyword`, on `slow.page` if given, waits for `slow.release`, and `slow.served`
-// says it has come.
+// says it has come. A rejection takes effect at once, then waits for `rejecting` before it returns.
 const remote = vi.hoisted(
   (): {
     list: (keyword: string) => CandidateRow[];
     total: number | null;
     ids: number[];
     rejected: number[][];
+    rejecting: Promise<void> | null;
     slow: { keyword: string; page?: number; served: boolean; until?: Promise<void>; release?: () => void } | null;
   } => ({
     list: (keyword) => [candidate(keyword.length, `候选${keyword}`)],
     total: null,
     ids: [],
     rejected: [],
+    rejecting: null,
     slow: null,
   }),
 );
@@ -56,6 +58,7 @@ vi.mock("@/api/call", async (importOriginal) => ({
     if (op === "previewCandidates") return preview;
     if (op === "rejectCandidates") {
       remote.rejected.push(input.ids ?? []);
+      await remote.rejecting;
       return input.ids?.length;
     }
     if (op === "listModelConfigs") return [model];
@@ -69,6 +72,7 @@ beforeEach(() => {
   remote.total = null;
   remote.ids = [];
   remote.rejected = [];
+  remote.rejecting = null;
   remote.slow = null;
 });
 
@@ -162,7 +166,7 @@ function routerAt(address: string) {
 /** Shows 找导师 at `address`, gives it to `test`, and clears it all away after. */
 async function page(
   address: string,
-  test: (container: HTMLElement, router: ReturnType<typeof routerAt>) => Promise<void>,
+  test: (container: HTMLElement, router: ReturnType<typeof routerAt>, client: QueryClient) => Promise<void>,
 ) {
   const router = routerAt(address);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -177,7 +181,7 @@ async function page(
         </QueryClientProvider>,
       ),
     );
-    await test(container, router);
+    await test(container, router, client);
   } finally {
     await act(async () => view.unmount());
     client.clear();
@@ -278,6 +282,26 @@ it("goes on across a page's end as the one on show is rejected", async () => {
     await reject();
     await vi.waitFor(() => expect(router.state.location.search).toMatchObject({ page: 1, candidate: 51 }));
     expect(name()).toBe("候选51");
+  });
+});
+
+it("goes on to the one after where the rejected one was, though the list was read again meanwhile", async () => {
+  remote.list = () =>
+    [1, 2, 3, 4].map((id) => candidate(id, `候选${id}`)).filter((c) => !remote.rejected.flat().includes(c.id));
+  await page("/find?candidate=2", async (container, router, client) => {
+    const name = () => container.querySelector("h2")?.textContent;
+    const reject = () => [...container.querySelectorAll("button")].find((b) => b.textContent === "拒绝");
+    await vi.waitFor(() => expect(reject()?.disabled).toBe(false));
+    const gate: { release?: () => void } = {};
+    remote.rejecting = new Promise((resolve) => (gate.release = resolve));
+    await act(async () => reject()?.click());
+    await vi.waitFor(() => expect(remote.rejected).toEqual([[2]]));
+    // As every few seconds: the list without the one being rejected.
+    await act(() => client.refetchQueries({ queryKey: ["listCandidates"] }));
+    await vi.waitFor(() => expect(container.querySelector('[aria-label="选择候选2"]')).toBeNull());
+    await act(async () => gate.release?.());
+    await vi.waitFor(() => expect(name()).toBe("候选3"));
+    expect(router.state.location.search).toMatchObject({ candidate: 3 });
   });
 });
 
