@@ -62,7 +62,7 @@ export function SendingPlan() {
           onChange={(column) => void navigate({ search: (s) => ({ ...s, column }), replace: true })}
         />
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-3 gap-4 px-5 pb-4 narrow:gap-2 narrow:px-3 phone:grid-cols-1 phone:px-3">
+      <div className="grid min-h-0 flex-1 grid-cols-3 gap-4 px-5 pb-4 narrow:gap-2 narrow:px-3 phone:grid-cols-1 phone:px-4">
         {COLUMNS.map(([column, label]) => (
           <PlanList key={column} column={column} label={label} hidden={column !== selected} />
         ))}
@@ -82,7 +82,10 @@ function PlanList({ column, label, hidden }: { column: PlanColumn; label: string
   });
   const scroller = useKeptScroll<HTMLDivElement>(query, `${column} ${page}`);
   return (
-    <section className={`flex min-h-0 min-w-0 flex-col rounded-lg bg-muted/50 ${hidden ? "phone:hidden" : ""}`}>
+    // On a phone the tabs above stand for the heading; the first card keeps as clear of the top as of the sides.
+    <section
+      className={`flex min-h-0 min-w-0 flex-col rounded-lg bg-muted/50 phone:pt-2 ${hidden ? "phone:hidden" : ""}`}
+    >
       <h2 className={`px-3 py-3 font-medium phone:hidden ${column === "pending" ? "text-warning" : ""}`}>
         {label}
         {query.data && <span className="ml-2 text-sm text-muted-foreground">{query.data.total}</span>}
