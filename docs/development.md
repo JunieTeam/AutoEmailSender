@@ -63,7 +63,7 @@
 
 - 开发版的数据在仓库的 `.dev-data` 里，应用标识也单独一个（`crates/app/tauri.dev.conf.json`），和装好的应用互不干扰。
 - 查询在编译时检查：编译读 `.sqlx` 里的元数据，不用连数据库。改了 SQL 没重新生成，编译会报错。
-- `pnpm check` 检查 `.sqlx` 是否最新时不另外编译：先用迁移重建 `target/sqlx.db`，clippy 那次编译连上它，把所有 target 的查询元数据写进 `target/sqlx-check`，再和 `.sqlx` 比较，缺、多或内容不同都报错（`tools/check-rust.mjs`）。和 SQLx CLI 一样，编译前更新各 target 入口文件的修改时间，让增量编译也重新展开查询宏；平常的开发编译仍然离线。
+- `pnpm check` 检查 `.sqlx` 是否最新时不另外编译：先用迁移重建 `target/sqlx.db`，clippy 那次编译连上它，把所有 target 的查询元数据写进仓库自己的 `target/sqlx-check`（共用 `CARGO_TARGET_DIR` 的工作树可以同时检查），再和 `.sqlx` 比较，缺、多或内容不同都报错（`tools/check-rust.mjs`）。和 SQLx CLI 一样，编译前更新各 target 入口文件的修改时间，让增量编译也重新展开查询宏；平常的开发编译仍然离线。
 - 生成的 TypeScript 类型是否最新由 `xtask` 的测试检查，用的是 `cargo test` 已经编译好的测试程序，不用再编译、链接一次 `xtask`。
 - 工作区没有文档测试，`pnpm check` 只跑 `--lib --bins --tests`，省得为每个 library 启动一次 rustdoc。
 - 界面用 TypeScript 7。typescript-eslint 还不支持它，lint 用 oxlint 和它的类型感知规则。

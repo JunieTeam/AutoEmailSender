@@ -18,7 +18,8 @@ function cargo(args, env = process.env, capture = false) {
 }
 
 const metadata = JSON.parse(cargo(["metadata", "--no-deps", "--format-version=1"], process.env, true));
-const generated = join(metadata.target_directory, "sqlx-check");
+// Beside this checkout's target/sqlx.db: checkouts sharing a CARGO_TARGET_DIR check at the same time.
+const generated = join(root, "target", "sqlx-check");
 rmSync(generated, { recursive: true, force: true });
 mkdirSync(generated, { recursive: true });
 
