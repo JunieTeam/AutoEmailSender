@@ -287,7 +287,7 @@ async fn linked_profiles_cannot_request_a_private_host_hidden_by_trailing_dots()
         ),
     );
     let net = net::Net::new(vec![]).unwrap();
-    let fetcher = Fetcher::new(&net).unwrap();
+    let fetcher = Fetcher::new(&net);
     let scope = Scope::new(&start);
     let visit = async {
         for link in material.units.iter().flat_map(|unit| &unit.links) {

@@ -1853,23 +1853,13 @@ pub async fn run(
     changed: impl Fn() + Send + 'static,
     finished: impl Fn(CrawlFinished) + Send + 'static,
 ) {
-    let fetcher = loop {
-        match Fetcher::new(&net) {
-            Ok(f) => {
-                break Arc::new(Pages {
-                    writes: crawler.writes.clone(),
-                    http: f,
-                    browser,
-                    recognize: ocr::recognize,
-                    answered: Default::default(),
-                });
-            }
-            Err(e) => {
-                tracing::error!("create crawl fetcher: {e}");
-                tokio::time::sleep(Duration::from_secs(5)).await;
-            }
-        }
-    };
+    let fetcher = Arc::new(Pages {
+        writes: crawler.writes.clone(),
+        http: Fetcher::new(&net),
+        browser,
+        recognize: ocr::recognize,
+        answered: Default::default(),
+    });
     run_with_pages(db, net, fetcher, crawler, turns, changed, finished).await;
 }
 async fn run_with_pages(

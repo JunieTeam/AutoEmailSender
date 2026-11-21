@@ -58,15 +58,18 @@ pub struct FetchedPage {
 }
 
 impl Fetcher {
-    pub fn new(net: &net::Net) -> Result<Self, CrawlError> {
-        Ok(Self {
-            trusted: net.page_http_builder().build().map_err(CrawlError::Http)?,
-            untrusted: net
-                .untrusted_page_http_builder()
-                .build()
-                .map_err(CrawlError::Http)?,
+    pub fn new(net: &net::Net) -> Self {
+        // Net already built a client with these TLS settings.
+        let client = |builder: reqwest::ClientBuilder| {
+            builder.build().unwrap_or_else(|e| {
+                unreachable!("validated network settings build page clients: {e}")
+            })
+        };
+        Self {
+            trusted: client(net.page_http_builder()),
+            untrusted: client(net.untrusted_page_http_builder()),
             sites: Mutex::new(BTreeMap::new()),
-        })
+        }
     }
 
     async fn site(&self, url: &PageUrl) -> Arc<SiteLimit> {
