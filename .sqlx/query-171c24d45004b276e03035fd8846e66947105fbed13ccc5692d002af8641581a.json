@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE email\n        SET state = 'generating', generation_claim = generation_claim + 1,\n            generation_queued_at = ?1, error = NULL, fact_check = NULL, updated_at = ?1\n        WHERE task_id = ?2 AND (?3 IS NULL OR id = ?3) AND (state = 'generation_failed'\n        OR (?4 = 0 AND state = 'review')) AND task_id IN (\n            SELECT id\n            FROM task\n            WHERE writer = 'ai' AND state <> 'stopped'\n        )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "171c24d45004b276e03035fd8846e66947105fbed13ccc5692d002af8641581a"
+}

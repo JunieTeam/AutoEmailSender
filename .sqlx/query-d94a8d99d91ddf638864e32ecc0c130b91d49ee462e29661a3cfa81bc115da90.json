@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT count(*) FROM email WHERE task_id = ? AND (?2 IS NULL OR state = ?2)",
+  "query": "SELECT count(*) FROM email WHERE task_id = ?1 AND (?2 IS NULL OR state = ?2)",
   "describe": {
     "columns": [
       {
@@ -17,5 +17,5 @@
       false
     ]
   },
-  "hash": "46c90ccdf329e41b42680ffc41b035f73477f5e3cdce15784ef03f370f2a7e96"
+  "hash": "d94a8d99d91ddf638864e32ecc0c130b91d49ee462e29661a3cfa81bc115da90"
 }

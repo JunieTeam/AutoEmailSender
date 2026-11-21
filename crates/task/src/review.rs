@@ -370,7 +370,7 @@ pub async fn drafts(
     };
     let mut tx = db.begin().await?;
     let total = sqlx::query_scalar!(
-        "SELECT count(*) FROM email WHERE task_id = ? AND (?2 IS NULL OR state = ?2)",
+        "SELECT count(*) FROM email WHERE task_id = ?1 AND (?2 IS NULL OR state = ?2)",
         q.task_id,
         filter
     )

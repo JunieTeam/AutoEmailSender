@@ -46,8 +46,18 @@ if (!isDeepStrictEqual(expected, actual)) {
 }
 for (const name of actual) {
   const read = (dir) => JSON.parse(readFileSync(join(dir, name), "utf8"));
-  if (!isDeepStrictEqual(read(prepared), read(generated))) {
+  const fresh = read(generated);
+  if (!isDeepStrictEqual(read(prepared), fresh)) {
     console.error(`.sqlx/${name} 不是最新的，运行 pnpm sqlx 重新生成`);
+    process.exit(1);
+  }
+  // Parameter tokens outside strings, quoted names and comments; `$`, `:` and `@` start them only
+  // where no name runs on.
+  const code = fresh.query.replace(/'(?:[^']|'')*'|"(?:[^"]|"")*"|`(?:[^`]|``)*`|\[[^\]]*\]|--[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g, " ");
+  const parameters = code.match(/\?\d*|(?<![\p{L}\p{N}_$])[$:@][\p{L}\p{N}_]+/gu) ?? [];
+  const named = parameters.some((p) => p[0] !== "?");
+  if (named || (parameters.includes("?") && parameters.some((p) => p.length > 1))) {
+    console.error(`这条 SQL 的参数只能都写 ?，或者都写 ?1 这样的编号（docs/development.md#数据库）：\n${fresh.query}`);
     process.exit(1);
   }
 }

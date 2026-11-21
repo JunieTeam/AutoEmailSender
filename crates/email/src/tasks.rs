@@ -151,14 +151,13 @@ pub async fn regenerate(
     Ok(sqlx::query!(
         r#"UPDATE email
         SET state = 'generating', generation_claim = generation_claim + 1,
-            generation_queued_at = ?, error = NULL, fact_check = NULL, updated_at = ?
-        WHERE task_id = ? AND (?4 IS NULL OR id = ?4) AND (state = 'generation_failed'
-        OR (?5 = 0 AND state = 'review')) AND task_id IN (
+            generation_queued_at = ?1, error = NULL, fact_check = NULL, updated_at = ?1
+        WHERE task_id = ?2 AND (?3 IS NULL OR id = ?3) AND (state = 'generation_failed'
+        OR (?4 = 0 AND state = 'review')) AND task_id IN (
             SELECT id
             FROM task
             WHERE writer = 'ai' AND state <> 'stopped'
         )"#,
-        now,
         now,
         task,
         id,
