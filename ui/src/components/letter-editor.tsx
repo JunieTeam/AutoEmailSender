@@ -88,7 +88,7 @@ function shownLines(quote: string): string[] {
   const { body } = new DOMParser().parseFromString(toHtml(quote), "text/html");
   for (const br of body.querySelectorAll("br")) br.replaceWith("\n");
   for (const block of body.querySelectorAll("p, li")) block.append("\n");
-  return (body.textContent ?? "").split("\n").flatMap((line) => line.trim() || []);
+  return body.textContent.split("\n").flatMap((line) => line.trim() || []);
 }
 
 type Quoted = { quotes: string[]; lines: string[] };

@@ -65,7 +65,7 @@ export function TrashPage() {
             <Notice icon={Trash2} title="回收站是空的" detail="移入回收站的导师会出现在这里，可以恢复或永久删除" />
           ) : (
             <MentorTable
-              mentors={query.data?.mentors ?? []}
+              mentors={query.data.mentors}
               selected={selected}
               selectable={!query.isPlaceholderData}
               onSelect={setSelected}

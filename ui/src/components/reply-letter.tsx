@@ -248,7 +248,7 @@ function Composer({
     setSeenApproval(approval);
     if (approval?.status === "success") setExpanded(false);
   }
-  if (canSelect && selecting && selected && chosen.data?.messageId) {
+  if (canSelect && selecting && chosen.data?.messageId) {
     setExpanded(true);
     setFocusing(true);
     setSelection({ version: selected.version, previousReplyTo: letter.replyTo });

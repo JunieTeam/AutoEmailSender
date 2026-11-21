@@ -298,7 +298,7 @@ GitHub 账号受限、Actions 或 Releases 用不了时，在本机打包，只�
 - 规则多的逻辑写成纯函数，不碰数据库和网络：服务层读数据、调用纯函数、写回结果。
 - 用普通的函数、模块和枚举。只有一种实现时不用 trait 对象，也不建类型层次。可变的全局状态只放在少数明确的地方。
 - 不建 `utils`、`helpers`、`common` 这类杂物模块，不写只做转发导出的文件。
-- 不可能缺失的值不写成可选：TypeScript 里不对它用 `?.` 和 `??`，Rust 里不包成 `Option`。
+- 不可能缺失的值不写成可选：TypeScript 里不对它用 `?.` 和 `??`（oxlint 的 `no-unnecessary-condition` 会查），Rust 里不包成 `Option`。
 - 路径用 `std::path` 和 `node:path` 拼接。仓库脚本只写一份，用 Rust（xtask）或 Node 运行的 TypeScript，不成对写 `.sh` 和 `.ps1`。
 - 依赖：JavaScript 只用 pnpm，用 `pnpm add` 加依赖，一次性的工具用 `pnpm dlx`，不手改版本号；Rust 用 `cargo add`。
 

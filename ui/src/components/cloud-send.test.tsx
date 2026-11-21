@@ -81,7 +81,7 @@ function button(text: string): HTMLButtonElement | undefined {
   return Array.from(document.querySelectorAll("button")).find((b) => b.textContent === text);
 }
 function label(text: string): HTMLLabelElement | undefined {
-  return Array.from(document.querySelectorAll("label")).find((l) => l.textContent?.includes(text));
+  return Array.from(document.querySelectorAll("label")).find((l) => l.textContent.includes(text));
 }
 
 it("hands over the ticked emails as planned again, once the secret is agreed to", async () => {

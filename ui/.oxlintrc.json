@@ -10,6 +10,7 @@
     "typescript/ban-ts-comment": "error",
     "typescript/no-floating-promises": "error",
     "typescript/switch-exhaustiveness-check": "error",
+    "typescript/no-unnecessary-condition": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
     "react/react-in-jsx-scope": "off",

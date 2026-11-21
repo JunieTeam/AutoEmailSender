@@ -198,7 +198,7 @@ async function render() {
     // As the phone's swipe or a long press on the browser's back button does.
     back: (steps = 1) => settle(() => window.history.go(-steps)),
     forward: () => settle(() => window.history.forward()),
-    shows: (text: string) => document.body.textContent?.includes(text) ?? false,
+    shows: (text: string) => document.body.textContent.includes(text),
     page: () => container.textContent,
   };
 }

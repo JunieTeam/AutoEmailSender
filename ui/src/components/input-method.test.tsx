@@ -47,7 +47,7 @@ function press(input: HTMLInputElement, key: string, init: KeyboardEventInit = {
 }
 
 function button(name: string) {
-  const node = Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.trim() === name);
+  const node = Array.from(document.querySelectorAll("button")).find((b) => b.textContent.trim() === name);
   if (!node) throw new Error(`missing button: ${name}`);
   return node;
 }

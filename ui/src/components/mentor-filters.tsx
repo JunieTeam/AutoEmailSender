@@ -102,7 +102,7 @@ const NO_FILTERS = {
 } satisfies Record<keyof FilterSearch, undefined>;
 
 export function filtered(s: FilterSearch) {
-  return Object.values(filterOf(s)).some((v) => v !== undefined);
+  return Object.values<MentorFilter[keyof MentorFilter]>(filterOf(s)).some((v) => v !== undefined);
 }
 
 /**

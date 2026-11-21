@@ -341,7 +341,7 @@ export function MentorsPage() {
             )
           ) : (
             <MentorTable
-              mentors={query.data?.mentors ?? []}
+              mentors={query.data.mentors}
               selected={selected}
               selectable={!query.isPlaceholderData}
               onSelect={setSelected}

@@ -179,7 +179,7 @@ export function ConversationsPage() {
             />
           ) : (
             <div className="flex flex-col gap-[3px]">
-              {query.data?.conversations.map((c) => (
+              {query.data.conversations.map((c) => (
                 <Link
                   key={c.mentorId}
                   to="/conversations"
@@ -244,7 +244,7 @@ function TodoList({ query, selected }: { query: UseQueryResult<TodoPage>; select
   }
   return (
     <ul className="flex flex-col gap-[3px]">
-      {query.data?.todos.map((t) => {
+      {query.data.todos.map((t) => {
         const due = dueLabel(t);
         return (
           <li

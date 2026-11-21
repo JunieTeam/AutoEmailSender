@@ -191,7 +191,7 @@ async function page(
 
 // While sinking away the bar still reads as it did, so what counts is whether it is on show.
 const bar = (container: HTMLElement) =>
-  [...container.querySelectorAll("span")].find((s) => s.textContent?.startsWith("已选"));
+  [...container.querySelectorAll("span")].find((s) => s.textContent.startsWith("已选"));
 
 it("drops the ticks of another search when going back to the one before", async () => {
   await page("/find?keyword=A", async (container, router) => {
@@ -222,7 +222,7 @@ it("keeps the lines and counts on show while another search loads, without ticki
     expect(counts()).toBe(before);
     await act(async () => tick("候选A")?.closest("label")?.click());
     // Nor every one the new search finds, which are not on show yet.
-    const all = [...container.querySelectorAll("label")].find((l) => l.textContent?.startsWith("全选筛出的"));
+    const all = [...container.querySelectorAll("label")].find((l) => l.textContent.startsWith("全选筛出的"));
     await act(async () => all?.click());
     expect(bar(container)?.closest("[inert]")).not.toBeNull();
     await act(async () => slow.release?.());

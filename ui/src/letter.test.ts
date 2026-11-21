@@ -33,7 +33,7 @@ test("paragraphs are indented, and lists move in as a whole", () => {
 });
 
 const paragraphs = (markdown: string, s: LetterStyle) =>
-  [...render(markdown, s).querySelectorAll("p")].map((p) => [p.textContent?.trim(), p.style.textIndent]);
+  [...render(markdown, s).querySelectorAll("p")].map((p) => [p.textContent.trim(), p.style.textIndent]);
 
 test("an indented letter leaves its salutation and a 敬礼 standing alone at the margin", () => {
   const indented = { ...style, firstLineIndent: true };

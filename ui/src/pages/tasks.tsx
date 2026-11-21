@@ -192,7 +192,7 @@ function TaskList() {
             }
           />
         ) : (
-          query.data?.tasks.map((t) => (
+          query.data.tasks.map((t) => (
             <Link
               key={t.id}
               to="/tasks/$id"
@@ -627,7 +627,7 @@ export function TaskReviewPage() {
             ) : list.data.total === 0 ? (
               <Notice icon={SearchX} title="无符合条件的邮件" detail="可更换筛选条件查看" />
             ) : (
-              list.data?.drafts.map((d) => (
+              list.data.drafts.map((d) => (
                 <button
                   key={d.id}
                   onClick={() => choose(d.id)}

@@ -56,7 +56,7 @@ const SALUTE = /^敬礼[！!]?$/;
 
 /** Whether an indented letter leaves the paragraph at the margin. */
 function atMargin(p: HTMLParagraphElement): boolean {
-  const text = (p.textContent ?? "").trim();
+  const text = p.textContent.trim();
   return (p === p.ownerDocument.body.firstElementChild && SALUTATION.test(text)) || SALUTE.test(text);
 }
 
