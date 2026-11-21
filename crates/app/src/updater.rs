@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Emitter, Manager, Url};
+use tauri::{AppHandle, Manager, Url};
 use tauri_plugin_updater::{Error, Update, UpdaterExt};
 
 use api::CallError;
@@ -150,9 +150,7 @@ impl Updater {
 }
 
 fn changed(app: &AppHandle) {
-    if let Err(e) = app.emit("update-changed", ()) {
-        tracing::warn!("refresh update: {e}");
-    }
+    crate::refresh(app, "update-changed");
 }
 
 pub fn start(app: &AppHandle) {

@@ -259,17 +259,13 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
     let ui = app.clone();
     tauri::async_runtime::spawn(async move {
         while account_changed.changed().await.is_ok() {
-            if let Err(e) = ui.emit("account-changed", ()) {
-                tracing::warn!("refresh account: {e}");
-            }
+            refresh(&ui, "account-changed");
         }
     });
     let ui = app.clone();
     let agent = api::agent::start(ctx.clone(), dir, move |event| match event {
         api::agent::Event::Requested(description) => {
-            if let Err(e) = ui.emit("agent-requests-changed", ()) {
-                tracing::warn!("refresh agent requests: {e}");
-            }
+            refresh(&ui, "agent-requests-changed");
             show(&ui);
             if let Err(e) = ui
                 .notification()
@@ -281,16 +277,8 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
                 tracing::warn!("agent confirmation notification: {e}");
             }
         }
-        api::agent::Event::RequestsChanged => {
-            if let Err(e) = ui.emit("agent-requests-changed", ()) {
-                tracing::warn!("refresh agent requests: {e}");
-            }
-        }
-        api::agent::Event::Called => {
-            if let Err(e) = ui.emit("called-elsewhere", ()) {
-                tracing::warn!("refresh agent call: {e}");
-            }
-        }
+        api::agent::Event::RequestsChanged => refresh(&ui, "agent-requests-changed"),
+        api::agent::Event::Called => refresh(&ui, "called-elsewhere"),
     })
     .await
     .map_err(StartupError::Agent)?;
@@ -305,16 +293,8 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
                 tracing::warn!("ask about a phone: {e}");
             }
         }
-        api::phones::Event::Changed => {
-            if let Err(e) = ui.emit("phones-changed", ()) {
-                tracing::warn!("refresh phones: {e}");
-            }
-        }
-        api::phones::Event::Called => {
-            if let Err(e) = ui.emit("called-elsewhere", ()) {
-                tracing::warn!("refresh phone call: {e}");
-            }
-        }
+        api::phones::Event::Changed => refresh(&ui, "phones-changed"),
+        api::phones::Event::Called => refresh(&ui, "called-elsewhere"),
     });
     // Phones show what the window shows. Calls from elsewhere are passed on where they are made,
     // so that a phone does not hear about its own.
@@ -339,15 +319,11 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
     tauri::async_runtime::spawn(api::backup::cloud::run(ctx.clone()));
     let ui = app.clone();
     tauri::async_runtime::spawn(api::cloud_send::run(ctx.clone(), move || {
-        if let Err(e) = ui.emit("sending-changed", ()) {
-            tracing::warn!("refresh sending: {e}");
-        }
+        refresh(&ui, "sending-changed")
     }));
     let ui = app.clone();
     tauri::async_runtime::spawn(api::tracking::run(ctx.clone(), move || {
-        if let Err(e) = ui.emit("tracking-changed", ()) {
-            tracing::warn!("refresh tracking: {e}");
-        }
+        refresh(&ui, "tracking-changed")
     }));
     let api::Context {
         writes,
@@ -374,9 +350,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         sender.clone(),
         move || {
             tracking.tracking.sent();
-            if let Err(e) = ui.emit("sending-changed", ()) {
-                tracing::warn!("refresh sending: {e}");
-            }
+            refresh(&ui, "sending-changed");
         },
     ));
     let ui = app.clone();
@@ -389,9 +363,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         // The UI reads again what new mail may have changed.
         move |replies| {
             received_processor.wake();
-            if let Err(e) = ui.emit("received", ()) {
-                tracing::warn!("tell the window about new mail: {e}");
-            }
+            refresh(&ui, "received");
             if !replies.is_empty() {
                 let db = notifications_db.clone();
                 let app = ui.clone();
@@ -413,9 +385,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         turns.clone(),
         move || {
             changed_todos.wake();
-            if let Err(e) = ui.emit("reply-processing-changed", ()) {
-                tracing::warn!("refresh reply processing: {e}");
-            }
+            refresh(&ui, "reply-processing-changed");
         },
     ));
     let (ui, notifications) = (app.clone(), app.clone());
@@ -423,11 +393,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         db.clone(),
         writes.clone(),
         todo_reminders.clone(),
-        move || {
-            if let Err(e) = ui.emit("todos-changed", ()) {
-                tracing::warn!("refresh todos: {e}");
-            }
-        },
+        move || refresh(&ui, "todos-changed"),
         move |message| {
             if let Err(e) = notifications
                 .notification()
@@ -448,11 +414,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         net.clone(),
         matcher.clone(),
         turns.clone(),
-        move || {
-            if let Err(e) = ui.emit("matching-changed", ()) {
-                tracing::warn!("refresh matching: {e}");
-            }
-        },
+        move || refresh(&ui, "matching-changed"),
         move |result| {
             let app = done_ui.clone();
             let db = matching_notifications_db.clone();
@@ -471,11 +433,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         net.clone(),
         generator.clone(),
         turns.clone(),
-        move || {
-            if let Err(e) = ui.emit("tasks-changed", ()) {
-                tracing::warn!("refresh tasks: {e}");
-            }
-        },
+        move || refresh(&ui, "tasks-changed"),
         move |result| {
             let (app, db) = (done_ui.clone(), drafts_db.clone());
             tauri::async_runtime::spawn(async move {
@@ -492,11 +450,7 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         crawler.clone(),
         turns.clone(),
         Some(std::sync::Arc::new(browser::Browser::new(app.clone()))),
-        move || {
-            if let Err(e) = ui.emit("crawl-changed", ()) {
-                tracing::warn!("refresh crawl: {e}");
-            }
-        },
+        move || refresh(&ui, "crawl-changed"),
         move |result| {
             let (app, db) = (done_ui.clone(), crawl_db.clone());
             tauri::async_runtime::spawn(async move {
@@ -507,6 +461,13 @@ async fn start(app: &AppHandle) -> Result<(Arc<api::Context>, bool), StartupErro
         },
     ));
     Ok((ctx, restored))
+}
+
+/// Tells the window to read again what `event` names.
+fn refresh(ui: &AppHandle, event: &str) {
+    if let Err(e) = ui.emit(event, ()) {
+        tracing::warn!(event, "tell the window: {e}");
+    }
 }
 
 async fn finish_crawl(
