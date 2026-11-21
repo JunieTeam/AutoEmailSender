@@ -44,7 +44,7 @@
 
 ## 命令
 
-第一次：装好 Rust、Node 和 pnpm，再装 sqlx 的命令行工具：`cargo install sqlx-cli --no-default-features --features sqlite,sqlx-toml`。
+第一次：装好 Rust、Node 和 pnpm，再装 sqlx 的命令行工具：`cargo install sqlx-cli --version 0.9.0 --no-default-features --features sqlite,sqlx-toml --locked`（和 CI 同一个版本）。
 
 | 命令 | 做什么 |
 |---|---|
