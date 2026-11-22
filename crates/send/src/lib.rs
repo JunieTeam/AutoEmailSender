@@ -46,18 +46,18 @@ pub async fn run(
     let dealt = Notify::new();
     let sending = async {
         loop {
-            let wait = match step(&db, &writes, &net, &materials, now).await {
-                Ok(Next::Now) => {
+            let next = writes
+                .retry("find emails to send", || {
+                    step(&db, &writes, &net, &materials, now)
+                })
+                .await;
+            let wait = match next {
+                Next::Now => {
                     dealt.notify_one();
                     continue;
                 }
-                Ok(Next::At(at)) => Some(at - now()),
-                Ok(Next::Idle) => None,
-                // Nobody to tell but the log; the database is likely to work again in a while.
-                Err(e) => {
-                    tracing::error!("send: {e}");
-                    Some(MINUTE)
-                }
+                Next::At(at) => Some(at - now()),
+                Next::Idle => None,
             };
             match wait {
                 // Looks again within a minute: the timer stands still while the computer sleeps.
@@ -115,7 +115,9 @@ pub enum Next {
 }
 
 /// Sends the first approved email that can go now, if any. `now` tells the time in UTC
-/// milliseconds; sending takes a while.
+/// milliseconds; sending takes a while. An error leaves nothing done that the step, run again, would
+/// not do anew; once a login succeeds, the database is waited for in place, so as not to log in
+/// again.
 pub async fn step(
     db: &SqlitePool,
     writes: &db::Writes,
@@ -469,23 +471,47 @@ async fn send<T: chrono::TimeZone>(
                 diagnostic = err.diagnostic(),
                 "email {id} not sent from mailbox {mailbox_id}: {err}"
             );
-            return match failure {
+            match failure {
                 Effect::Pause(kind) => {
                     let pause = Pause {
                         until: kind.until(now(), zone),
                         reason: err.failure(),
                     };
-                    apply_for_account(&mut *db.acquire().await?, mailbox_id, &account, &pause).await
+                    writes
+                        .retry("pause mailbox", || async {
+                            apply_for_account(
+                                &mut *db.acquire().await?,
+                                mailbox_id,
+                                &account,
+                                &pause,
+                            )
+                            .await
+                        })
+                        .await;
                 }
+                // Not held while the database is waited for: the email may change meanwhile, as
+                // when rescheduled. The step runs again and decides anew; the server refused
+                // before any password went.
                 Effect::Email => {
-                    email::failed(&mut *db.acquire().await?, id, &err.failure(), now()).await
+                    return email::failed(&mut *db.acquire().await?, id, &err.failure(), now())
+                        .await;
                 }
-            };
+            }
+            return Ok(());
         }
     };
-    let attached = email::attachment_files(&mut *db.acquire().await?, id).await?;
+    let attached = writes
+        .retry("read attachments", || async {
+            email::attachment_files(&mut *db.acquire().await?, id).await
+        })
+        .await;
     let files = files(materials, &attached).await;
-    let Some(m) = mark_sending(db, id, &account, mailbox_id, now, &attached, files).await? else {
+    let marked = writes
+        .retry("mark email sending", || {
+            mark_sending(db, id, &account, mailbox_id, now, &attached, &files)
+        })
+        .await;
+    let Some(m) = marked else {
         smtp.quit();
         return Ok(());
     };
@@ -712,7 +738,7 @@ async fn mark_sending(
     mailbox_id: i64,
     now: &impl Fn() -> i64,
     attached: &[email::Attached],
-    files: Result<Vec<transport::File>, String>,
+    files: &Result<Vec<transport::File>, String>,
 ) -> Result<Option<Marked>, sqlx::Error> {
     let mut conn = db::durable(db).await?;
     let mut tx = conn.begin_with("BEGIN IMMEDIATE").await?;
@@ -764,7 +790,7 @@ async fn mark_sending(
         Some(tracking) => tracked(&handover.html, &tracking),
         None => handover.html,
     };
-    let outgoing = files.map_err(Failure::new).and_then(|files| {
+    let outgoing = files.as_ref().map_err(Failure::new).and_then(|files| {
         let to = (handover.to_address.as_deref()).ok_or_else(|| Failure::new(email::NO_ADDRESS))?;
         transport::compose(
             &account.sender,
@@ -777,7 +803,7 @@ async fn mark_sending(
                 subject: &handover.subject,
                 html: &html,
                 text: &handover.text,
-                attachments: &files,
+                attachments: files,
             },
         )
         .map_err(|e| e.failure())
@@ -952,7 +978,7 @@ mod tests {
     }
 
     #[test]
-    fn a_mailbox_with_no_daily_limit_is_never_chosen() {
+    fn a_mailbox_with_a_zero_daily_limit_is_never_chosen() {
         let none = Usage {
             daily_limit: 0,
             ..mailbox(1, &[])

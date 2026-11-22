@@ -3277,6 +3277,151 @@ async fn an_expired_claim_is_restored_once_storage_works_again(db: SqlitePool) {
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_claim_that_cannot_be_saved_waits_logged_in_until_storage_works(db: SqlitePool) {
+    let writes = db::Writes::default();
+    let logins = Arc::new(AtomicI64::new(0));
+    let counted = logins.clone();
+    let (net, inbox) = mailbox_with_hooks(
+        &db,
+        SECRET,
+        move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+            std::future::ready(())
+        },
+        || std::future::ready(()),
+        || std::future::ready(()),
+        || std::future::ready(()),
+    )
+    .await;
+    let mentor = approve(&db, "wang@example.edu.cn", &[], T).await;
+    sqlx::query(
+        r#"CREATE TRIGGER block_claim BEFORE UPDATE OF state ON email
+        WHEN NEW.state = 'sending'
+        BEGIN
+            SELECT RAISE(FAIL, 'storage unavailable');
+        END"#,
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    let guard = tokio::spawn(async {
+        loop {
+            tokio::task::yield_now().await;
+        }
+    });
+    tokio::time::pause();
+    let sending = send::step(&db, &writes, &net, nowhere(), || T);
+    tokio::pin!(sending);
+    tokio::select! {
+        result = &mut sending => panic!("gave up claiming the email: {result:?}"),
+        () = async {
+            while writes.failure().is_none() {
+                tokio::task::yield_now().await;
+            }
+        } => {}
+    }
+    assert!(inbox.lock().unwrap().is_empty());
+    sqlx::query("DROP TRIGGER block_claim")
+        .execute(&db)
+        .await
+        .unwrap();
+    tokio::time::advance(std::time::Duration::from_secs(5)).await;
+    tokio::time::resume();
+    assert_eq!(sending.await.unwrap(), Next::Now);
+    guard.abort();
+    assert_eq!(writes.failure(), None);
+    assert_eq!(inbox.lock().unwrap().len(), 1);
+    assert_eq!(logins.load(Ordering::SeqCst), 1);
+    assert!(matches!(
+        first_email(&db, mentor).await.delivery,
+        Delivery::Sent { .. }
+    ));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_refusal_saved_late_does_not_fail_an_email_rescheduled_meanwhile(db: SqlitePool) {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    // Turns down every connection at its greeting, before any password.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            tokio::spawn(async move {
+                let mut stream = BufReader::new(stream);
+                stream.get_mut().write_all(b"220 ready\r\n").await.unwrap();
+                let mut line = String::new();
+                stream.read_line(&mut line).await.unwrap();
+                let _ = stream.get_mut().write_all(b"550 5.7.1 refused\r\n").await;
+            });
+        }
+    });
+    let server = |port| Server {
+        host: Cow::Borrowed("localhost"),
+        port,
+        security: Security::Starttls,
+    };
+    let form = MailboxForm {
+        address: ADDRESS.into(),
+        sender_name: "林晓".into(),
+        provider: mailbox::providers::CUSTOM.into(),
+        smtp: server(port),
+        imap: server(993),
+        daily_limit: 2,
+        min_interval_s: 60,
+    };
+    mailbox::create(&db, &form.check().unwrap(), SECRET, 0)
+        .await
+        .unwrap();
+    let net = Net::new(vec![]).unwrap();
+    let writes = db::Writes::default();
+    let mentor = approve(&db, "wang@example.edu.cn", &[], T).await;
+    let id = first_email(&db, mentor).await.id;
+    sqlx::query(
+        r#"CREATE TRIGGER block_failure BEFORE UPDATE OF state ON email
+        WHEN NEW.state = 'failed'
+        BEGIN
+            SELECT RAISE(FAIL, 'storage unavailable');
+        END"#,
+    )
+    .execute(&db)
+    .await
+    .unwrap();
+    assert!(
+        send::step(&db, &writes, &net, nowhere(), || T)
+            .await
+            .is_err()
+    );
+    // In the same millisecond as the approval, so that no timestamp tells the change apart.
+    assert!(
+        email::schedule::reschedule(&db, id, T + DAY, T)
+            .await
+            .unwrap()
+    );
+    sqlx::query("DROP TRIGGER block_failure")
+        .execute(&db)
+        .await
+        .unwrap();
+    send::step(&db, &writes, &net, nowhere(), || T)
+        .await
+        .unwrap();
+    let email = first_email(&db, mentor).await;
+    assert_eq!(email.delivery, Delivery::Approved);
+    assert_eq!(email.latest_at, Some(T + DAY + 3_600_000));
+    // Once due, the refusal is the email's.
+    assert_eq!(
+        send::step(&db, &writes, &net, nowhere(), || T + DAY)
+            .await
+            .unwrap(),
+        Next::Now
+    );
+    assert!(matches!(
+        first_email(&db, mentor).await.delivery,
+        Delivery::Failed { .. }
+    ));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
 async fn a_copy_of_a_try_to_an_old_address_leaves_room_for_the_new_ones(db: SqlitePool) {
     let writes = db::Writes::default();
     let (net, inbox) = mailbox(&db, SECRET).await;
