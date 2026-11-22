@@ -308,6 +308,10 @@ async fn generate(
         }
         Err(writing::Error::Db(e)) => return Err(e),
         Err(writing::Error::NoMentor) => Outcome::Requeue,
+        #[expect(
+            clippy::unreachable,
+            reason = "the model and agreement were checked above"
+        )]
         Err(writing::Error::NoModel | writing::Error::NotAgreed) => {
             unreachable!("configuration checked above")
         }

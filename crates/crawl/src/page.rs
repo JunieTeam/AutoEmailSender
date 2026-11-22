@@ -261,6 +261,7 @@ struct Selectors {
     external_scripts: Selector,
 }
 
+#[expect(clippy::unreachable, reason = "fixed selectors")]
 static SELECTORS: LazyLock<Selectors> = LazyLock::new(|| {
     let compile = |value| {
         Selector::parse(value).unwrap_or_else(|_| unreachable!("fixed page selector is valid"))
@@ -481,6 +482,7 @@ fn alternative_text(element: ElementRef<'_>) -> Option<String> {
     None
 }
 
+#[expect(clippy::unreachable, reason = "a fixed pattern")]
 static NAVIGATION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(?ix)
@@ -499,6 +501,7 @@ static NAVIGATION: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap_or_else(|_| unreachable!("fixed navigation pattern is valid"))
 });
 
+#[expect(clippy::unreachable, reason = "a fixed pattern")]
 static PUNCTUATION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"[\p{P}\s]").unwrap_or_else(|_| unreachable!("fixed punctuation pattern is valid"))
 });

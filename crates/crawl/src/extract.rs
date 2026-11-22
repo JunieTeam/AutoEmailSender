@@ -515,6 +515,10 @@ pub fn compared(m: &Material) -> String {
 }
 /// A block as the model reads it: a link written `[text](number)`, by the number `all` gives it.
 /// `every` writes addresses as `marked` does to compare the block.
+#[expect(
+    clippy::unreachable,
+    reason = "`all` is the links of the material `u` is in"
+)]
 fn block(u: &Unit, all: &[(&str, &PageUrl)], every: bool) -> String {
     marked(
         u,

@@ -3,7 +3,7 @@
 use std::future::pending;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, PoisonError};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -135,9 +135,7 @@ impl Drop for Confirmation<'_> {
 
 impl Access {
     fn requests(&self) -> std::sync::MutexGuard<'_, Requests> {
-        self.requests.lock().unwrap_or_else(|_| {
-            unreachable!("agent request updates cannot panic while holding the lock")
-        })
+        self.requests.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     pub(crate) fn emit(&self, event: Event) {
@@ -229,21 +227,19 @@ pub async fn list_agent_requests(
 pub async fn answer_agent_request(ctx: &Context, input: AgentAnswer) -> Result<(), CallError> {
     let pending = {
         let mut requests = ctx.agent_access.requests();
+        let gone = || CallError::invalid("这个请求已经失效".into());
         let index = requests
             .pending
             .iter()
             .position(|p| p.request.id == input.id && p.expires > Instant::now())
-            .ok_or_else(|| CallError::invalid("这个请求已经失效".into()))?;
+            .ok_or_else(gone)?;
         let count = requests.pending[index].request.description.letters.len();
         if input.allow && input.rendered.as_ref().map_or(0, Vec::len) != count {
             return Err(CallError::invalid(
                 "请为每封待发邮件提供对应的 HTML 和纯文本渲染结果".into(),
             ));
         }
-        requests
-            .pending
-            .remove(index)
-            .unwrap_or_else(|| unreachable!("the index was just found"))
+        requests.pending.remove(index).ok_or_else(gone)?
     };
     // Requests without letters need no rendering; the count was checked before removing them.
     let rendered = input.rendered.unwrap_or_default();

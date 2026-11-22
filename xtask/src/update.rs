@@ -146,6 +146,10 @@ fn only(dir: &Path, suffix: &str) -> crate::Result<PathBuf> {
 
 /// The file's name on the mirror, with spaces turned into dots as GitHub does, so that its URL
 /// needs no escaping.
+#[expect(
+    clippy::unreachable,
+    reason = "only files from the directory listing are named"
+)]
 fn name(file: &Path) -> String {
     file.file_name()
         .unwrap_or_else(|| unreachable!("only files from the directory listing are named"))
@@ -169,7 +173,7 @@ fn rclone(command: &mut Command, input: Option<&[u8]>) -> crate::Result {
         child
             .stdin
             .take()
-            .unwrap_or_else(|| unreachable!("stdin is piped"))
+            .ok_or("rclone 的输入没有接上")?
             .write_all(input)?;
     }
     let status = child.wait()?;

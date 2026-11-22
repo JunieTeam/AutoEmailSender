@@ -3,7 +3,7 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, PoisonError,
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
@@ -144,10 +144,7 @@ struct State {
 }
 impl State {
     fn fail(&self, message: Failure) {
-        let mut error = self
-            .error
-            .lock()
-            .unwrap_or_else(|_| unreachable!("browser state updates cannot panic"));
+        let mut error = self.error.lock().unwrap_or_else(PoisonError::into_inner);
         if error.is_none() {
             *error = Some(message);
         }
@@ -160,7 +157,7 @@ impl State {
         if let Some(error) = self
             .error
             .lock()
-            .unwrap_or_else(|_| unreachable!("browser state updates cannot panic"))
+            .unwrap_or_else(PoisonError::into_inner)
             .as_ref()
         {
             return Err(BrowserError::Failed(error.clone()));
@@ -196,6 +193,7 @@ impl Render for Browser {
         steps: &'a [PageStep],
     ) -> Pin<Box<dyn Future<Output = Result<RenderedPage, BrowserError>> + Send + 'a>> {
         Box::pin(async move {
+            #[expect(clippy::unreachable, reason = "nothing closes the semaphore")]
             let slot = self
                 .slots
                 .clone()
@@ -302,7 +300,7 @@ fn render(
             let _entered = nav_span.enter();
             let mut navigation = nav_navigation
                 .lock()
-                .unwrap_or_else(|_| unreachable!("navigation updates cannot panic"));
+                .unwrap_or_else(PoisonError::into_inner);
             let (current, started) = &mut *navigation;
             let result = navigation_url(&target, current, url.as_str()).and_then(|next| {
                 let Some(next) = next else {
@@ -383,11 +381,7 @@ fn render(
         move |event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 state.stopped.store(true, Ordering::Relaxed);
-                drop(
-                    slot.lock()
-                        .unwrap_or_else(|_| unreachable!("browser slot updates cannot panic"))
-                        .take(),
-                );
+                drop(slot.lock().unwrap_or_else(PoisonError::into_inner).take());
             }
         }
     });
@@ -405,10 +399,7 @@ fn render(
         let control = serde_json::to_string(&step.control)
             .map_err(|_| failed_step(failed("无法读取点击步骤")))?;
         redirects.store(0, Ordering::Relaxed);
-        navigation
-            .lock()
-            .unwrap_or_else(|_| unreachable!("navigation updates cannot panic"))
-            .1 = false;
+        navigation.lock().unwrap_or_else(PoisonError::into_inner).1 = false;
         let clicked = evaluate(
             &window,
             state,

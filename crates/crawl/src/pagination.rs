@@ -191,22 +191,27 @@ struct Context<'a> {
     counts: Option<(u32, u32)>,
 }
 
+#[expect(clippy::unreachable, reason = "a fixed pattern")]
 static CURRENT: LazyLock<Selector> = LazyLock::new(|| {
     Selector::parse(".curr_page, .current_page, .current-page, .current, [aria-current='page']")
         .unwrap_or_else(|_| unreachable!("fixed current page selector is valid"))
 });
+#[expect(clippy::unreachable, reason = "a fixed pattern")]
 static TOTAL: LazyLock<Selector> = LazyLock::new(|| {
     Selector::parse(".all_pages, .total_pages, .total-pages")
         .unwrap_or_else(|_| unreachable!("fixed total pages selector is valid"))
 });
+#[expect(clippy::unreachable, reason = "a fixed pattern")]
 static PAGE_COUNTS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:第\s*)?(\d+)\s*(?:页\s*)?/\s*(?:共\s*)?(\d+)\s*页?")
         .unwrap_or_else(|_| unreachable!("fixed page count pattern is valid"))
 });
 /// The page a pager is on and how many there are, written apart, as "第 1 页 共 5 页".
+#[expect(clippy::unreachable, reason = "a fixed pattern")]
 static PAGE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"第\s*(\d+)\s*页").unwrap_or_else(|_| unreachable!("fixed page pattern is valid"))
 });
+#[expect(clippy::unreachable, reason = "a fixed pattern")]
 static PAGES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"共\s*(\d+)\s*页").unwrap_or_else(|_| unreachable!("fixed pages pattern is valid"))
 });

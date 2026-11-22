@@ -422,10 +422,15 @@ impl Reader<'_> {
         system: &str,
         data: impl serde::Serialize,
     ) -> Result<T, ReadError> {
+        #[expect(
+            clippy::unreachable,
+            reason = "page data has no keys other than strings"
+        )]
         let data = serde_json::to_string(&data)
             .unwrap_or_else(|_| unreachable!("page data is text, numbers and lists"));
         let mut rules = system.to_owned();
-        for attempt in 0..2 {
+        let mut attempt = 0;
+        loop {
             let turn = loop {
                 let mut failed = self.failed.subscribe();
                 let turn = tokio::select! {
@@ -545,8 +550,10 @@ impl Reader<'_> {
                 Ok(v) => return Ok(v),
                 Err(reason) if attempt == 0 => {
                     tracing::info!(step, reason = "invalid_fields", "retry model output");
-                    rules =
-                        format!("{system}\n上次输出未通过字段校验：{reason}。请重新输出完整 JSON。")
+                    rules = format!(
+                        "{system}\n上次输出未通过字段校验：{reason}。请重新输出完整 JSON。"
+                    );
+                    attempt += 1;
                 }
                 Err(reason) => {
                     tracing::info!(step, reason = "invalid_fields", "model output rejected");
@@ -556,7 +563,6 @@ impl Reader<'_> {
                 }
             }
         }
-        unreachable!("both attempts return")
     }
 }
 #[tracing::instrument(name = "crawl", parent = None, skip_all, fields(id = c.crawl))]
@@ -1654,9 +1660,10 @@ async fn save(db: &SqlitePool, c: &Claim, outcome: &Outcome) -> Result<bool, sql
             if let Outcome::Mismatched { reached, .. } = outcome {
                 let candidate = match c.candidate_id {
                     Some(id) => id,
-                    None => target(&mut tx, c.id).await?.unwrap_or_else(|| {
-                        unreachable!("a valid claim's page has whom it was read for")
-                    }),
+                    // A valid claim's page has whom it was read for.
+                    None => target(&mut tx, c.id)
+                        .await?
+                        .ok_or(sqlx::Error::RowNotFound)?,
                 };
                 let urls = [c.url.as_str(), reached.as_str()];
                 review::mismatched(&mut tx, candidate, &urls, now()).await?;

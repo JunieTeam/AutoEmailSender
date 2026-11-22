@@ -299,6 +299,7 @@ GitHub 账号受限、Actions 或 Releases 用不了时，在本机打包，只�
 - 用普通的函数、模块和枚举。只有一种实现时不用 trait 对象，也不建类型层次。可变的全局状态只放在少数明确的地方。
 - 不建 `utils`、`helpers`、`common` 这类杂物模块，不写只做转发导出的文件。
 - 不可能缺失的值不写成可选：TypeScript 里不对它用 `?.` 和 `??`（oxlint 的 `no-unnecessary-condition` 会查），Rust 里不包成 `Option`。
+- Rust 里不用 `unreachable!` 代替 `expect`（clippy 的 `unreachable` 会查）：数据库、文件和别的程序来的数据不合预期就返回错误；锁中毒用 `PoisonError::into_inner` 接着用；能改写成不需要它的就改写。只有写死的正则、选择器、参数和编进程序的文字，从不关闭的信号量，只含字符串的结构的序列化，以及同一个函数里刚建立的条件，才用 `#[expect(clippy::unreachable, reason = "...")]` 写明理由。桌面端的 `#[tauri::command]` 用 `unreachable!()` 检查借用参数的异步命令，这种命令只放在 `commands`、`backup` 两个模块里，在模块上写 `expect`。
 - 路径用 `std::path` 和 `node:path` 拼接。仓库脚本只写一份，用 Rust（xtask）或 Node 运行的 TypeScript，不成对写 `.sh` 和 `.ps1`。
 - 依赖：JavaScript 只用 pnpm，用 `pnpm add` 加依赖，一次性的工具用 `pnpm dlx`，不手改版本号；Rust 用 `cargo add`。
 

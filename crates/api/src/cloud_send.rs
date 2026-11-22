@@ -674,9 +674,10 @@ pub async fn hand_off(ctx: &Context, input: HandOff, now: i64) -> Result<HandedO
     }
     let mut handed: Vec<(i64, String, i64)> = Vec::new();
     for c in &planned {
-        let Some((_, copy)) = mailboxes.iter().find(|(id, _)| *id == c.mailbox_id) else {
-            unreachable!("every planned mailbox was read above");
-        };
+        let (_, copy) = mailboxes
+            .iter()
+            .find(|(id, _)| *id == c.mailbox_id)
+            .ok_or_else(|| CallError::invalid(CHANGED.into()))?;
         let cloud_id = uuid::Uuid::new_v4().simple().to_string();
         let from: &str = copy.sender.address.as_ref();
         let message_id = transport::message_id(&copy.sender);

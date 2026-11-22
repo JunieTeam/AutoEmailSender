@@ -511,18 +511,18 @@ pub async fn call_agent(
                 }
                 match op {
                     "approveTaskEmails" => {
-                        let approvals = input["emails"].as_array_mut().unwrap_or_else(|| {
-                            unreachable!("task approvals were parsed before confirmation")
-                        });
+                        let approvals = input["emails"].as_array_mut().ok_or_else(|| {
+                            CallError::internal("task approvals were parsed before confirmation")
+                        })?;
                         for (approval, rendered) in approvals.iter_mut().zip(rendered) {
                             approval["html"] = rendered.html.into();
                             approval["text"] = rendered.text.into();
                         }
                     }
                     "approveFirstEmail" | "approveFollowUp" | "approveReply" => {
-                        let rendered = rendered.into_iter().next().unwrap_or_else(|| {
-                            unreachable!("the answer's rendering count was checked")
-                        });
+                        let rendered = rendered.into_iter().next().ok_or_else(|| {
+                            CallError::internal("the answer's rendering count was checked")
+                        })?;
                         input["html"] = rendered.html.into();
                         input["text"] = rendered.text.into();
                     }

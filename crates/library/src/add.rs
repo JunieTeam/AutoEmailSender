@@ -135,6 +135,7 @@ pub async fn write(
     let (_, changes) = calculate(&mut tx, fetched, input).await?;
     let (result, accepted) = intake::apply(&mut tx, changes, now).await?;
     for (row, mentor) in accepted {
+        #[expect(clippy::unreachable, reason = "only fetched rows are accepted")]
         let record = fetched
             .records
             .iter()

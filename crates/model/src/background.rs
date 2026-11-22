@@ -8,7 +8,7 @@ use std::{
     future::Future,
     hash::Hash,
     sync::{
-        Arc, Mutex, MutexGuard,
+        Arc, Mutex, MutexGuard, PoisonError,
         atomic::{AtomicU64, Ordering},
     },
     time::Duration,
@@ -152,13 +152,11 @@ impl Turns {
     }
 
     fn lines(&self) -> MutexGuard<'_, HashMap<Group, Line>> {
-        self.0
-            .lines
-            .lock()
-            .unwrap_or_else(|_| unreachable!("nothing panics while holding the lock"))
+        self.0.lines.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
+#[expect(clippy::unreachable, reason = "a group's line stays once added")]
 fn line<'a>(lines: &'a mut HashMap<Group, Line>, group: &Group) -> &'a mut Line {
     lines
         .get_mut(group)
@@ -274,9 +272,7 @@ impl<K: Eq + Hash> Rounds<K> {
         self.rounds().get(key).copied().unwrap_or_default()
     }
     fn rounds(&self) -> MutexGuard<'_, HashMap<K, u64>> {
-        self.rounds
-            .lock()
-            .unwrap_or_else(|_| unreachable!("nothing panics while holding the lock"))
+        self.rounds.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -345,9 +341,7 @@ impl<K: Eq + Hash> Cooldown<K> {
         }
     }
     fn lock(&self) -> MutexGuard<'_, HashMap<K, (u64, Instant)>> {
-        self.until
-            .lock()
-            .unwrap_or_else(|_| unreachable!("nothing panics while holding the lock"))
+        self.until.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 

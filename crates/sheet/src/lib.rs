@@ -239,7 +239,7 @@ pub fn write_xlsx(sheets: &[Sheet]) -> Result<Vec<u8>, XlsxError> {
     book.save_to_buffer()
 }
 
-pub fn write_csv(rows: &[Vec<String>]) -> Vec<u8> {
+pub fn write_csv(rows: &[Vec<String>]) -> Result<Vec<u8>, csv::Error> {
     let mut writer = csv::WriterBuilder::new()
         .flexible(true)
         .from_writer(vec![0xef, 0xbb, 0xbf]);
@@ -251,13 +251,9 @@ pub fn write_csv(rows: &[Vec<String>]) -> Vec<u8> {
                 s.clone()
             }
         });
-        if let Err(e) = writer.write_record(cells) {
-            unreachable!("writing to Vec: {e}");
-        }
+        writer.write_record(cells)?;
     }
-    writer
-        .into_inner()
-        .unwrap_or_else(|e| unreachable!("writing to Vec: {e}"))
+    writer.into_inner().map_err(|e| e.into_error().into())
 }
 
 #[cfg(test)]
@@ -319,7 +315,7 @@ mod tests {
             "'原文".into(),
             "''原文".into(),
         ]];
-        let csv = write_csv(&rows);
+        let csv = write_csv(&rows).unwrap();
         let text = std::str::from_utf8(&csv).unwrap();
         assert!(text.starts_with("\u{feff}'=1,'+1,'-1,'@a,"));
         assert!(text.contains("''=备注"));

@@ -189,7 +189,7 @@ async fn current_profiles(
     {
         profiles
             .get_mut(&row.mentor_id)
-            .unwrap_or_else(|| unreachable!("selected mentor"))
+            .ok_or(sqlx::Error::RowNotFound)?
             .affiliations
             .push(Affiliation {
                 university: row.university,
@@ -281,7 +281,12 @@ fn fits(field: Field, value: &Value, original: bool) -> bool {
     }
 }
 
-fn take(profile: &mut Profile, field: Field, unit: Option<&Affiliation>, value: &Value) {
+fn take(
+    profile: &mut Profile,
+    field: Field,
+    unit: Option<&Affiliation>,
+    value: &Value,
+) -> Result<(), sqlx::Error> {
     match (field, value) {
         (Field::Name, Value::Text(Some(name))) => {
             profile.fields.aliases.retain(|a| !same(a, name));
@@ -315,8 +320,13 @@ fn take(profile: &mut Profile, field: Field, unit: Option<&Affiliation>, value: 
                 .unwrap_or_else(|| incoming.clone());
             profile.fields.affiliations.insert(0, a);
         }
-        _ => unreachable!("pending values are created by the corresponding field"),
+        _ => {
+            return Err(sqlx::Error::Decode(
+                "an update's value is not of its field".into(),
+            ));
+        }
     }
+    Ok(())
 }
 
 pub async fn plan(conn: &mut SqliteConnection, choices: &Choices) -> Result<Plan, Error> {
@@ -381,11 +391,11 @@ pub async fn plan(conn: &mut SqliteConnection, choices: &Choices) -> Result<Plan
             take(
                 after
                     .get_mut(&row.mentor_id)
-                    .unwrap_or_else(|| unreachable!("loaded above")),
+                    .ok_or(sqlx::Error::RowNotFound)?,
                 row.field,
                 row.unit.as_ref(),
                 &incoming,
-            );
+            )?;
         }
         applied.push(row.id);
     }
@@ -451,7 +461,7 @@ pub(crate) async fn readded(
                 .first()
                 .map(crate::affiliation)
                 .map(Value::Affiliation),
-            _ => unreachable!("only preference fields selected"),
+            _ => return Err(sqlx::Error::Decode("not a preference field".into())),
         };
         if let Some(incoming) =
             incoming.filter(|v| !preference.original.is_current(v, &affiliations))

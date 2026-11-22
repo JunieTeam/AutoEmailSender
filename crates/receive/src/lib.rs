@@ -959,28 +959,23 @@ pub async fn list_in(
                         unread: r.read_at.is_none(),
                         can_reply: r.message_id.is_some(),
                         outcome: r.outcome,
-                        todo_extraction: match r.todo_state.as_deref() {
-                            Some("queued" | "running") => {
+                        // Failed work has an error, as the tables check.
+                        todo_extraction: match (r.todo_state.as_deref(), r.todo_error) {
+                            (Some("queued" | "running"), _) => {
                                 Some(email::todos::TodoExtraction::Extracting)
                             }
-                            Some("failed") => Some(email::todos::TodoExtraction::Failed {
-                                reason: r
-                                    .todo_error
-                                    .unwrap_or_else(|| unreachable!("failed work has an error"))
-                                    .0,
-                            }),
+                            (Some("failed"), Some(Json(reason))) => {
+                                Some(email::todos::TodoExtraction::Failed { reason })
+                            }
                             _ => None,
                         },
-                        marking: match r.state.as_deref() {
-                            Some("queued" | "running") => {
+                        marking: match (r.state.as_deref(), r.error) {
+                            (Some("queued" | "running"), _) => {
                                 Some(email::outcome::OutcomeMarking::Marking)
                             }
-                            Some("failed") => Some(email::outcome::OutcomeMarking::Failed {
-                                reason: r
-                                    .error
-                                    .unwrap_or_else(|| unreachable!("failed work has an error"))
-                                    .0,
-                            }),
+                            (Some("failed"), Some(Json(reason))) => {
+                                Some(email::outcome::OutcomeMarking::Failed { reason })
+                            }
                             _ => None,
                         },
                     },

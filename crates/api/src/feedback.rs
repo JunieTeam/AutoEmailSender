@@ -1,7 +1,7 @@
 //! Feedback sent to the support mailbox through the official server (docs/development.md#问题反馈).
 
 use std::path::Path;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -30,9 +30,7 @@ pub struct Feedback {
 
 impl Feedback {
     fn lock(&self) -> MutexGuard<'_, Option<Snapshot>> {
-        self.kept
-            .lock()
-            .unwrap_or_else(|_| unreachable!("nothing panics while holding the lock"))
+        self.kept.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -236,10 +234,7 @@ fn newest<T>(
     let mut kept: Vec<_> = events
         .rev()
         .take_while(|(_, text)| {
-            size += serde_json::to_string(text)
-                .unwrap_or_else(|_| unreachable!("a string is always written"))
-                .len()
-                - 2;
+            size += serde_json::Value::from(text.as_str()).to_string().len() - 2;
             size <= limit
         })
         .collect();

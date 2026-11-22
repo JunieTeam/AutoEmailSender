@@ -265,8 +265,9 @@ impl Usage {
 
     /// When it may send next from `now`: after its pause, spaced from the others and within its
     /// daily limit. That is `now` or the end of an interval or day after one of its emails, the
-    /// last of which always does.
-    fn ready_at(&self, now: i64) -> i64 {
+    /// last of which does for any daily limit above 0; none for a limit of 0, which only a database
+    /// edited by hand holds.
+    fn ready_at(&self, now: i64) -> Option<i64> {
         let from = now.max(self.paused_until.unwrap_or(now));
         let mut ends: Vec<i64> = self
             .times
@@ -278,9 +279,6 @@ impl Usage {
         std::iter::once(from)
             .chain(ends)
             .find(|&at| self.spaced(at) && self.has_room(at))
-            .unwrap_or_else(|| {
-                unreachable!("a day and an interval after its last email it can send")
-            })
     }
 
     /// Sends `at`, as planned for the official server.
@@ -354,7 +352,9 @@ fn choose(
             let soonest = mailboxes
                 .iter()
                 .filter(|m| !m.needs_secret)
-                .min_by_key(|m| (m.ready_at(now), m.last(now)));
+                .filter_map(|m| Some((m.ready_at(now)?, m.last(now), m)))
+                .min_by_key(|&(ready, last, _)| (ready, last))
+                .map(|(_, _, m)| m);
             match rotation {
                 Rotation::Failover => mailboxes
                     .iter()
@@ -364,7 +364,7 @@ fn choose(
             }
         }
     };
-    chosen.map(|m| (m.id, m.ready_at(now)))
+    chosen.and_then(|m| Some((m.id, m.ready_at(now)?)))
 }
 
 /// An email to plan for the official server: its mentor's own mailbox, and the times it may go
@@ -727,7 +727,8 @@ async fn mark_sending(
     if room
         .iter()
         .find(|m| m.id == mailbox_id)
-        .is_none_or(|m| m.ready_at(at) > at)
+        .and_then(|m| m.ready_at(at))
+        .is_none_or(|ready| ready > at)
     {
         return Ok(None);
     }
@@ -951,15 +952,34 @@ mod tests {
     }
 
     #[test]
+    fn a_mailbox_with_no_daily_limit_is_never_chosen() {
+        let none = Usage {
+            daily_limit: 0,
+            ..mailbox(1, &[])
+        };
+        assert_eq!(none.ready_at(NOW), None);
+        for rotation in [Rotation::Failover, Rotation::PerEmail] {
+            assert_eq!(
+                choose(rotation, None, false, &[none.clone(), mailbox(2, &[])], NOW),
+                Some((2, NOW))
+            );
+        }
+        assert_eq!(
+            choose(Rotation::PerEmail, Some(1), true, &[none], NOW),
+            None
+        );
+    }
+
+    #[test]
     fn what_the_official_server_is_to_send_counts_against_the_mailbox() {
         // Two planned within the next day leave no room now, only once the first is a day old.
         let planned = mailbox(1, &[NOW + 10 * MINUTE, NOW + 20 * MINUTE]);
         assert!(!planned.open(NOW));
-        assert_eq!(planned.ready_at(NOW), NOW + 10 * MINUTE + DAY);
+        assert_eq!(planned.ready_at(NOW), Some(NOW + 10 * MINUTE + DAY));
         // One planned soon is kept apart by the interval, on either side.
         let soon = mailbox(1, &[NOW + MINUTE / 2]);
-        assert_eq!(soon.ready_at(NOW), NOW + MINUTE / 2 + MINUTE);
+        assert_eq!(soon.ready_at(NOW), Some(NOW + MINUTE / 2 + MINUTE));
         let later = mailbox(1, &[NOW + 2 * MINUTE]);
-        assert_eq!(later.ready_at(NOW), NOW);
+        assert_eq!(later.ready_at(NOW), Some(NOW));
     }
 }

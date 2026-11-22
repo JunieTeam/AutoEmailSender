@@ -982,7 +982,7 @@ fn seal(key: &[u8; 32], kind: Kind, id: &str, data: &[u8]) -> Result<Vec<u8>> {
                 aad: &aad,
             },
         )
-        .unwrap_or_else(|_| unreachable!("backup objects are far below the cipher's limit"));
+        .map_err(io::Error::other)?;
     Ok([header.as_slice(), nonce.as_slice(), &sealed].concat())
 }
 

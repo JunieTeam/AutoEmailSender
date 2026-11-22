@@ -1,6 +1,6 @@
 use std::{
     future::Future,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard, PoisonError},
     time::Duration,
 };
 
@@ -52,9 +52,7 @@ impl Writes {
     }
 
     fn state(&self) -> MutexGuard<'_, State> {
-        self.0.lock().unwrap_or_else(|_| {
-            unreachable!("write failure updates cannot panic while holding the lock")
-        })
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 

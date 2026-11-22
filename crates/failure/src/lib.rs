@@ -75,6 +75,7 @@ pub fn scrub(text: &str) -> String {
 /// The home directory however it is written: in either case, as Windows and macOS do not tell
 /// them apart, and on Windows with backslashes, doubled ones as `{:?}` writes them, or slashes.
 /// Only whole, so that /Users/li does not take /Users/lin with it.
+#[expect(clippy::unreachable, reason = "each part of the path is escaped")]
 fn home(home: &Path) -> Option<Regex> {
     let home = home.to_string_lossy();
     // A home of "/" would take every path with it.
@@ -91,6 +92,7 @@ fn home(home: &Path) -> Option<Regex> {
     Some(Regex::new(&pattern).unwrap_or_else(|e| unreachable!("an escaped path: {e}")))
 }
 
+#[expect(clippy::unreachable, reason = "a fixed pattern")]
 static URL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)\b(https?://[^\s?#"'<>(){}\[\]]+)[?#][^\s"'<>(){}\[\]]*"#)
         .unwrap_or_else(|e| unreachable!("a fixed pattern: {e}"))
@@ -99,6 +101,7 @@ static URL: LazyLock<Regex> = LazyLock::new(|| {
 /// The characters an address may have before its @, but for those that more often stand around
 /// one in a log, such as double quotes, slashes, = and braces. An apostrophe, as in o'neil, and *
 /// are taken inside it, but do not start it: they also quote or stress one.
+#[expect(clippy::unreachable, reason = "a fixed pattern")]
 static EMAIL: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"([A-Za-z0-9!#$%&+^_`~-])[A-Za-z0-9.!#$%&'*+^_`~-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)",

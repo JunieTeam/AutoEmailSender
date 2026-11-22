@@ -73,9 +73,7 @@ impl<'a> Hello<'a> {
 }
 
 fn responder(room: &str, device: &str, key: &[u8; 32]) -> Result<HandshakeState, Error> {
-    let params: NoiseParams = PATTERN
-        .parse()
-        .unwrap_or_else(|_| unreachable!("the pattern is a valid Noise protocol name"));
+    let params: NoiseParams = PATTERN.parse()?;
     let prologue = format!("{PROLOGUE}{room}{device}");
     Ok(snow::Builder::new(params)
         .psk(0, key)?

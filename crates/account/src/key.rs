@@ -13,6 +13,10 @@ pub struct Keys {
 }
 
 /// These parameters and the email normalization are part of the account's persistent identity.
+#[expect(
+    clippy::unreachable,
+    reason = "the parameters and output lengths are fixed, and the prefix makes the salt long enough"
+)]
 pub async fn keys(email: &str, password: String) -> Result<Keys, Error> {
     let salt = format!("auto-email-sender:{}", cloud_api::normalize_email(email));
     let password = Zeroizing::new(password);

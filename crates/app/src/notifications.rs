@@ -53,7 +53,7 @@ mod system {
 #[cfg(target_os = "macos")]
 mod system {
     use std::ptr::NonNull;
-    use std::sync::Mutex;
+    use std::sync::{Mutex, PoisonError};
 
     use api::CallError;
     use api::notifications::NotificationPermission;
@@ -98,10 +98,7 @@ mod system {
             let done = RcBlock::new(move |settings: NonNull<UNNotificationSettings>| {
                 #[expect(unsafe_code, reason = "the system's settings, valid during the call")]
                 let status = unsafe { settings.as_ref() }.authorizationStatus();
-                let sender = sender
-                    .lock()
-                    .unwrap_or_else(|_| unreachable!("taking the sender cannot panic"))
-                    .take();
+                let sender = sender.lock().unwrap_or_else(PoisonError::into_inner).take();
                 if let Some(sender) = sender {
                     // The receiver is gone only when the window stopped waiting.
                     let _ = sender.send(status);
@@ -135,10 +132,7 @@ mod system {
                         error.code()
                     )
                 });
-                let sender = sender
-                    .lock()
-                    .unwrap_or_else(|_| unreachable!("taking the sender cannot panic"))
-                    .take();
+                let sender = sender.lock().unwrap_or_else(PoisonError::into_inner).take();
                 if let Some(sender) = sender {
                     let _ = sender.send(error);
                 }

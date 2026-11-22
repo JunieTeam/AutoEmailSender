@@ -109,6 +109,7 @@ impl PageUrl {
     }
 
     /// The same address over plain HTTP.
+    #[expect(clippy::unreachable, reason = "a page address is http or https")]
     pub(crate) fn over_http(&self) -> Self {
         let mut url = self.0.clone();
         url.set_scheme("http")

@@ -255,7 +255,8 @@ async fn analyze(
     }
     let message = message(&me, &references, &mentor);
     let mut system = SYSTEM.to_owned();
-    for attempt in 0..2 {
+    let mut attempt = 0;
+    loop {
         let round = matcher.round();
         let answer = model::ask(net, &turn, &system, &message, true).await;
         let call = model::usage::Outcome::of(&answer);
@@ -312,12 +313,12 @@ async fn analyze(
                 }
                 system = format!(
                     "{SYSTEM}\n上一次回答的校验错误：{error}。请按字段要求重新输出一个完整的 JSON 对象。"
-                )
+                );
+                attempt += 1;
             }
             Err(_) => return Ok(Outcome::Failed(Failure::new(INVALID))),
         }
     }
-    unreachable!("both attempts return")
 }
 
 fn classify(error: &ModelError, chosen: Chosen, round: u64) -> Outcome {

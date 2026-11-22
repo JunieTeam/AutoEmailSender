@@ -146,7 +146,7 @@ async fn a_request_failure_only_pauses_the_configuration_it_used(db: SqlitePool)
             5 => edited.imap.port = 143,
             6 => edited.imap.security = Security::Starttls,
             7 => secret = "new secret",
-            _ => unreachable!(),
+            _ => panic!(),
         }
         mailbox::update(&db, id, &edited.check().unwrap(), secret)
             .await

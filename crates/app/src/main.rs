@@ -3,8 +3,19 @@
 
 mod autostart;
 mod background;
+// On the modules, not each command: the check sits beside the function, where its attributes do
+// not reach.
+#[expect(
+    clippy::unreachable,
+    reason = "#[tauri::command] checks with unreachable!() that async commands borrowing arguments return a Result"
+)]
 mod backup;
 mod browser;
+#[expect(
+    clippy::unreachable,
+    reason = "#[tauri::command] checks with unreachable!() that async commands borrowing arguments return a Result"
+)]
+mod commands;
 mod logs;
 mod notifications;
 mod save;
@@ -23,119 +34,6 @@ use tauri::{AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
-
-/// The UI's one entry point into the core; see `api::call`.
-#[tauri::command]
-async fn call(
-    ctx: tauri::State<'_, Arc<api::Context>>,
-    op: String,
-    input: serde_json::Value,
-) -> Result<serde_json::Value, api::CallError> {
-    api::call(&ctx, &op, input)
-        .await
-        .inspect_err(|e| e.record(&op, api::Caller::Window))
-}
-
-/// Why the core could not start, or None when it is running.
-#[tauri::command]
-fn startup_failure(app: AppHandle) -> Option<StartupFailure> {
-    app.try_state::<StartupFailure>().map(|f| f.inner().clone())
-}
-
-/// Saves the logs where the user picks; false when they cancel.
-#[tauri::command]
-async fn export_logs(app: AppHandle) -> Result<bool, CallError> {
-    // Missing only when starting up failed before the logs began, which the diagnostic says.
-    let dir = data_dir(&app)
-        .ok()
-        .map(|dir| dir.join("logs"))
-        .filter(|dir| dir.is_dir());
-    let startup = app.try_state::<StartupFailure>();
-    let diagnostic = startup.as_ref().map(|f| f.diagnostic.as_str());
-    logged(
-        "export_logs",
-        logs::export(&app, dir.as_deref(), diagnostic),
-    )
-}
-
-#[tauri::command]
-async fn export_crawl_log(
-    app: AppHandle,
-    ctx: tauri::State<'_, Arc<api::Context>>,
-    id: i64,
-) -> Result<bool, CallError> {
-    let exported = async {
-        let detail = crawl::queue::detail(&ctx.db, id, 1, false)
-            .await?
-            .ok_or_else(|| CallError::not_found("这次整理已被删除"))?;
-        let at = DateTime::from_timestamp_millis(detail.summary.created_at)
-            .ok_or_else(|| CallError::internal(format!("crawl {id} started out of range")))?;
-        let dir = data(&app)?.join("logs");
-        tauri::async_runtime::spawn_blocking(move || logs::export_crawl(&app, &dir, &detail, at))
-            .await
-            .map_err(CallError::internal)?
-    };
-    logged("export_crawl_log", exported.await)
-}
-
-/// Saves the exported table through the native file picker, away from the async executor.
-#[tauri::command]
-async fn export_mentors(
-    app: AppHandle,
-    ctx: tauri::State<'_, Arc<api::Context>>,
-    input: api::ExportMentors,
-    file_name: String,
-) -> Result<bool, CallError> {
-    let extension = match input.format {
-        api::TableFormat::Xlsx => "xlsx",
-        api::TableFormat::Csv => "csv",
-    };
-    let exported = async {
-        let data = api::export_mentors(&ctx, input).await?;
-        tauri::async_runtime::spawn_blocking(move || {
-            let Some(target) = app
-                .dialog()
-                .file()
-                .add_filter("导师表格", &[extension])
-                .set_file_name(format!("{file_name}.{extension}"))
-                .blocking_save_file()
-            else {
-                return Ok(false);
-            };
-            save::picked(target, "表格未能保存", |file| file.write_all(&data))?;
-            Ok(true)
-        })
-        .await
-        .map_err(CallError::internal)?
-    };
-    logged("export_mentors", exported.await)
-}
-
-/// Where the app keeps its data, for the about page.
-#[tauri::command]
-fn data_location(app: AppHandle) -> Result<String, CallError> {
-    logged(
-        "data_location",
-        data(&app).map(|dir| dir.display().to_string()),
-    )
-}
-
-/// Opens the data directory in Finder or Explorer. The UI may not open paths itself.
-#[tauri::command]
-fn open_data_location(app: AppHandle) -> Result<(), CallError> {
-    let opened = data(&app).and_then(|dir| {
-        app.opener()
-            .open_path(dir.display().to_string(), None::<&str>)
-            .map_err(|e| {
-                let failure = Failure::unrecognized(
-                    "未能打开数据位置，请按上面显示的路径手动打开",
-                    &e.to_string(),
-                );
-                CallError::external(failure, e)
-            })
-    });
-    logged("open_data_location", opened)
-}
 
 /// Logs a command's error once, as it leaves the command (docs/development.md#错误和日志).
 fn logged<T>(command: &str, result: Result<T, CallError>) -> Result<T, CallError> {
@@ -189,18 +87,18 @@ fn main() -> tauri::Result<()> {
         })
         .on_window_event(background::on_window_event)
         .invoke_handler(tauri::generate_handler![
-            call,
-            startup_failure,
-            export_logs,
-            export_crawl_log,
-            export_mentors,
+            commands::call,
+            commands::startup_failure,
+            commands::export_logs,
+            commands::export_crawl_log,
+            commands::export_mentors,
             backup::export_backup,
             backup::prepare_restore,
             backup::prepare_cloud_restore,
             backup::cancel_restore,
             backup::restore_backup,
-            data_location,
-            open_data_location,
+            commands::data_location,
+            commands::open_data_location,
             autostart::autostart_enabled,
             autostart::set_autostart,
             notifications::notification_permission,

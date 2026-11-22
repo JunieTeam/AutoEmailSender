@@ -311,7 +311,7 @@ async fn trash_and_round_trip(db: SqlitePool) {
     )
     .await
     .unwrap();
-    let bytes = sheet::write_csv(&rows);
+    let bytes = sheet::write_csv(&rows).unwrap();
     let exported = sheet::read("a.csv", &bytes).unwrap();
     assert_eq!(
         apply(&db, &exported, &Decisions::default()).await.updated,
@@ -839,7 +839,7 @@ async fn valid_homepage_with_semicolon_survives_export_import(db: SqlitePool) {
             }])
             .unwrap()
         } else {
-            sheet::write_csv(&rows)
+            sheet::write_csv(&rows).unwrap()
         };
         let sheets = sheet::read(name, &bytes).unwrap();
         let preview = import::preview(&db, &sheets, &Setup::default())
@@ -885,7 +885,7 @@ async fn exported_papers_keep_semicolons_and_flatten_item_newlines(db: SqlitePoo
             }])
             .unwrap()
         } else {
-            sheet::write_csv(&rows)
+            sheet::write_csv(&rows).unwrap()
         };
         let sheets = sheet::read(name, &bytes).unwrap();
         assert_eq!(
@@ -929,7 +929,7 @@ async fn quotes_survive_xlsx_and_csv_round_trip(db: SqlitePool) {
             }])
             .unwrap()
         } else {
-            sheet::write_csv(&rows)
+            sheet::write_csv(&rows).unwrap()
         };
         let sheets = sheet::read(name, &bytes).unwrap();
         let other = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -985,7 +985,7 @@ async fn full_width_email_exports_round_trip_without_duplicates(db: SqlitePool) 
         .unwrap();
     for name in ["导师.csv", "导师.xlsx"] {
         let bytes = if name.ends_with("csv") {
-            sheet::write_csv(&rows)
+            sheet::write_csv(&rows).unwrap()
         } else {
             sheet::write_xlsx(&[Sheet {
                 name: "导师".into(),
@@ -1043,7 +1043,7 @@ async fn full_width_name_exports_round_trip_without_duplicates(db: SqlitePool) {
         .unwrap();
     for name in ["导师.csv", "导师.xlsx"] {
         let bytes = if name.ends_with("csv") {
-            sheet::write_csv(&rows)
+            sheet::write_csv(&rows).unwrap()
         } else {
             sheet::write_xlsx(&[Sheet {
                 name: "导师".into(),
@@ -1200,7 +1200,7 @@ async fn namesake_exports_round_trip_without_crossing_profiles(db: SqlitePool) {
     .unwrap();
     for name in ["导师.csv", "导师.xlsx"] {
         let bytes = if name.ends_with("csv") {
-            sheet::write_csv(&rows)
+            sheet::write_csv(&rows).unwrap()
         } else {
             sheet::write_xlsx(&[Sheet {
                 name: "导师".into(),

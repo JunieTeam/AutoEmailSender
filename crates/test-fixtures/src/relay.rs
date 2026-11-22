@@ -174,6 +174,7 @@ async fn computer(socket: Socket, state: Arc<Mutex<State>>, room: String, versio
                         code: CloseCode::from(frame.close_code().unwrap()),
                         reason: "".into(),
                     })),
+                    #[expect(clippy::unreachable, reason = "a fixture fails where the test is wrong")]
                     Kind::Connected => unreachable!("the computer does not announce phones"),
                 });
             }
@@ -392,6 +393,10 @@ impl Phone {
     }
 
     /// Calls an operation and waits for its answer, letting events pass.
+    #[expect(
+        clippy::unreachable,
+        reason = "a fixture fails where the test is wrong"
+    )]
     pub async fn call(&mut self, op: &str, input: Value) -> Result<Value, Value> {
         self.next_id += 1;
         let id = self.next_id;

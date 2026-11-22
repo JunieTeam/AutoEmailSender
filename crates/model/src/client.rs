@@ -1,7 +1,7 @@
 //! Calls to OpenAI-compatible APIs.
 
 use std::collections::BTreeSet;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use net::Net;
@@ -189,9 +189,7 @@ enum Api {
 static ON_RESPONSES: Mutex<BTreeSet<(String, String)>> = Mutex::new(BTreeSet::new());
 
 fn on_responses() -> MutexGuard<'static, BTreeSet<(String, String)>> {
-    ON_RESPONSES
-        .lock()
-        .unwrap_or_else(|_| unreachable!("nothing panics while holding the lock"))
+    ON_RESPONSES.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Calls the API the model answers on; when the provider has no such API, the other, which it

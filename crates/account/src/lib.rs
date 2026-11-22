@@ -55,6 +55,10 @@ const TERMS: &str = include_str!("../../../legal/terms.md");
 const PRIVACY: &str = include_str!("../../../legal/privacy.md");
 const PLUS_TERMS: &str = include_str!("../../../legal/plus.md");
 
+#[expect(
+    clippy::unreachable,
+    reason = "the terms are compiled in, and each starts with the date it takes effect"
+)]
 fn version(text: &'static str) -> &'static str {
     text.lines()
         .next()
@@ -146,8 +150,11 @@ impl Client {
         Self::with_address(net, server_address())
     }
 
+    #[expect(
+        clippy::unreachable,
+        reason = "Net already built this TLS configuration; disabling redirects cannot invalidate it"
+    )]
     pub fn with_address(net: &net::Net, address: String) -> Self {
-        // Net already built this TLS configuration; disabling redirects cannot invalidate it.
         // A redirect must never forward a login key or verification code to a different service.
         // WebSockets upgrade only HTTP/1.1 connections.
         let http = net

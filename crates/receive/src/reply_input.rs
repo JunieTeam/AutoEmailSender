@@ -113,7 +113,7 @@ pub async fn input(
             text: take(&text, &mut remaining),
         }
     });
-    // All fields are strings; serializing this closed shape is infallible.
+    #[expect(clippy::unreachable, reason = "a shape of strings always serializes")]
     let message = serde_json::to_string(&Input {
         reply,
         student,

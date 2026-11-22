@@ -384,7 +384,7 @@ pub async fn export_mentors(ctx: &Context, mut input: ExportMentors) -> Result<V
 
 pub fn write_table(rows: Vec<Vec<String>>, format: TableFormat) -> Result<Vec<u8>, CallError> {
     match format {
-        TableFormat::Csv => Ok(sheet::write_csv(&rows)),
+        TableFormat::Csv => sheet::write_csv(&rows).map_err(CallError::internal),
         TableFormat::Xlsx => {
             for row in rows.iter().skip(1) {
                 for (field, value) in rows[0].iter().zip(row) {

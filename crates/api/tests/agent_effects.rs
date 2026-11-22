@@ -1948,7 +1948,7 @@ async fn recipient_edits_require_confirmation_only_for_approved_mail(db: SqliteP
                 .unwrap();
                 json!({"ids":[candidate], "decisions":decisions})
             }
-            _ => unreachable!(),
+            _ => panic!(),
         };
         refused(&ctx, op, input.clone()).await;
         assert_eq!(
@@ -1976,7 +1976,7 @@ async fn recipient_edits_require_confirmation_only_for_approved_mail(db: SqliteP
                 .unwrap();
                 safe["ids"] = json!([candidate]);
             }
-            _ => unreachable!(),
+            _ => panic!(),
         }
         call_agent(&ctx, op, safe, |_| {}, pending()).await.unwrap();
         assert_eq!(

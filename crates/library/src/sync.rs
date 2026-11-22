@@ -187,7 +187,7 @@ pub async fn process(
         let before = mentor::export::profiles(conn, &[row.mentor_id])
             .await?
             .remove(&row.mentor_id)
-            .unwrap_or_else(|| unreachable!("foreign key retains the mentor"));
+            .ok_or(sqlx::Error::RowNotFound)?;
         let old = crate::profile(&row.record).map_err(Error::Invalid)?;
         let new = crate::profile(record).map_err(Error::Invalid)?;
         let mut after = before.clone();
@@ -254,12 +254,14 @@ pub async fn process(
                 Field::Name => Some(after.fields.name.clone()),
                 Field::Research => after.fields.research.clone(),
                 Field::SourceUrl => after.source_url.clone(),
+                #[expect(clippy::unreachable, reason = "the loop lists only these fields")]
                 _ => unreachable!("scalar fields above"),
             };
             if local.is_none() {
                 match field {
                     Field::Research => after.fields.research.clone_from(&b),
                     Field::SourceUrl => after.source_url.clone_from(&b),
+                    #[expect(clippy::unreachable, reason = "a name is never empty")]
                     _ => unreachable!("names cannot be empty"),
                 }
                 local.clone_from(&b);

@@ -1,6 +1,6 @@
 //! Updates stay in the application process, including when all windows are hidden.
 
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Manager, Url};
@@ -78,7 +78,7 @@ impl<U: Clone> Phase<U> {
             downloaded, total, ..
         } = *self
         else {
-            unreachable!("only a download in progress is timed")
+            return false;
         };
         total.map_or(downloaded == 0, |total| {
             u128::from(total) * PATIENCE.as_millis()
@@ -113,9 +113,7 @@ impl<U: Clone> Phase<U> {
 
 impl Updater {
     fn phase(&self) -> MutexGuard<'_, Phase<Update>> {
-        self.phase.lock().unwrap_or_else(|_| {
-            unreachable!("update state changes cannot panic while holding the lock")
-        })
+        self.phase.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn status(&self) -> UpdateStatus {
@@ -205,13 +203,13 @@ async fn check(app: &AppHandle) -> Result<UpdateStatus, CallError> {
     if matches!(*state.phase(), Phase::Ready { .. }) {
         return Ok(state.status());
     }
-    let result = match check_at(app, url(GITHUB_MANIFEST)).await {
+    let result = match check_at(app, GITHUB_MANIFEST).await {
         Ok(result) => result,
         // Not left to the plugin's list of endpoints: it gives up on the rest when one answers
         // with something other than a manifest, such as a network's sign-in page.
         Err(e) => {
             tracing::info!("update check falls back to the mirror: {e}");
-            check_at(app, mirror_manifest()).await?
+            check_at(app, &mirror_manifest()).await?
         }
     };
     if let Some(update) = &result {
@@ -233,7 +231,9 @@ async fn check(app: &AppHandle) -> Result<UpdateStatus, CallError> {
 }
 
 /// Checks the manifest at `address` alone, through the app's network settings.
-async fn check_at(app: &AppHandle, address: Url) -> Result<Option<Update>, CallError> {
+async fn check_at(app: &AppHandle, address: &str) -> Result<Option<Update>, CallError> {
+    let address =
+        Url::parse(address).map_err(|e| CallError::internal(format!("{address}: {e}")))?;
     // Checks start only once the core is running.
     let net = app.state::<Arc<api::Context>>().net.clone();
     let exit_app = app.clone();
@@ -256,12 +256,8 @@ async fn check_at(app: &AppHandle, address: Url) -> Result<Option<Update>, CallE
         .map_err(check_error)
 }
 
-fn url(address: &str) -> Url {
-    Url::parse(address).unwrap_or_else(|e| unreachable!("{address} is a valid URL: {e}"))
-}
-
-fn mirror_manifest() -> Url {
-    url(&format!("{MIRROR}latest.json"))
+fn mirror_manifest() -> String {
+    format!("{MIRROR}latest.json")
 }
 
 fn check_error(error: Error) -> CallError {
@@ -366,7 +362,7 @@ async fn fetch(app: &AppHandle, update: &Update) -> Result<(Update, Vec<u8>), Er
 
 /// The mirror's copy of `version`, when the mirror is up and has it.
 async fn mirror_release(app: &AppHandle, version: &str) -> Option<Update> {
-    match check_at(app, mirror_manifest()).await {
+    match check_at(app, &mirror_manifest()).await {
         Ok(Some(update)) if update.version == version => Some(update),
         Ok(_) => {
             tracing::info!("update mirror has no copy of this release");

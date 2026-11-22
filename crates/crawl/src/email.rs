@@ -10,6 +10,7 @@ pub(crate) struct Emails {
     hash: Regex,
 }
 
+#[expect(clippy::unreachable, reason = "fixed patterns")]
 pub(crate) static EMAILS: LazyLock<Emails> = LazyLock::new(|| {
     let compile =
         |s| Regex::new(s).unwrap_or_else(|_| unreachable!("fixed email pattern is valid"));

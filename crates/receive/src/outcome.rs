@@ -119,7 +119,8 @@ async fn analyze(
     };
     let prompt = if todos { super::todos::SYSTEM } else { SYSTEM };
     let mut system = prompt.to_owned();
-    for attempt in 0..2 {
+    let mut attempt = 0;
+    loop {
         if cooldown.until().is_some() {
             return Ok(Outcome::Wait);
         }
@@ -173,6 +174,7 @@ async fn analyze(
                 system = format!(
                     "{prompt}\n上一次回答的校验错误：{error}。请重新输出完整的 JSON 对象。"
                 );
+                attempt += 1;
             }
             Err(_) => {
                 return Ok(Outcome::Failed(Failure::new(if todos {
@@ -183,7 +185,6 @@ async fn analyze(
             }
         }
     }
-    unreachable!("both attempts return")
 }
 
 fn classify(error: &ModelError, chosen: Chosen, round: u64) -> Outcome {

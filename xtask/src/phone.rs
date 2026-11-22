@@ -65,10 +65,7 @@ pub async fn publish(target: &str) -> crate::Result {
         .args([VERSION, "loader"])
         .stdout(std::process::Stdio::piped())
         .spawn()?;
-    let archive = tar
-        .stdout
-        .take()
-        .unwrap_or_else(|| unreachable!("stdout is piped"));
+    let archive = tar.stdout.take().ok_or("tar 的输出没有接上")?;
     let status = std::process::Command::new("ssh")
         .args([host, &format!("sudo sh -c '{script}'")])
         .stdin(archive)

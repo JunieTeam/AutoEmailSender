@@ -7,10 +7,10 @@ use base64::prelude::{BASE64_URL_SAFE_NO_PAD, Engine};
 use cloud_api::relay::{self, close};
 use remote::{Event as RelayEvent, Hello, Session};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json, value::RawValue};
+use serde_json::{Value, json};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, MutexGuard, OnceLock},
+    sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError},
     time::Duration,
 };
 use tokio::{
@@ -81,9 +81,7 @@ enum Command {
 
 impl Phones {
     fn state(&self) -> MutexGuard<'_, State> {
-        self.state
-            .lock()
-            .unwrap_or_else(|_| unreachable!("phone state updates cannot panic while holding it"))
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn emit(&self, event: Event) {
@@ -101,9 +99,7 @@ impl Phones {
 
     /// Passes an event the window gets on to the phones; `payload` is its JSON.
     pub fn push(&self, event: &str, payload: &str) {
-        let payload = RawValue::from_string(payload.into())
-            .unwrap_or_else(|_| unreachable!("event payloads are serialized JSON"));
-        let message = json!({ "event": event, "payload": payload }).to_string();
+        let message = format!(r#"{{"event":{},"payload":{payload}}}"#, json!(event));
         self.command(Command::Push(message.into_bytes().into()));
     }
 
@@ -426,6 +422,10 @@ fn phone_name(user_agent: &str) -> String {
 }
 
 /// Starts the connection to the relay, kept while phone access is on and someone is logged in.
+#[expect(
+    clippy::unreachable,
+    reason = "the app starts phone remote once, as it launches"
+)]
 pub fn start(
     ctx: Arc<Context>,
     events: impl Fn(Event) + Send + Sync + 'static,
@@ -589,7 +589,8 @@ async fn serve(
                 return error;
             }
         }
-        unreachable!("serve keeps a sender")
+        // `serve` keeps a sender, so the channel stays open while this runs.
+        std::future::pending().await
     };
     tokio::pin!(send);
     let mut ping = tokio::time::interval(remote::PING);
@@ -833,10 +834,7 @@ impl Phone {
         };
         let hello = Hello::read(&first).map_err(|_| Leave::Close(close::BROKEN))?;
         let phone = hello.device.to_owned();
-        let (key, pairing) = self
-            .key(&phone)
-            .await
-            .ok_or(Leave::Close(close::UNPAIRED))?;
+        let (key, pairing) = self.key(&phone).await?;
         let (answer, mut session) = hello
             .accept(&self.room, &key)
             .map_err(|_| Leave::Close(close::UNPAIRED))?;
@@ -846,8 +844,8 @@ impl Phone {
     }
 
     /// The phone's pairing key, and whether it is pairing with the code on screen, which it uses
-    /// up; none for a phone this computer does not know.
-    async fn key(&self, device: &str) -> Option<([u8; 32], bool)> {
+    /// up; a phone this computer does not know is told it is not paired.
+    async fn key(&self, device: &str) -> Result<([u8; 32], bool), Leave> {
         let paired = self
             .ctx
             .writes
@@ -857,10 +855,12 @@ impl Phone {
             })
             .await;
         if let Some(key) = paired {
-            let key = key
-                .try_into()
-                .unwrap_or_else(|_| unreachable!("the table keeps 32-byte keys"));
-            return Some((key, false));
+            let length = key.len();
+            // Not unpaired: the phone would forget the pairing over a fault of this computer's.
+            return key.try_into().map(|key| (key, false)).map_err(|_| {
+                tracing::error!(length, "a paired phone's key is not 32 bytes");
+                Leave::Close(close::BROKEN)
+            });
         }
         let mut state = self.ctx.phones.state();
         match &mut state.pairing {
@@ -870,9 +870,9 @@ impl Phone {
                     && matches!(pairing.stage, Stage::Shown(until) if until > Instant::now()) =>
             {
                 pairing.stage = Stage::Used(self.connection);
-                Some((pairing.key, true))
+                Ok((pairing.key, true))
             }
-            _ => None,
+            _ => Err(Leave::Close(close::UNPAIRED)),
         }
     }
 

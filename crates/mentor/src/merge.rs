@@ -170,6 +170,10 @@ pub async fn merge(
         .await
         .map_err(|e| match e {
             SaveError::Db(e) => MergeError::Db(e),
+            #[expect(
+                clippy::unreachable,
+                reason = "this transaction just gave the kept mentor every address"
+            )]
             SaveError::EmailTaken { .. } => unreachable!("every address is the kept one's by now"),
         })?;
     sqlx::query!(

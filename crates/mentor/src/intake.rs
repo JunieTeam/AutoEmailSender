@@ -519,6 +519,10 @@ pub async fn calculate(
                         a.title = Some(d.incoming.clone());
                     }
                 }
+                #[expect(
+                    clippy::unreachable,
+                    reason = "`supplement` differs only in these fields"
+                )]
                 _ => unreachable!("only scalar conflicts have decisions"),
             }
         }

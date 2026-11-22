@@ -29,6 +29,7 @@ struct SiteLimit {
 
 impl SiteLimit {
     async fn start(&self) -> SemaphorePermit<'_> {
+        #[expect(clippy::unreachable, reason = "nothing closes the semaphore")]
         let slot = self
             .slots
             .acquire()
@@ -58,8 +59,11 @@ pub struct FetchedPage {
 }
 
 impl Fetcher {
+    #[expect(
+        clippy::unreachable,
+        reason = "Net already built a client with these TLS settings"
+    )]
     pub fn new(net: &net::Net) -> Self {
-        // Net already built a client with these TLS settings.
         let client = |builder: reqwest::ClientBuilder| {
             builder.build().unwrap_or_else(|e| {
                 unreachable!("validated network settings build page clients: {e}")

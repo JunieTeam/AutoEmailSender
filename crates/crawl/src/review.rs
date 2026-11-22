@@ -224,10 +224,8 @@ async fn rows(
                         .filter_map(|p| p.mentor_id),
                 )
                 .collect(),
-            number: (ids
-                .binary_search(&c.id)
-                .unwrap_or_else(|_| unreachable!("candidate comes from these ids"))
-                + 1) as u32,
+            // The candidates were read from these ids, in order.
+            number: (ids.partition_point(|&id| id < c.id) + 1) as u32,
             profile: Profile {
                 id: 0,
                 fields: c.fields.clone(),
@@ -476,10 +474,7 @@ pub async fn list(db: &SqlitePool, q: &CandidateQuery) -> Result<CandidatePage, 
     let mut matching = Vec::new();
     for ((c, classification), Json(evidence)) in candidates.into_iter().zip(selected).zip(evidence)
     {
-        let row = (ids
-            .binary_search(&c.id)
-            .unwrap_or_else(|_| unreachable!("selected candidate"))
-            + 1) as u32;
+        let row = (ids.partition_point(|&id| id < c.id) + 1) as u32;
         let issue = preview
             .errors
             .iter()

@@ -2472,7 +2472,7 @@ async fn standalone_follow_up_admission_and_concurrent_first_or_task(db: SqliteP
                     .await
                     .unwrap();
             }
-            _ => unreachable!(),
+            _ => panic!(),
         }
         assert!(
             email::follow_up::create(&db, m, T).await.is_err(),

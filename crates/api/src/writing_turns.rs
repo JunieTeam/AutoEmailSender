@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
 use model::Chosen;
 use model::background::Priority;
@@ -37,9 +37,7 @@ pub struct WritingRequest {
 pub struct Writings(Mutex<HashMap<String, Option<oneshot::Sender<()>>>>);
 impl Writings {
     fn calls(&self) -> std::sync::MutexGuard<'_, HashMap<String, Option<oneshot::Sender<()>>>> {
-        self.0
-            .lock()
-            .unwrap_or_else(|_| unreachable!("nothing panics while holding the lock"))
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 

@@ -2,7 +2,7 @@ use crate::CallError;
 use failure::Failure;
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard, PoisonError},
     time::Duration,
 };
 use tokio::{
@@ -36,9 +36,7 @@ impl Default for MailDomains {
 
 impl MailDomains {
     fn results(&self) -> MutexGuard<'_, BTreeMap<String, State>> {
-        self.results.lock().unwrap_or_else(|_| {
-            unreachable!("mail domain updates cannot panic while holding the lock")
-        })
+        self.results.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// The domain's state, starting a lookup unless one is under way or answered. A failed one is
@@ -60,6 +58,7 @@ impl MailDomains {
         let queried = domain.clone();
         let address = address.to_owned();
         tokio::spawn(async move {
+            #[expect(clippy::unreachable, reason = "nothing closes the semaphore")]
             let _permit = domains
                 .limit
                 .acquire()
@@ -100,7 +99,7 @@ impl MailDomains {
                 answer.changed().await.map_err(|_| lookup_failed())?;
                 *answer.borrow()
             }
-            State::RetryAfter(_) => unreachable!("a failed lookup is always started again here"),
+            State::RetryAfter(_) => return Err(lookup_failed()),
         };
         Ok((!servers).then_some(check::Problem::NoMailServer { domain }))
     }
