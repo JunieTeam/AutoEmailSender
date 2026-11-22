@@ -22,6 +22,8 @@ pub struct State {
     pub page: usize,
     /// Fetching the opens after this revision fails.
     pub fail_after: Option<i64>,
+    /// How many times emails were registered.
+    pub registrations: u32,
 }
 
 #[derive(Clone)]
@@ -45,6 +47,7 @@ impl Default for State {
             revision: 0,
             page: cloud_api::tracking::PAGE,
             fail_after: None,
+            registrations: 0,
         }
     }
 }
@@ -106,6 +109,7 @@ fn respond(state: &mut State, method: &str, path: &str, body: Vec<u8>) -> Reply 
         })
         .unwrap()),
         ("POST", ("/v1/tracking", _)) => {
+            state.registrations += 1;
             let register: Register = serde_json::from_slice(&body).unwrap();
             let (mut accepted, mut rejected) = (Vec::new(), Vec::new());
             for id in register.ids {

@@ -330,13 +330,20 @@ async fn a_registration_answered_after_logging_in_again_is_not_noted(db: SqliteP
         setup.log_in("other@example.invalid").await;
         request
             .respond
-            .send(reply(
-                json!({"accepted": [id(1)], "rejected": [], "left": 4}),
-            ))
+            .send(reply(json!({
+                "accepted": [id(1)],
+                "rejected": [],
+                "plusEnded": false,
+                "tracking": {"used": 1, "limit": 500, "packLeft": 4, "packExpiresAt": null},
+            })))
             .unwrap();
     };
     let (synced, ()) = tokio::join!(api::tracking::sync(&setup.ctx, false, NOW), replies);
-    assert!(synced.is_err());
+    assert!(
+        matches!(synced, Err(account::Error::Invalid(m)) if m == "登录的账号已变更，请重试"),
+        "{:?}",
+        synced.map_err(|e| e.message())
+    );
     assert_eq!(setup.emails().await[0].1, Tracked::Pending);
     assert_eq!(setup.left().await, 0);
 }
@@ -361,6 +368,7 @@ async fn tracking_is_not_turned_on_by_the_plus_of_the_login_before(db: SqlitePoo
         request
             .respond
             .send(reply(json!({
+                "id": 1,
                 "email": "student@example.invalid",
                 "plusUntil": 4_000_000_000_000_i64,
                 "tracking": {"used": 0, "limit": 500, "packLeft": 0, "packExpiresAt": null},
@@ -370,10 +378,147 @@ async fn tracking_is_not_turned_on_by_the_plus_of_the_login_before(db: SqlitePoo
     };
     let switch = api::tracking::TrackingSwitch { enabled: true };
     let (enabled, ()) = tokio::join!(api::tracking::set_tracking(&setup.ctx, switch), replies);
-    assert!(enabled.is_err());
+    assert_eq!(enabled.unwrap_err().message, "登录的账号已变更，请重试");
     let on: bool = sqlx::query_scalar("SELECT email_tracking FROM profile")
         .fetch_one(db)
         .await
         .unwrap();
     assert!(!on);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_registration_waits_to_be_written_down_without_asking_the_server_again(db: SqlitePool) {
+    let setup = Setup::new(db, 1).await;
+    setup.sent(&id(1)).await;
+    sqlx::raw_sql(
+        "CREATE TRIGGER blocked BEFORE UPDATE OF tracking_state ON email
+        WHEN NEW.tracking_state = 'tracked'
+        BEGIN SELECT RAISE(FAIL, 'storage unavailable'); END",
+    )
+    .execute(&setup.ctx.db)
+    .await
+    .unwrap();
+    let synced = test_fixtures::db::waits_for_storage(
+        &setup.ctx.writes,
+        api::tracking::sync(&setup.ctx, true, NOW),
+        async {
+            sqlx::query("DROP TRIGGER blocked")
+                .execute(&setup.ctx.db)
+                .await
+                .unwrap();
+        },
+    )
+    .await;
+    assert!(synced.unwrap());
+    assert_eq!(setup.emails().await[0].1, Tracked::Tracked);
+    assert_eq!(setup.server().registrations, 1);
+    // The database's trouble is not the server's.
+    let failure: Option<String> = sqlx::query_scalar("SELECT tracking_error FROM account")
+        .fetch_one(&setup.ctx.db)
+        .await
+        .unwrap();
+    assert_eq!(failure, None);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_synchronization_the_database_stops_shows_why_and_runs_again(db: SqlitePool) {
+    let setup = Setup::new(db, 1).await;
+    setup.sent(&id(1)).await;
+    let Setup {
+        _dir,
+        ctx,
+        server: _server,
+    } = setup;
+    let ctx = std::sync::Arc::new(ctx);
+    // Not even the login can be read.
+    sqlx::query("ALTER TABLE account RENAME TO account_away")
+        .execute(&ctx.db)
+        .await
+        .unwrap();
+    let running = tokio::spawn(api::tracking::run(ctx.clone(), || {}));
+    // Its first synchronization starts at once, on a timer paused time would hold back.
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        while ctx.writes.failure().is_none() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the synchronization did not wait for the database");
+    let state = test_fixtures::db::waits_for_storage(
+        &ctx.writes,
+        async {
+            loop {
+                let state: Tracked = sqlx::query_scalar("SELECT tracking_state FROM email")
+                    .fetch_one(&ctx.db)
+                    .await
+                    .unwrap();
+                // Once the synchronization that wrote it down is over.
+                if state == Tracked::Tracked && ctx.writes.failure().is_none() {
+                    return state;
+                }
+                tokio::task::yield_now().await;
+            }
+        },
+        async {
+            sqlx::query("ALTER TABLE account_away RENAME TO account")
+                .execute(&ctx.db)
+                .await
+                .unwrap();
+        },
+    )
+    .await;
+    running.abort();
+    assert_eq!(state, Tracked::Tracked);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn logging_out_while_the_database_is_waited_for_ends_the_synchronization(db: SqlitePool) {
+    let mut provider = Provider::start().await.unwrap();
+    let mut setup = Setup::new(db, 5).await;
+    setup.answered_by(&provider);
+    let ctx = &setup.ctx;
+    let account = async {
+        let request = provider.requests.recv().await.unwrap();
+        assert!(
+            request.line.starts_with("GET /v1/account "),
+            "{}",
+            request.line
+        );
+        // The emails cannot be read once the server has answered.
+        sqlx::query("ALTER TABLE email RENAME TO email_away")
+            .execute(&ctx.db)
+            .await
+            .unwrap();
+        request
+            .respond
+            .send(reply(json!({
+                "id": 1,
+                "email": "student@example.invalid",
+                "plusUntil": NOW + DAY,
+                "tracking": {"used": 0, "limit": 500, "packLeft": 5, "packExpiresAt": null},
+                "terms": "9999-12-31"
+            })))
+            .unwrap();
+    };
+    let synced = test_fixtures::db::waits_for_storage(
+        &ctx.writes,
+        async {
+            let (synced, ()) = tokio::join!(api::tracking::sync(ctx, true, NOW), account);
+            synced
+        },
+        async {
+            sqlx::raw_sql("ALTER TABLE email_away RENAME TO email; DELETE FROM account;")
+                .execute(&ctx.db)
+                .await
+                .unwrap();
+        },
+    )
+    .await;
+    assert!(
+        matches!(synced, Err(account::Error::Invalid(m)) if m == "登录的账号已变更，请重试"),
+        "{:?}",
+        synced.map_err(|e| e.message())
+    );
+    // The opens are not asked for as the login gone.
+    assert!(provider.requests.try_recv().is_err());
 }

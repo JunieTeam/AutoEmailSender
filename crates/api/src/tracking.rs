@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 use ts_rs::TS;
 
-use crate::accounts::same_login;
+use crate::accounts::{same_login, until_saved};
 use crate::{CallError, Context, Nothing};
 
 const EVERY: Duration = Duration::from_secs(15 * 60);
@@ -48,9 +48,17 @@ pub async fn run(ctx: std::sync::Arc<Context>, changed: impl Fn()) {
                 false
             }
         };
-        match sync(&ctx, full, crate::now()).await {
-            Ok(false) => {}
-            Ok(true) => changed(),
+        let mut attempts = 0;
+        // Before it asks the server anything, a round the database cuts short runs again.
+        let result = until_saved(&ctx.writes, "email tracking synchronization", || {
+            attempts += 1;
+            sync(&ctx, full, crate::now())
+        })
+        .await;
+        match result {
+            // A try cut short may have written some down.
+            Ok(synced) if synced || attempts > 1 => changed(),
+            Ok(_) => {}
             Err(error) => {
                 tracing::warn!(
                     error = error.message(),
@@ -64,7 +72,8 @@ pub async fn run(ctx: std::sync::Arc<Context>, changed: impl Fn()) {
 
 /// Registers what went out with a tracking image and, when `full`, reads the quota and fetches
 /// the opens, all as the login saved at the start; true when what the UI shows changed. A failure
-/// is kept for that login, until one succeeds.
+/// of the server or of reaching it is kept for that login, until one succeeds; what the server
+/// answered is written down in place while the database cannot be written.
 pub async fn sync(ctx: &Context, full: bool, now: i64) -> Result<bool, account::Error> {
     let login = match account::saved_login(&ctx.db).await {
         // Paused, not failing, until the terms are agreed to.
@@ -79,13 +88,33 @@ pub async fn sync(ctx: &Context, full: bool, now: i64) -> Result<bool, account::
         return Ok(false);
     }
     let result = exchange(ctx, &login, full, now).await;
-    let mut tx = ctx.db.begin_with("BEGIN IMMEDIATE").await?;
-    if !login.is_saved(&mut tx).await? {
+    // The database's own failures show while they are waited for.
+    if matches!(result, Err(account::Error::Database(_))) {
         return result;
     }
-    let recovered = match &result {
-        Err(error) => {
-            let message = error.message();
+    let failure = result.as_ref().err().map(account::Error::message);
+    let recovered = until_saved(&ctx.writes, "note email tracking synchronization", || {
+        noted(ctx, &login, failure.as_deref(), full, now)
+    })
+    .await?;
+    result.map(|changed| changed || recovered)
+}
+
+/// Keeps why synchronizing failed for the login that failed, or clears it once a full one
+/// succeeded; whether it was cleared.
+async fn noted(
+    ctx: &Context,
+    login: &account::Login,
+    failure: Option<&str>,
+    full: bool,
+    now: i64,
+) -> Result<bool, account::Error> {
+    let mut tx = ctx.db.begin_with("BEGIN IMMEDIATE").await?;
+    if !login.is_saved(&mut tx).await? {
+        return Ok(false);
+    }
+    let recovered = match failure {
+        Some(message) => {
             sqlx::query!(
                 r#"UPDATE account SET tracking_failed_at = coalesce(tracking_failed_at, ?),
                     tracking_error = ?"#,
@@ -96,7 +125,7 @@ pub async fn sync(ctx: &Context, full: bool, now: i64) -> Result<bool, account::
             .await?;
             false
         }
-        Ok(_) if full => {
+        None if full => {
             sqlx::query!(
                 r#"UPDATE account SET tracking_failed_at = NULL, tracking_error = NULL
                 WHERE tracking_error IS NOT NULL"#
@@ -106,10 +135,10 @@ pub async fn sync(ctx: &Context, full: bool, now: i64) -> Result<bool, account::
             .rows_affected()
                 > 0
         }
-        Ok(_) => false,
+        None => false,
     };
     tx.commit().await?;
-    result.map(|changed| changed || recovered)
+    Ok(recovered)
 }
 
 async fn exchange(
@@ -119,15 +148,26 @@ async fn exchange(
     now: i64,
 ) -> Result<bool, account::Error> {
     let db = &ctx.db;
-    let mut changed = false;
+    let writes = &ctx.writes;
+    // Before the server is asked anything, the round runs again should the database fail; after,
+    // the database is waited for in place throughout, so as not to ask the server again.
+    let mut changed =
+        email::tracking::expire(&mut *db.acquire().await?, now - REGISTER_WITHIN).await?;
     if full {
         let account = ctx.account.account(db, login).await?;
-        changed |= note(db, login, account.plus_until, &account.tracking).await?;
+        changed |= until_saved(writes, "note the tracking quota", || {
+            note(db, login, account.plus_until, &account.tracking)
+        })
+        .await?;
     }
-    changed |= email::tracking::expire(&mut *db.acquire().await?, now - REGISTER_WITHIN).await?;
     loop {
-        let ids = email::tracking::pending(&mut *db.acquire().await?, &login.email, MAX_IDS as i64)
-            .await?;
+        let ids = until_saved(writes, "find emails to register for tracking", || async {
+            Ok(
+                email::tracking::pending(&mut *db.acquire().await?, &login.email, MAX_IDS as i64)
+                    .await?,
+            )
+        })
+        .await?;
         if ids.is_empty() {
             break;
         }
@@ -141,37 +181,26 @@ async fn exchange(
                 Some(&Register { ids }),
             )
             .await?;
-        let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-        same_login(&mut tx, login).await?;
-        let why = if registered.plus_ended {
-            sqlx::query!("UPDATE account SET tracking_until = NULL")
-                .execute(&mut *tx)
-                .await?;
-            Rejected::NoPlus
-        } else {
-            Rejected::NoQuota
-        };
-        email::tracking::registered(
-            &mut tx,
-            &registered.accepted,
-            &registered.rejected,
-            why,
-            now,
-        )
+        until_saved(writes, "record tracking registrations", || {
+            record_registered(ctx, login, &registered, now)
+        })
         .await?;
-        let left = available(&registered.tracking);
-        sqlx::query!("UPDATE account SET tracking_left = ?", left)
-            .execute(&mut *tx)
-            .await?;
-        tx.commit().await?;
         changed = true;
     }
     if !full {
         return Ok(changed);
     }
-    let mut after = sqlx::query_scalar!("SELECT tracking_revision FROM account")
-        .fetch_one(db)
-        .await?;
+    // As one read, as the user may log out or in meanwhile.
+    let mut after = until_saved(writes, "read the tracking revision", || async {
+        let mut tx = db.begin().await?;
+        same_login(&mut tx, login).await?;
+        let after = sqlx::query_scalar!("SELECT tracking_revision FROM account")
+            .fetch_one(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(after)
+    })
+    .await?;
     loop {
         let page: Opens = ctx
             .account
@@ -189,21 +218,65 @@ async fn exchange(
                 "服务器返回的打开记录不正确，请稍后重试或升级应用",
             ));
         }
-        let mut tx = db.begin_with("BEGIN IMMEDIATE").await?;
-        same_login(&mut tx, login).await?;
-        for open in &page.opens {
-            email::tracking::opened(&mut tx, open).await?;
-        }
-        sqlx::query!("UPDATE account SET tracking_revision = ?", page.revision)
-            .execute(&mut *tx)
-            .await?;
-        tx.commit().await?;
+        until_saved(writes, "record tracking opens", || {
+            record_opens(ctx, login, &page)
+        })
+        .await?;
         changed |= !page.opens.is_empty();
         if !page.more {
             return Ok(changed);
         }
         after = page.revision;
     }
+}
+
+async fn record_registered(
+    ctx: &Context,
+    login: &account::Login,
+    registered: &Registered,
+    now: i64,
+) -> Result<(), account::Error> {
+    let mut tx = ctx.db.begin_with("BEGIN IMMEDIATE").await?;
+    same_login(&mut tx, login).await?;
+    let why = if registered.plus_ended {
+        sqlx::query!("UPDATE account SET tracking_until = NULL")
+            .execute(&mut *tx)
+            .await?;
+        Rejected::NoPlus
+    } else {
+        Rejected::NoQuota
+    };
+    email::tracking::registered(
+        &mut tx,
+        &registered.accepted,
+        &registered.rejected,
+        why,
+        now,
+    )
+    .await?;
+    let left = available(&registered.tracking);
+    sqlx::query!("UPDATE account SET tracking_left = ?", left)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+async fn record_opens(
+    ctx: &Context,
+    login: &account::Login,
+    page: &Opens,
+) -> Result<(), account::Error> {
+    let mut tx = ctx.db.begin_with("BEGIN IMMEDIATE").await?;
+    same_login(&mut tx, login).await?;
+    for open in &page.opens {
+        email::tracking::opened(&mut tx, open).await?;
+    }
+    sqlx::query!("UPDATE account SET tracking_revision = ?", page.revision)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 /// The emails `tracking` still covers: what is left of the 30 days' allowance, and of the packs.
