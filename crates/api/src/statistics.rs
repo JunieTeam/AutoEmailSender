@@ -99,3 +99,7 @@ pub(super) async fn list_model_calls(
     )
     .await?)
 }
+
+pub async fn storage_failure(ctx: &Context, _: Nothing) -> Result<Option<String>, CallError> {
+    Ok(ctx.writes.failure().map(str::to_owned))
+}
