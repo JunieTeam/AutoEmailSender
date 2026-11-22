@@ -19,6 +19,11 @@ pub struct State {
     pub uploads: Vec<String>,
     /// Runs once on the next commit before it is checked, as another computer would act meanwhile.
     pub before_commit: Option<Change>,
+    /// How often the backup's status was read, and how many commits were made.
+    pub statuses: usize,
+    pub commits: usize,
+    /// The login's session has ended.
+    pub expired: bool,
 }
 
 pub type Change = Box<dyn FnOnce(&mut State) + Send>;
@@ -37,17 +42,23 @@ impl Server {
 )]
 fn respond(state: &mut State, method: &str, path: &str, body: Vec<u8>) -> Reply {
     let plus = |state: &State| state.plus_until.is_some_and(|until| until > state.now);
+    if state.expired {
+        return error(401, "session_expired");
+    }
     match (method, path.strip_prefix("/v1/backup")) {
-        ("GET", Some("")) => ok(serde_json::to_value(Status {
-            current: state.current.as_ref().map(|current| Current {
-                device_id: current.device_id.clone(),
-                manifest: current.manifest.clone(),
-                committed_at: current.committed_at,
-                size: current.size,
-            }),
-            plus_until: state.plus_until,
-        })
-        .unwrap()),
+        ("GET", Some("")) => {
+            state.statuses += 1;
+            ok(serde_json::to_value(Status {
+                current: state.current.as_ref().map(|current| Current {
+                    device_id: current.device_id.clone(),
+                    manifest: current.manifest.clone(),
+                    committed_at: current.committed_at,
+                    size: current.size,
+                }),
+                plus_until: state.plus_until,
+            })
+            .unwrap())
+        }
         ("GET", Some(object)) => match state.objects.get(object.trim_start_matches("/objects/")) {
             Some(data) => (200, "application/octet-stream", data.clone()),
             None => error(404, "backup_not_found"),
@@ -102,6 +113,7 @@ fn respond(state: &mut State, method: &str, path: &str, body: Vec<u8>) -> Reply 
                 return error(413, "backup_too_large");
             }
             state.now += 1;
+            state.commits += 1;
             state.objects.retain(|id, _| referenced.contains(id));
             state.referenced = referenced.into_iter().collect();
             state.current = Some(Current {

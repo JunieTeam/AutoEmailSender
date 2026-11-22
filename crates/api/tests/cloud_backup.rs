@@ -55,6 +55,11 @@ impl Setup {
         Self { dir, ctx, server }
     }
 
+    /// For checks that read the clock on the wall.
+    fn plus_outlasting_the_clock(&self) {
+        self.server.state.lock().unwrap().plus_until = Some(i64::MAX);
+    }
+
     fn uploads(&self) -> usize {
         self.server.state.lock().unwrap().uploads.len()
     }
@@ -488,4 +493,219 @@ async fn backups_stop_when_off_without_plus_or_logged_out(db: SqlitePool) {
         .await
         .unwrap();
     assert!(!cloud::status(&setup.ctx).await.unwrap().enabled);
+}
+
+/// Makes the write `trigger` names fail, as a full disk would.
+async fn block(db: &SqlitePool, trigger: &'static str) {
+    sqlx::raw_sql(trigger).execute(db).await.unwrap();
+}
+
+async fn unblock(db: &SqlitePool) {
+    sqlx::query("DROP TRIGGER blocked")
+        .execute(db)
+        .await
+        .unwrap();
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_scheduled_backup_the_database_stops_shows_why_and_runs_again(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    setup.plus_outlasting_the_clock();
+    // Not even whether one is due can be read.
+    sqlx::query("ALTER TABLE profile RENAME TO profile_away")
+        .execute(&setup.ctx.db)
+        .await
+        .unwrap();
+    test_fixtures::db::waits_for_storage(
+        &setup.ctx.writes,
+        cloud::back_up_if_due(&setup.ctx),
+        async {
+            sqlx::query("ALTER TABLE profile_away RENAME TO profile")
+                .execute(&setup.ctx.db)
+                .await
+                .unwrap();
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(setup.uploads(), 3);
+    let status = cloud::status(&setup.ctx).await.unwrap();
+    assert!(status.last_backup_at.is_some() && status.failure.is_none());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_read_after_the_cloud_answered_waits_without_asking_it_again(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    // Only what this computer committed last cannot be read.
+    sqlx::query("ALTER TABLE profile RENAME COLUMN cloud_backup_commit TO commit_away")
+        .execute(&setup.ctx.db)
+        .await
+        .unwrap();
+    test_fixtures::db::waits_for_storage(
+        &setup.ctx.writes,
+        cloud::back_up(&setup.ctx, NOW),
+        async {
+            assert_eq!(setup.server.state.lock().unwrap().statuses, 1);
+            sqlx::query("ALTER TABLE profile RENAME COLUMN commit_away TO cloud_backup_commit")
+                .execute(&setup.ctx.db)
+                .await
+                .unwrap();
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(setup.server.state.lock().unwrap().statuses, 1);
+    assert_eq!(setup.uploads(), 3);
+    assert_eq!(
+        cloud::status(&setup.ctx).await.unwrap().last_backup_at,
+        Some(NOW)
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_commit_waits_to_be_written_down_without_committing_again(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    block(
+        &setup.ctx.db,
+        "CREATE TRIGGER blocked BEFORE UPDATE OF cloud_backup_commit ON profile
+        WHEN NEW.cloud_backup_commit IS NOT NULL
+        BEGIN SELECT RAISE(FAIL, 'storage unavailable'); END",
+    )
+    .await;
+    test_fixtures::db::waits_for_storage(
+        &setup.ctx.writes,
+        cloud::back_up(&setup.ctx, NOW),
+        unblock(&setup.ctx.db),
+    )
+    .await
+    .unwrap();
+    let committed_at = {
+        let state = setup.server.state.lock().unwrap();
+        assert_eq!(state.commits, 1);
+        state.current.as_ref().unwrap().committed_at
+    };
+    let commit: Option<i64> = sqlx::query_scalar("SELECT cloud_backup_commit FROM profile")
+        .fetch_one(&setup.ctx.db)
+        .await
+        .unwrap();
+    assert_eq!(commit, Some(committed_at));
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn why_a_backup_failed_waits_to_be_written_down(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    cloud::back_up(&setup.ctx, NOW).await.unwrap();
+    setup
+        .server
+        .state
+        .lock()
+        .unwrap()
+        .current
+        .as_mut()
+        .unwrap()
+        .device_id = "0".repeat(32);
+    block(
+        &setup.ctx.db,
+        "CREATE TRIGGER blocked BEFORE UPDATE OF cloud_backup_error ON profile
+        WHEN NEW.cloud_backup_error IS NOT NULL
+        BEGIN SELECT RAISE(FAIL, 'storage unavailable'); END",
+    )
+    .await;
+    let result = test_fixtures::db::waits_for_storage(
+        &setup.ctx.writes,
+        cloud::back_up(&setup.ctx, NOW + 1),
+        unblock(&setup.ctx.db),
+    )
+    .await;
+    assert!(matches!(result, Err(Error::OtherDevice)), "{result:?}");
+    let failure = cloud::status(&setup.ctx).await.unwrap().failure.unwrap();
+    assert_eq!(failure.since, NOW + 1);
+    assert_eq!(failure.reason.message, Error::OtherDevice.failure().message);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_ended_session_the_database_cannot_clear_is_checked_again(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    setup.plus_outlasting_the_clock();
+    setup.server.state.lock().unwrap().expired = true;
+    block(
+        &setup.ctx.db,
+        "CREATE TRIGGER blocked BEFORE UPDATE OF token ON account WHEN NEW.token IS NULL
+        BEGIN SELECT RAISE(FAIL, 'storage unavailable'); END",
+    )
+    .await;
+    let result = test_fixtures::db::waits_for_storage(
+        &setup.ctx.writes,
+        cloud::back_up_if_due(&setup.ctx),
+        unblock(&setup.ctx.db),
+    )
+    .await;
+    assert!(
+        matches!(result, Err(Error::Account(account::Error::SignedOut))),
+        "{result:?}"
+    );
+    let token: Option<String> = sqlx::query_scalar("SELECT token FROM account")
+        .fetch_one(&setup.ctx.db)
+        .await
+        .unwrap();
+    assert_eq!(token, None);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn turning_backups_off_while_one_waits_sends_nothing_more(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    sqlx::query("ALTER TABLE profile RENAME COLUMN cloud_backup_commit TO commit_away")
+        .execute(&setup.ctx.db)
+        .await
+        .unwrap();
+    let result = test_fixtures::db::waits_for_storage(
+        &setup.ctx.writes,
+        cloud::back_up(&setup.ctx, NOW),
+        async {
+            cloud::disable(&setup.ctx.db).await.unwrap();
+            sqlx::query("ALTER TABLE profile RENAME COLUMN commit_away TO cloud_backup_commit")
+                .execute(&setup.ctx.db)
+                .await
+                .unwrap();
+        },
+    )
+    .await;
+    assert!(matches!(result, Err(Error::Disabled)), "{result:?}");
+    assert_eq!(setup.uploads(), 0);
+    assert_eq!(setup.server.state.lock().unwrap().commits, 0);
+    let status = cloud::status(&setup.ctx).await.unwrap();
+    assert!(!status.enabled && status.failure.is_none());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_failure_waiting_to_be_written_down_is_dropped_once_backups_are_off(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    cloud::back_up(&setup.ctx, NOW).await.unwrap();
+    setup
+        .server
+        .state
+        .lock()
+        .unwrap()
+        .current
+        .as_mut()
+        .unwrap()
+        .device_id = "0".repeat(32);
+    block(
+        &setup.ctx.db,
+        "CREATE TRIGGER blocked BEFORE UPDATE OF cloud_backup_error ON profile
+        WHEN NEW.cloud_backup_error IS NOT NULL
+        BEGIN SELECT RAISE(FAIL, 'storage unavailable'); END",
+    )
+    .await;
+    let result = test_fixtures::db::waits_for_storage(
+        &setup.ctx.writes,
+        cloud::back_up(&setup.ctx, NOW + 1),
+        async {
+            cloud::disable(&setup.ctx.db).await.unwrap();
+            unblock(&setup.ctx.db).await;
+        },
+    )
+    .await;
+    assert!(matches!(result, Err(Error::OtherDevice)), "{result:?}");
+    assert!(cloud::status(&setup.ctx).await.unwrap().failure.is_none());
 }

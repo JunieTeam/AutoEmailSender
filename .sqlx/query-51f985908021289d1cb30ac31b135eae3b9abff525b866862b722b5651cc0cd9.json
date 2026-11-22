@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT material_id, object, size, uploaded AS \"uploaded: bool\"\n        FROM cloud_backup_material",
+  "query": "SELECT material_id, object, size, uploaded AS \"uploaded: bool\"\n                FROM cloud_backup_material",
   "describe": {
     "columns": [
       {
@@ -58,5 +58,5 @@
       false
     ]
   },
-  "hash": "d0edfc093e0618f906ee6e8b2313e934a55545186b5c0ebe78a73894db752c2a"
+  "hash": "51f985908021289d1cb30ac31b135eae3b9abff525b866862b722b5651cc0cd9"
 }

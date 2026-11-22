@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE profile SET cloud_backup_failed_at = NULL, cloud_backup_error = NULL\n            WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "2f90a2a4161f232ad0cdf463236494ea7d8e349a4bce88366c819d24b96b54db"
+}

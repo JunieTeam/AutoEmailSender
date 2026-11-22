@@ -317,7 +317,7 @@ pub async fn enable(ctx: &Context, input: Enable, now: i64) -> Result<Enabled> {
     if !status.plus_until.is_some_and(|until| until > now) {
         return Err(Error::PlusRequired);
     }
-    let device = device(&ctx.db).await?;
+    let device = device(&ctx.db, &random_id()?).await?;
     if let Some(current) = &status.current
         && input.replace != Some(current.committed_at)
     {
@@ -410,49 +410,55 @@ pub async fn back_up(ctx: &Context, now: i64) -> Result<()> {
         return Err(Error::Disabled);
     }
     let result = upload(ctx, &login, &key, now).await;
-    let key = key.as_slice();
-    // A run for an account that has changed since must leave the new account's state alone.
-    match &result {
-        Ok(()) => {
-            sqlx::query!(
-                r#"UPDATE profile SET last_backup_at = ?, cloud_backup_failed_at = NULL,
-                    cloud_backup_error = NULL
-                WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
-                now,
-                key
-            )
-            .execute(&ctx.db)
-            .await?;
-        }
-        // Not failing: backups pause until Plus is renewed.
-        Err(Error::PlusRequired) => {
-            sqlx::query!(
-                r#"UPDATE profile SET cloud_backup_failed_at = NULL, cloud_backup_error = NULL
-                WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
-                key
-            )
-            .execute(&ctx.db)
-            .await?;
-        }
-        Err(error) => {
-            sqlx::query!(
-                r#"UPDATE profile SET cloud_backup_failed_at = coalesce(cloud_backup_failed_at, ?),
-                    cloud_backup_error = ?
-                WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
-                now,
-                Json(error.failure()),
-                key
-            )
-            .execute(&ctx.db)
-            .await?;
-        }
+    // The database's own failures show while they are waited for.
+    if !matches!(
+        result,
+        Err(Error::Database(_) | Error::Account(account::Error::Database(_)))
+    ) {
+        ctx.writes
+            .retry("note the cloud backup", || {
+                noted(&ctx.db, &key, &result, now)
+            })
+            .await;
     }
     result
 }
 
+/// Keeps what became of a backup for the page; a run for an account that has changed since leaves
+/// the new account's state alone, and one turned off meanwhile fails no more.
+async fn noted(db: &SqlitePool, key: &[u8; 32], result: &Result<()>, now: i64) -> sqlx::Result<()> {
+    let key = key.as_slice();
+    match result {
+        Ok(()) => sqlx::query!(
+            r#"UPDATE profile SET last_backup_at = ?, cloud_backup_failed_at = NULL,
+                cloud_backup_error = NULL
+            WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
+            now,
+            key
+        ),
+        // Not failing: backups pause until Plus is renewed.
+        Err(Error::PlusRequired) => sqlx::query!(
+            r#"UPDATE profile SET cloud_backup_failed_at = NULL, cloud_backup_error = NULL
+            WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
+            key
+        ),
+        Err(error) => sqlx::query!(
+            r#"UPDATE profile SET cloud_backup_failed_at = coalesce(cloud_backup_failed_at, ?),
+                cloud_backup_error = ?
+            WHERE cloud_backup = 1 AND EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
+            now,
+            Json(error.failure()),
+            key
+        ),
+    }
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 /// Turning it on is where the user agrees to send the data. Read with the login's key: switching
 /// accounts turns it off, so the new account's data never goes out on the old account's consent.
-async fn enabled(db: &SqlitePool, key: &[u8; 32]) -> Result<bool> {
+async fn enabled(db: &SqlitePool, key: &[u8; 32]) -> sqlx::Result<bool> {
     let key = key.as_slice();
     Ok(sqlx::query_scalar!(
         r#"SELECT cloud_backup AS "enabled: bool" FROM profile
@@ -462,6 +468,20 @@ async fn enabled(db: &SqlitePool, key: &[u8; 32]) -> Result<bool> {
     .fetch_optional(db)
     .await?
     .unwrap_or(false))
+}
+
+/// Before each request that sends data: the user may have turned backups off, or the account
+/// changed, while a backup waited for the server or the database.
+async fn still_enabled(ctx: &Context, key: &[u8; 32]) -> Result<()> {
+    let enabled = ctx
+        .writes
+        .retry("read whether cloud backup is on", || enabled(&ctx.db, key))
+        .await;
+    if enabled {
+        Ok(())
+    } else {
+        Err(Error::Disabled)
+    }
 }
 
 async fn upload(ctx: &Context, login: &account::Login, key: &[u8; 32], now: i64) -> Result<()> {
@@ -475,13 +495,16 @@ async fn upload(ctx: &Context, login: &account::Login, key: &[u8; 32], now: i64)
                 ..
             }))) if !retried => {
                 let key = key.as_slice();
-                sqlx::query!(
-                    r#"DELETE FROM cloud_backup_material
-                    WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
-                    key
-                )
-                .execute(&ctx.db)
-                .await?;
+                ctx.writes
+                    .retry("forget the cloud backup's uploads", || {
+                        sqlx::query!(
+                            r#"DELETE FROM cloud_backup_material
+                            WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
+                            key
+                        )
+                        .execute(&ctx.db)
+                    })
+                    .await;
                 retried = true;
             }
             result => return result,
@@ -489,15 +512,27 @@ async fn upload(ctx: &Context, login: &account::Login, key: &[u8; 32], now: i64)
     }
 }
 
+/// Once the server has been asked, the database is waited for in place throughout, so as not to
+/// ask it again (docs/design.md#桌面端).
 async fn attempt(ctx: &Context, login: &account::Login, key: &[u8; 32], now: i64) -> Result<()> {
     let status = remote(ctx, login).await?;
     if !status.plus_until.is_some_and(|until| until > now) {
         return Err(Error::PlusRequired);
     }
-    let device = device(&ctx.db).await?;
-    let profile = sqlx::query!("SELECT cloud_backup_commit, cloud_backup_replace FROM profile")
-        .fetch_one(&ctx.db)
-        .await?;
+    let id = random_id()?;
+    let device = ctx
+        .writes
+        .retry("note this computer for cloud backup", || {
+            device(&ctx.db, &id)
+        })
+        .await;
+    let profile = ctx
+        .writes
+        .retry("read the last cloud backup", || {
+            sqlx::query!("SELECT cloud_backup_commit, cloud_backup_replace FROM profile")
+                .fetch_one(&ctx.db)
+        })
+        .await;
     // The cloud still holds this computer's last backup, made with the current key; the key's
     // trigger clears the commit when it changes.
     let ours = status.current.as_ref().is_some_and(|current| {
@@ -529,6 +564,7 @@ async fn attempt(ctx: &Context, login: &account::Login, key: &[u8; 32], now: i64
         return Ok(());
     }
     let (manifest, objects) = send_objects(ctx, login, key, &snapshot, &next, now).await?;
+    still_enabled(ctx, key).await?;
     let commit = wire::Commit {
         device_id: device,
         manifest,
@@ -551,14 +587,18 @@ async fn attempt(ctx: &Context, login: &account::Login, key: &[u8; 32], now: i64
     // Renamed before the commit is recorded: an interruption in between only uploads again.
     fs::rename(&next, &last)?;
     let key = key.as_slice();
-    sqlx::query!(
-        r#"UPDATE profile SET cloud_backup_commit = ?, cloud_backup_replace = NULL
-        WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
-        committed.committed_at,
-        key
-    )
-    .execute(&ctx.db)
-    .await?;
+    // Asked again, the server would take the same backup once more.
+    ctx.writes
+        .retry("note the cloud backup committed", || {
+            sqlx::query!(
+                r#"UPDATE profile SET cloud_backup_commit = ?, cloud_backup_replace = NULL
+                WHERE EXISTS (SELECT 1 FROM account WHERE backup_key = ?)"#,
+                committed.committed_at,
+                key
+            )
+            .execute(&ctx.db)
+        })
+        .await;
     Ok(())
 }
 
@@ -581,17 +621,22 @@ async fn send_objects(
     next: &Path,
     now: i64,
 ) -> Result<(String, Vec<String>)> {
-    let mapped: HashMap<i64, (String, i64, bool)> = sqlx::query!(
-        r#"SELECT material_id, object, size, uploaded AS "uploaded: bool"
-        FROM cloud_backup_material"#
-    )
-    .fetch_all(&ctx.db)
-    .await?
-    .into_iter()
-    .map(|row| (row.material_id, (row.object, row.size, row.uploaded)))
-    .collect();
+    let mapped: HashMap<i64, (String, i64, bool)> = ctx
+        .writes
+        .retry("read the cloud backup's uploads", || {
+            sqlx::query!(
+                r#"SELECT material_id, object, size, uploaded AS "uploaded: bool"
+                FROM cloud_backup_material"#
+            )
+            .fetch_all(&ctx.db)
+        })
+        .await
+        .into_iter()
+        .map(|row| (row.material_id, (row.object, row.size, row.uploaded)))
+        .collect();
     // Earlier attempts that never committed would otherwise fill the room kept for this one.
     let keep = mapped.values().map(|(object, ..)| object.clone()).collect();
+    still_enabled(ctx, key).await?;
     ctx.account
         .send(
             &ctx.db,
@@ -631,36 +676,42 @@ async fn send_objects(
         let size = data.len() as i64;
         // Recorded before uploading and marked uploaded after: a later attempt reuses the id
         // whether or not this one hears back, and skips the upload once it is confirmed.
-        let key = key.as_slice();
-        sqlx::query!(
-            r#"INSERT INTO cloud_backup_material (material_id, object, size, uploaded)
-            SELECT ?, ?, ?, 0 WHERE EXISTS (SELECT 1 FROM material WHERE id = ?)
-                AND EXISTS (SELECT 1 FROM account WHERE backup_key = ?)
-            ON CONFLICT (material_id) DO NOTHING"#,
-            material,
-            object,
-            size,
-            material,
-            key
-        )
-        .execute(&ctx.db)
-        .await?;
-        put(ctx, login, &object, data).await?;
-        sqlx::query!(
-            r#"UPDATE cloud_backup_material SET uploaded = 1
-            WHERE material_id = ? AND object = ?"#,
-            material,
-            object
-        )
-        .execute(&ctx.db)
-        .await?;
+        let backup_key = key.as_slice();
+        ctx.writes
+            .retry("note a cloud backup upload", || {
+                sqlx::query!(
+                    r#"INSERT INTO cloud_backup_material (material_id, object, size, uploaded)
+                    SELECT ?, ?, ?, 0 WHERE EXISTS (SELECT 1 FROM material WHERE id = ?)
+                        AND EXISTS (SELECT 1 FROM account WHERE backup_key = ?)
+                    ON CONFLICT (material_id) DO NOTHING"#,
+                    material,
+                    object,
+                    size,
+                    material,
+                    backup_key
+                )
+                .execute(&ctx.db)
+            })
+            .await;
+        put(ctx, login, key, &object, data).await?;
+        ctx.writes
+            .retry("note a cloud backup upload done", || {
+                sqlx::query!(
+                    r#"UPDATE cloud_backup_material SET uploaded = 1
+                    WHERE material_id = ? AND object = ?"#,
+                    material,
+                    object
+                )
+                .execute(&ctx.db)
+            })
+            .await;
         objects.push(object);
     }
     let (database, data) = sealed.database;
-    put(ctx, login, &database, data).await?;
+    put(ctx, login, key, &database, data).await?;
     objects.push(database);
     let (manifest, data) = sealed.manifest;
-    put(ctx, login, &manifest, data).await?;
+    put(ctx, login, key, &manifest, data).await?;
     Ok((manifest, objects))
 }
 
@@ -825,16 +876,34 @@ pub async fn run(ctx: std::sync::Arc<Context>) {
     ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         ticks.tick().await;
-        let now = crate::now();
-        let result = match due(&ctx.db, now).await {
-            Ok(true) => back_up(&ctx, now).await,
-            Ok(false) => Ok(()),
-            Err(e) => Err(e),
-        };
-        if let Err(error) = result {
+        // Failures show on the backup page; the rest is the login or the switch changing meanwhile.
+        if let Err(error) = back_up_if_due(&ctx).await {
             tracing::warn!(error = %error, "scheduled cloud backup failed");
         }
     }
+}
+
+/// Before it asks the server anything, a check the database cuts short runs again.
+pub async fn back_up_if_due(ctx: &Context) -> Result<()> {
+    ctx.writes
+        .retry("scheduled cloud backup", || async {
+            let now = crate::now();
+            let result = async {
+                if due(&ctx.db, now).await? {
+                    back_up(ctx, now).await
+                } else {
+                    Ok(())
+                }
+            }
+            .await;
+            match result {
+                Err(Error::Database(error) | Error::Account(account::Error::Database(error))) => {
+                    Err(error)
+                }
+                result => Ok(result),
+            }
+        })
+        .await
 }
 
 /// Whether the hourly check backs up now: a day after the last success, or again after a failure,
@@ -875,7 +944,14 @@ fn object_path(object: &str) -> String {
     format!("{}/{object}", path::BACKUP_OBJECTS)
 }
 
-async fn put(ctx: &Context, login: &account::Login, object: &str, data: Vec<u8>) -> Result<()> {
+async fn put(
+    ctx: &Context,
+    login: &account::Login,
+    key: &[u8; 32],
+    object: &str,
+    data: Vec<u8>,
+) -> Result<()> {
+    still_enabled(ctx, key).await?;
     let request = ctx
         .account
         .request(Method::PUT, &object_path(object))
@@ -951,15 +1027,15 @@ async fn describe(
     })
 }
 
-async fn device(db: &SqlitePool) -> Result<String> {
-    let id = random_id()?;
-    Ok(sqlx::query_scalar!(
+/// This computer's id, `id` the first time.
+async fn device(db: &SqlitePool, id: &str) -> sqlx::Result<String> {
+    sqlx::query_scalar!(
         r#"UPDATE profile SET cloud_backup_device = coalesce(cloud_backup_device, ?)
         RETURNING cloud_backup_device AS "device!""#,
         id
     )
     .fetch_one(db)
-    .await?)
+    .await
 }
 
 fn random_id() -> Result<String> {
