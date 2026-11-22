@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT cloud_send_failed_at, cloud_send_error FROM account WHERE token IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "cloud_send_failed_at",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "account",
+            "name": "cloud_send_failed_at"
+          }
+        }
+      },
+      {
+        "name": "cloud_send_error",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "account",
+            "name": "cloud_send_error"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "cb57d3f26721e81d6115831feddbfb23673a6253a59ccb53bdf1cc227249a3e3"
+}

@@ -17,8 +17,8 @@ use sqlx::{Connection, SqliteConnection};
 use tokio::sync::{Mutex, Notify};
 use ts_rs::TS;
 
-use crate::accounts::same_login;
-use crate::{CallError, Context};
+use crate::accounts::{SyncFailure, same_login, until_saved};
+use crate::{CallError, Context, Nothing};
 
 const EVERY: Duration = Duration::from_secs(5 * 60);
 /// zstd's default.
@@ -50,10 +50,24 @@ pub async fn run(ctx: Arc<Context>, notify: impl Fn()) {
             () = ctx.cloud_send.wake.notified() => {}
         }
         let _busy = ctx.cloud_send.busy.lock().await;
-        let mut changed = false;
-        let result = sync(&ctx, crate::now(), &mut changed).await;
-        // Also when it failed after writing some down.
-        if changed {
+        let ctx = &ctx;
+        let mut attempts = 0;
+        // Before it asks the server anything, a round the database cuts short runs again.
+        let (changed, result) = ctx
+            .writes
+            .retry("cloud sending synchronization", || {
+                attempts += 1;
+                async move {
+                    let mut changed = false;
+                    match sync(ctx, crate::now(), &mut changed).await {
+                        Err(account::Error::Database(error)) => Err(error),
+                        result => Ok((changed, result)),
+                    }
+                }
+            })
+            .await;
+        // Also when it failed after writing some down, as a try cut short may have.
+        if changed || attempts > 1 {
             ctx.sender.wake();
             notify();
         }
@@ -69,27 +83,75 @@ pub async fn run(ctx: Arc<Context>, notify: impl Fn()) {
 /// Withdraws what was cut short or canceled, gives the server what changed of their mailboxes,
 /// and brings back what became of the rest, all as the login saved at the start: only that
 /// account's emails, the others waiting for theirs. Sets `changed` once what the UI shows changes,
-/// even when it then fails. Asks the server nothing when it has nothing of the account's.
+/// even when it then fails. Asks the server nothing when it has nothing of the account's. Why it
+/// failed is kept for the login until it succeeds; what the server answered is written down in
+/// place while the database cannot be written.
 pub async fn sync(ctx: &Context, now: i64, changed: &mut bool) -> Result<(), account::Error> {
     let login = match account::saved_login(&ctx.db).await {
         Ok(login) => login,
         Err(account::Error::SignedOut) => return Ok(()),
         Err(error) => return Err(error),
     };
+    let result = exchange(ctx, &login, now, changed).await;
+    // The database's own failures show while they are waited for.
+    if !matches!(result, Err(account::Error::Database(_))) {
+        let failure = result.as_ref().err().map(account::Error::message);
+        until_saved(&ctx.writes, "note cloud sending synchronization", || {
+            noted(ctx, &login, failure.as_deref(), now)
+        })
+        .await?;
+    }
+    result
+}
+
+/// Once the server has been asked anything, the database is waited for in place throughout, so
+/// as not to ask it again.
+async fn exchange(
+    ctx: &Context,
+    login: &account::Login,
+    now: i64,
+    changed: &mut bool,
+) -> Result<(), account::Error> {
     let db = &ctx.db;
     let account = &login.email;
-    *changed |= !settle_left(ctx, &login, now).await?.is_empty();
+    *changed |= !settle_left(ctx, login, now).await?.is_empty();
     for cloud_id in email::cloud::to_withdraw(&mut *db.acquire().await?, account, now).await? {
-        *changed |= !matches!(
-            take_back(ctx, &login, &cloud_id, now).await?,
-            Withdrawal::Sending
-        );
+        let answer = ask_back(ctx, login, &cloud_id).await?;
+        until_saved(&ctx.writes, "note a cloud email taken back", || {
+            note_back(ctx, login, &cloud_id, &answer, now)
+        })
+        .await?;
+        *changed |= !matches!(answer, Withdrawal::Sending);
     }
     // Before the results, which then carry the end of a pause a new secret brings.
     // Giving the server a mailbox takes the current terms; getting emails back does not.
     if !login.terms_outdated {
-        for id in mailbox::cloud::stale(&mut *db.acquire().await?, account).await? {
-            if let Some(error) = upload_mailbox(ctx, &login, id).await? {
+        let stale = until_saved(
+            &ctx.writes,
+            "find mailboxes to give to the cloud",
+            || async { Ok(mailbox::cloud::stale(&mut *db.acquire().await?, account).await?) },
+        )
+        .await?;
+        for id in stale {
+            let copy = until_saved(
+                &ctx.writes,
+                "read a mailbox to give to the cloud",
+                || async { Ok(mailbox::cloud::for_cloud(&mut *db.acquire().await?, id).await?) },
+            )
+            .await?;
+            let error = match copy {
+                Some(copy) => {
+                    let error = put_mailbox(ctx, login, &copy).await?;
+                    // Asked again, the server would log in to the mailbox again.
+                    until_saved(&ctx.writes, "note a mailbox given to the cloud", || {
+                        given(ctx, id, &copy)
+                    })
+                    .await?;
+                    error
+                }
+                None => Some(Failure::new(NO_SECRET)),
+            };
+            if let Some(error) = error {
                 // The server keeps what it had: emails still go with that, or pause there.
                 tracing::warn!(
                     mailbox = id,
@@ -100,42 +162,112 @@ pub async fn sync(ctx: &Context, now: i64, changed: &mut bool) -> Result<(), acc
             }
         }
     }
-    let handed = email::cloud::handed(&mut *db.acquire().await?, account).await?;
+    let handed = until_saved(&ctx.writes, "find emails in the cloud", || async {
+        Ok(email::cloud::handed(&mut *db.acquire().await?, account).await?)
+    })
+    .await?;
     for ids in handed.chunks(MAX_IDS) {
         let ids = ids.to_vec();
         let answer: Results = ctx
             .account
-            .authenticated_as(db, &login, Method::POST, RESULTS, Some(&Ids { ids }))
+            .authenticated_as(db, login, Method::POST, RESULTS, Some(&Ids { ids }))
             .await?;
-        // Durable, as the server is then told to delete them.
-        let mut conn = db::durable(db).await?;
-        let mut tx = conn.begin_with("BEGIN IMMEDIATE").await?;
-        same_login(&mut tx, &login).await?;
-        // Only those asked about: an acknowledged id is deleted on the server.
-        let mut recorded = false;
-        for r in answer.results.iter().filter(|r| handed.contains(&r.id)) {
-            record(&mut tx, &r.id, &r.outcome, account, now).await?;
-            recorded = true;
-        }
-        recorded |= mailbox::cloud::synced(&mut tx, account, &answer.mailboxes).await?;
-        tx.commit().await?;
-        *changed |= recorded;
+        *changed |= until_saved(&ctx.writes, "record cloud sending results", || {
+            results(ctx, login, &handed, &answer, now)
+        })
+        .await?;
     }
-    let written = email::cloud::unacknowledged(&mut *db.acquire().await?, account).await?;
+    let written = until_saved(&ctx.writes, "find cloud results to acknowledge", || async {
+        Ok(email::cloud::unacknowledged(&mut *db.acquire().await?, account).await?)
+    })
+    .await?;
     for ids in written.chunks(MAX_IDS) {
         let _: Empty = ctx
             .account
             .authenticated_as(
                 db,
-                &login,
+                login,
                 Method::POST,
                 RESULTS_ACK,
                 Some(&Ids { ids: ids.to_vec() }),
             )
             .await?;
-        email::cloud::acknowledged(&mut *db.acquire().await?, ids).await?;
+        until_saved(
+            &ctx.writes,
+            "note cloud sending results acknowledged",
+            || async move { Ok(email::cloud::acknowledged(&mut *db.acquire().await?, ids).await?) },
+        )
+        .await?;
     }
     Ok(())
+}
+
+/// Writes down the results the server answered for those `handed`, and the pauses of its
+/// mailboxes; whether any changed.
+async fn results(
+    ctx: &Context,
+    login: &account::Login,
+    handed: &[String],
+    answer: &Results,
+    now: i64,
+) -> Result<bool, account::Error> {
+    // Durable, as the server is then told to delete them.
+    let mut conn = db::durable(&ctx.db).await?;
+    let mut tx = conn.begin_with("BEGIN IMMEDIATE").await?;
+    same_login(&mut tx, login).await?;
+    // Only those asked about: an acknowledged id is deleted on the server.
+    let mut recorded = false;
+    for r in answer.results.iter().filter(|r| handed.contains(&r.id)) {
+        record(&mut tx, &r.id, &r.outcome, &login.email, now).await?;
+        recorded = true;
+    }
+    recorded |= mailbox::cloud::synced(&mut tx, &login.email, &answer.mailboxes).await?;
+    tx.commit().await?;
+    Ok(recorded)
+}
+
+/// Keeps why synchronizing failed for the login that failed, or clears it once it succeeded.
+async fn noted(
+    ctx: &Context,
+    login: &account::Login,
+    failure: Option<&str>,
+    now: i64,
+) -> Result<(), account::Error> {
+    let mut tx = ctx.db.begin_with("BEGIN IMMEDIATE").await?;
+    if !login.is_saved(&mut tx).await? {
+        return Ok(());
+    }
+    match failure {
+        Some(message) => sqlx::query!(
+            r#"UPDATE account SET cloud_send_failed_at = coalesce(cloud_send_failed_at, ?),
+                cloud_send_error = ?"#,
+            now,
+            message
+        ),
+        None => sqlx::query!(
+            r#"UPDATE account SET cloud_send_failed_at = NULL, cloud_send_error = NULL
+            WHERE cloud_send_error IS NOT NULL"#
+        ),
+    }
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Synchronizing cloud sending has been failing since then, for the saved login.
+pub async fn cloud_send_failure(
+    ctx: &Context,
+    _: Nothing,
+) -> Result<Option<SyncFailure>, CallError> {
+    let failure = sqlx::query!(
+        "SELECT cloud_send_failed_at, cloud_send_error FROM account WHERE token IS NOT NULL"
+    )
+    .fetch_optional(&ctx.db)
+    .await?
+    .and_then(|a| a.cloud_send_failed_at.zip(a.cloud_send_error))
+    .map(|(since, message)| SyncFailure { since, message });
+    Ok(failure)
 }
 
 /// Writes down what became of an email, to be acknowledged: one that went out, or may have, is
@@ -190,16 +322,24 @@ async fn contact_from(
     Ok(())
 }
 
-/// Asks the server to give an email back, and writes down what it answered, durably: an outcome
-/// is told of as written down, and the server then deletes it.
+/// Asks the server to give an email back, and writes down what it answered.
 async fn take_back(
     ctx: &Context,
     login: &account::Login,
     cloud_id: &str,
     now: i64,
 ) -> Result<Withdrawal, account::Error> {
-    let answer: Withdrawal = ctx
-        .account
+    let answer = ask_back(ctx, login, cloud_id).await?;
+    note_back(ctx, login, cloud_id, &answer, now).await?;
+    Ok(answer)
+}
+
+async fn ask_back(
+    ctx: &Context,
+    login: &account::Login,
+    cloud_id: &str,
+) -> Result<Withdrawal, account::Error> {
+    ctx.account
         .authenticated_as(
             &ctx.db,
             login,
@@ -207,11 +347,22 @@ async fn take_back(
             &format!("{EMAILS}/{cloud_id}"),
             None::<&Empty>,
         )
-        .await?;
+        .await
+}
+
+/// Writes down what the server answered when asked to give an email back, durably: an outcome is
+/// told of as written down, and the server then deletes it.
+async fn note_back(
+    ctx: &Context,
+    login: &account::Login,
+    cloud_id: &str,
+    answer: &Withdrawal,
+    now: i64,
+) -> Result<(), account::Error> {
     let mut conn = db::durable(&ctx.db).await?;
     let mut tx = conn.begin_with("BEGIN IMMEDIATE").await?;
     same_login(&mut tx, login).await?;
-    match &answer {
+    match answer {
         Withdrawal::Withdrawn => email::cloud::withdrawn(&mut tx, cloud_id, now).await?,
         Withdrawal::Unknown => {
             let handed = email::cloud::unknown(&mut tx, cloud_id, now).await?;
@@ -223,7 +374,7 @@ async fn take_back(
         Withdrawal::Sending => {}
     }
     tx.commit().await?;
-    Ok(answer)
+    Ok(())
 }
 
 /// Gives the server a mailbox as it is now; why the server could not log in with it, when it
@@ -236,14 +387,33 @@ async fn upload_mailbox(
     let Some(copy) = mailbox::cloud::for_cloud(&mut *ctx.db.acquire().await?, id).await? else {
         return Ok(Some(Failure::new(NO_SECRET)));
     };
+    let error = put_mailbox(ctx, login, &copy).await?;
+    given(ctx, id, &copy).await?;
+    Ok(error)
+}
+
+/// Why the server could not log in with the mailbox as `copy`, when it could not.
+async fn put_mailbox(
+    ctx: &Context,
+    login: &account::Login,
+    copy: &mailbox::cloud::ForCloud,
+) -> Result<Option<Failure>, account::Error> {
     let saved: MailboxSaved = ctx
         .account
         .authenticated_as(&ctx.db, login, Method::PUT, MAILBOXES, Some(&copy.upload()))
         .await?;
-    let mut tx = ctx.db.begin_with("BEGIN IMMEDIATE").await?;
-    mailbox::cloud::given(&mut tx, id, &copy).await?;
-    tx.commit().await?;
     Ok(saved.login_error)
+}
+
+async fn given(
+    ctx: &Context,
+    id: i64,
+    copy: &mailbox::cloud::ForCloud,
+) -> Result<(), account::Error> {
+    let mut tx = ctx.db.begin_with("BEGIN IMMEDIATE").await?;
+    mailbox::cloud::given(&mut tx, id, copy).await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 const NO_SECRET: &str = "这台电脑上已无发件邮箱的授权码，请在邮箱设置里重新填写";

@@ -20,7 +20,7 @@ use accounts::*;
 mod cloud_backups;
 use cloud_backups::*;
 pub mod cloud_send;
-use cloud_send::{cloud_send_preview, hand_off_to_cloud, withdraw_from_cloud};
+use cloud_send::{cloud_send_failure, cloud_send_preview, hand_off_to_cloud, withdraw_from_cloud};
 mod crawling;
 mod fact_check;
 mod feedback;
@@ -630,7 +630,7 @@ operations! {
         /// 查询有待处理资料更新的导师数，不含回收站。
         "libraryUpdateCount" [none] => library_update_count(Nothing) -> i64;
         /// 导师库同步从什么时候起一直失败，以及最近一次的原因；没有失败时为 null。
-        "libraryFailure" [none] => library_failure(Nothing) -> Option<libraries::LibraryFailure>;
+        "libraryFailure" [none] => library_failure(Nothing) -> Option<accounts::SyncFailure>;
         /// 立即从同步进度检查导师库更新，返回处理的变化数。
         "syncLibrary" [none] => library_sync(Nothing) -> u32;
     }
@@ -783,6 +783,8 @@ operations! {
         /// 填 email 撤回一封，填 task 撤回这个任务里的全部；返回正在发送、撤不回的封数。
         "withdrawFromCloud" [none] => withdraw_from_cloud(cloud_send::Withdraw)
             -> cloud_send::Withdrawn;
+        /// 和官方服务器同步云端发送的结果从什么时候起一直失败，以及最近一次的原因；没有失败时为 null。
+        "cloudSendFailure" [none] => cloud_send_failure(Nothing) -> Option<accounts::SyncFailure>;
     }
     "任务" {
         /// 预览新任务的导师范围、草稿数量和模型用量。

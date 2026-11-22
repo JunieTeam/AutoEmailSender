@@ -80,6 +80,12 @@ export function useBackground() {
     // Synchronization runs at most hourly.
     refetchInterval: 60_000,
   });
+  const cloudSendFailure = useQuery({
+    queryKey: ["cloudSendFailure"],
+    queryFn: () => call("cloudSendFailure", {}),
+    // Synchronization runs every few minutes.
+    refetchInterval: 60_000,
+  });
   const storage = useQuery({
     queryKey: ["storageFailure"],
     queryFn: () => call("storageFailure", {}),
@@ -96,6 +102,7 @@ export function useBackground() {
     library,
     cloud,
     libraryFailure,
+    cloudSendFailure,
     storage,
   ];
   const today = new Date(crawls.dataUpdatedAt).toDateString();
@@ -125,6 +132,7 @@ export function useBackground() {
     libraryUpdates: library.data ?? 0,
     cloudFailure: lasting(cloud.data?.enabled ? cloud.data.failure : null, cloud.dataUpdatedAt),
     libraryFailure: lasting(libraryFailure.data, libraryFailure.dataUpdatedAt),
+    cloudSendFailure: lasting(cloudSendFailure.data, cloudSendFailure.dataUpdatedAt),
     marking: replies.data?.pause ? 0 : (replies.data?.remaining ?? 0),
     crawled:
       crawls.data?.filter((c) => c.state === "done" && new Date(c.finishedAt ?? 0).toDateString() === today) ?? [],
@@ -143,6 +151,7 @@ export function useBackground() {
       replies.error ??
       library.error ??
       libraryFailure.error ??
+      cloudSendFailure.error ??
       cloud.error ??
       done.error,
   };
@@ -167,11 +176,12 @@ export function useBackground() {
       (work.repliesPaused ? 1 : 0) +
       (work.libraryUpdates > 0 ? 1 : 0) +
       (work.cloudFailure ? 1 : 0) +
-      (work.libraryFailure ? 1 : 0),
+      (work.libraryFailure ? 1 : 0) +
+      (work.cloudSendFailure ? 1 : 0),
   };
 }
 
-/** Work retried hourly in the background; only a failure lasting days needs the user. */
+/** Work retried hourly or more often in the background; only a failure lasting days needs the user. */
 function lasting(failure: { since: number; message: string } | null | undefined, now: number) {
   const days = failure ? Math.floor((now - failure.since) / 86_400_000) : 0;
   return failure && days >= 3 ? { days, message: failure.message } : null;
@@ -371,6 +381,14 @@ export function BackgroundPage() {
                 <Entry
                   title={`导师库已连续 ${work.libraryFailure.days} 天未能同步`}
                   detail={work.libraryFailure.message}
+                />
+              </Link>
+            )}
+            {work.cloudSendFailure && (
+              <Link to="/tasks" search={{ tab: "plan" }} className={ITEM}>
+                <Entry
+                  title={`云端发送的结果已连续 ${work.cloudSendFailure.days} 天未能同步`}
+                  detail={work.cloudSendFailure.message}
                 />
               </Link>
             )}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE account SET cloud_send_failed_at = NULL, cloud_send_error = NULL\n            WHERE cloud_send_error IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "f3d94877db2cb6208bb289c8ac2196fc27594a01e1fbb0c29f300a6d0e0e506c"
+}

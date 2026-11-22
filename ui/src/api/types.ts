@@ -590,8 +590,6 @@ export type LibraryAddPreview = { missing: number, created: number, supplemented
 
 export type LibraryAdded = { created: number, supplemented: number, missing: number, };
 
-export type LibraryFailure = { since: number, message: string, };
-
 export type LibraryId = { id: string, };
 
 export type LibraryListRequest = { org?: string, q?: string, page: number, };
@@ -1381,6 +1379,8 @@ export type Submitted = { crawlId: number, added: number, merged: number, total:
 
 export type SubmittedCandidate = { name: string, aliases?: Array<string>, emails?: Array<string>, affiliations?: Array<Affiliation>, homepages?: Array<string>, profileUrl?: string, sourceUrl: string, research?: string, papers?: Array<string>, note?: string, };
 
+export type SyncFailure = { since: number, message: string, };
+
 export type TableFormat = "xlsx" | "csv";
 
 export type Tag = { id: number, name: string,
@@ -1608,7 +1608,7 @@ export interface Operations {
   listLibraryUpdates: { input: Nothing; output: Array<LibraryUpdateGroup> };
   applyLibraryUpdates: { input: LibraryUpdateChoices; output: number };
   libraryUpdateCount: { input: Nothing; output: number };
-  libraryFailure: { input: Nothing; output: LibraryFailure | null };
+  libraryFailure: { input: Nothing; output: SyncFailure | null };
   syncLibrary: { input: Nothing; output: number };
   getAgentCli: { input: Nothing; output: AgentCli };
   installAgentCli: { input: Nothing; output: AgentCli };
@@ -1670,6 +1670,7 @@ export interface Operations {
   cloudSendPreview: { input: CloudSendPreviewInput; output: CloudSendPreview };
   handOffToCloud: { input: CloudHandOff; output: CloudHandedOff };
   withdrawFromCloud: { input: CloudWithdraw; output: CloudWithdrawn };
+  cloudSendFailure: { input: Nothing; output: SyncFailure | null };
   planTask: { input: NewTask; output: TaskPlan };
   createTask: { input: NewTask; output: TaskId };
   taskWork: { input: Nothing; output: Array<TaskWork> };

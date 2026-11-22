@@ -215,7 +215,8 @@ async fn scrub(conn: &mut SqliteConnection) -> Result<()> {
         UPDATE model_config
         SET api_key = CASE WHEN provider = 'custom' AND api_key = '' THEN '' END;
         UPDATE account SET token = NULL, backup_key = NULL, library_checked_at = NULL,
-          library_failed_at = NULL, library_error = NULL;
+          library_failed_at = NULL, library_error = NULL, cloud_send_failed_at = NULL,
+          cloud_send_error = NULL;
         UPDATE profile SET cloud_backup = 0, last_backup_at = NULL, cloud_backup_device = NULL,
           cloud_backup_commit = NULL, cloud_backup_replace = NULL, cloud_backup_failed_at = NULL,
           cloud_backup_error = NULL;

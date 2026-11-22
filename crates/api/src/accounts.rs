@@ -190,3 +190,34 @@ pub(crate) async fn same_login(
         Err(account::Error::Invalid("登录的账号已变更，请重试"))
     }
 }
+
+/// Runs `step` of a background synchronization until the database takes it: meanwhile the
+/// background page shows why it cannot be saved (docs/design.md#桌面端). Called for each write of
+/// what the server answered, which is then not asked for again. Its other errors are returned.
+pub(crate) async fn until_saved<T, F>(
+    writes: &db::Writes,
+    what: &str,
+    mut step: impl FnMut() -> F,
+) -> Result<T, account::Error>
+where
+    F: Future<Output = Result<T, account::Error>>,
+{
+    writes
+        .retry(what, || {
+            let step = step();
+            async move {
+                match step.await {
+                    Err(account::Error::Database(error)) => Err(error),
+                    result => Ok(result),
+                }
+            }
+        })
+        .await
+}
+
+/// Since when a synchronization with the official server has been failing, and the latest reason.
+#[derive(Debug, serde::Serialize, TS)]
+pub struct SyncFailure {
+    pub since: i64,
+    pub message: String,
+}

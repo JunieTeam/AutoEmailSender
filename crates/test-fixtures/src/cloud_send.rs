@@ -32,6 +32,9 @@ pub struct State {
     pub fail_after_keeping: bool,
     /// Acknowledgements fail.
     pub fail_ack: bool,
+    /// How many times mailboxes were uploaded, and results asked for.
+    pub mailbox_uploads: u32,
+    pub results_asked: u32,
 }
 
 impl Default for State {
@@ -46,6 +49,8 @@ impl Default for State {
             ids: BTreeMap::new(),
             fail_after_keeping: false,
             fail_ack: false,
+            mailbox_uploads: 0,
+            results_asked: 0,
         }
     }
 }
@@ -137,6 +142,7 @@ fn respond(state: &mut State, method: &str, path: &str, body: Vec<u8>) -> Reply 
         })
         .unwrap()),
         ("PUT", MAILBOXES, _) => {
+            state.mailbox_uploads += 1;
             if !state.plus() {
                 return error(403, "plus_required");
             }
@@ -208,6 +214,7 @@ fn respond(state: &mut State, method: &str, path: &str, body: Vec<u8>) -> Reply 
             ok(serde_json::to_value(answer).unwrap())
         }
         ("POST", RESULTS, _) => {
+            state.results_asked += 1;
             let ids: Ids = serde_json::from_slice(&body).unwrap();
             let results = ids
                 .ids

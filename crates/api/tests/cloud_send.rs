@@ -659,3 +659,194 @@ async fn its_copy_in_the_sent_folder_shows_the_server_sent_it(db: SqlitePool) {
     setup.sync().await;
     assert!(setup.server().emails.is_empty());
 }
+
+/// Makes the write `trigger` names fail, as a full disk would.
+async fn block(db: &SqlitePool, trigger: &'static str) {
+    sqlx::raw_sql(trigger).execute(db).await.unwrap();
+}
+
+async fn unblock(db: &SqlitePool) {
+    sqlx::query("DROP TRIGGER blocked")
+        .execute(db)
+        .await
+        .unwrap();
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_result_waits_to_be_written_down_without_asking_the_server_again(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    let id = setup.scheduled("王伟", NOW + DAY).await;
+    setup.hand_off().await;
+    let cloud_id = setup.cloud_id(id).await;
+    setup
+        .server()
+        .finish(&cloud_id, Outcome::Sent { at: NOW + DAY });
+    block(
+        &setup.ctx.db,
+        "CREATE TRIGGER blocked BEFORE UPDATE OF state ON email WHEN NEW.state = 'sent'
+        BEGIN SELECT RAISE(FAIL, 'storage unavailable'); END",
+    )
+    .await;
+    let mut changed = false;
+    test_fixtures::db::waits_for_storage(
+        &setup.ctx.writes,
+        cloud_send::sync(&setup.ctx, NOW, &mut changed),
+        unblock(&setup.ctx.db),
+    )
+    .await
+    .unwrap();
+    assert!(changed);
+    assert_eq!(setup.email(id).await, ("sent".into(), None, true));
+    assert_eq!(setup.server().results_asked, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_read_after_the_results_waits_without_asking_the_server_again(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    setup.scheduled("王伟", NOW + DAY).await;
+    setup.hand_off().await;
+    // Only what is left to acknowledge cannot be read; the email still waits, so nothing is.
+    sqlx::query("ALTER TABLE cloud_ack RENAME TO cloud_ack_away")
+        .execute(&setup.ctx.db)
+        .await
+        .unwrap();
+    let mut changed = false;
+    test_fixtures::db::waits_for_storage(
+        &setup.ctx.writes,
+        cloud_send::sync(&setup.ctx, NOW, &mut changed),
+        async {
+            assert_eq!(setup.server().results_asked, 1);
+            sqlx::query("ALTER TABLE cloud_ack_away RENAME TO cloud_ack")
+                .execute(&setup.ctx.db)
+                .await
+                .unwrap();
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(setup.server().results_asked, 1);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_edited_mailbox_waits_to_be_written_down_without_another_server_login(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    setup.scheduled("王伟", NOW + DAY).await;
+    setup.hand_off().await;
+    let uploads = setup.server().mailbox_uploads;
+    sqlx::query("UPDATE mailbox SET secret = 'new-secret', cloud_stale = 1 WHERE id = 1")
+        .execute(&setup.ctx.db)
+        .await
+        .unwrap();
+    block(
+        &setup.ctx.db,
+        "CREATE TRIGGER blocked BEFORE UPDATE OF cloud_stale ON mailbox WHEN NEW.cloud_stale = 0
+        BEGIN SELECT RAISE(FAIL, 'storage unavailable'); END",
+    )
+    .await;
+    let mut changed = false;
+    test_fixtures::db::waits_for_storage(
+        &setup.ctx.writes,
+        cloud_send::sync(&setup.ctx, NOW, &mut changed),
+        unblock(&setup.ctx.db),
+    )
+    .await
+    .unwrap();
+    // Each upload has the server log in to the mailbox.
+    assert_eq!(setup.server().mailbox_uploads, uploads + 1);
+    assert_eq!(setup.server().mailboxes[QQ].upload.secret, "new-secret");
+    let stale: bool = sqlx::query_scalar("SELECT cloud_stale FROM mailbox WHERE id = 1")
+        .fetch_one(&setup.ctx.db)
+        .await
+        .unwrap();
+    assert!(!stale);
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_synchronization_the_database_stops_shows_why_and_runs_again(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    let id = setup.scheduled("王伟", NOW + DAY).await;
+    setup.hand_off().await;
+    let cloud_id = setup.cloud_id(id).await;
+    setup
+        .server()
+        .finish(&cloud_id, Outcome::Sent { at: NOW + DAY });
+    let Setup {
+        _dir,
+        ctx,
+        server: _server,
+    } = setup;
+    let ctx = std::sync::Arc::new(ctx);
+    // Not even the login can be read.
+    sqlx::query("ALTER TABLE account RENAME TO account_away")
+        .execute(&ctx.db)
+        .await
+        .unwrap();
+    let running = tokio::spawn(cloud_send::run(ctx.clone(), || {}));
+    // Its first synchronization starts at once, on a timer paused time would hold back.
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        while ctx.writes.failure().is_none() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the synchronization did not wait for the database");
+    let state = test_fixtures::db::waits_for_storage(
+        &ctx.writes,
+        async {
+            loop {
+                let state: String = sqlx::query_scalar("SELECT state FROM email WHERE id = ?")
+                    .bind(id)
+                    .fetch_one(&ctx.db)
+                    .await
+                    .unwrap();
+                // Once the synchronization that wrote it down is over.
+                if state == "sent" && ctx.writes.failure().is_none() {
+                    return state;
+                }
+                tokio::task::yield_now().await;
+            }
+        },
+        async {
+            sqlx::query("ALTER TABLE account_away RENAME TO account")
+                .execute(&ctx.db)
+                .await
+                .unwrap();
+        },
+    )
+    .await;
+    running.abort();
+    assert_eq!(state, "sent");
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_failing_synchronization_shows_since_when_until_one_succeeds(db: SqlitePool) {
+    let setup = Setup::new(db).await;
+    let id = setup.scheduled("王伟", NOW + DAY).await;
+    setup.hand_off().await;
+    let cloud_id = setup.cloud_id(id).await;
+    {
+        let mut server = setup.server();
+        server.finish(&cloud_id, Outcome::Sent { at: NOW + DAY });
+        server.fail_ack = true;
+    }
+    let failure = async || {
+        api::call(&setup.ctx, "cloudSendFailure", json!({}))
+            .await
+            .unwrap()
+    };
+    let mut changed = false;
+    for now in [NOW, NOW + DAY] {
+        assert!(
+            cloud_send::sync(&setup.ctx, now, &mut changed)
+                .await
+                .is_err()
+        );
+    }
+    assert_eq!(
+        failure().await,
+        json!({ "since": NOW, "message": "服务器暂时无法处理，请稍后重试" })
+    );
+    setup.server().fail_ack = false;
+    setup.sync().await;
+    assert_eq!(failure().await, json!(null));
+}
