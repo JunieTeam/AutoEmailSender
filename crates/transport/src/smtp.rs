@@ -22,7 +22,7 @@ use failure::Failure;
 use net::Net;
 
 use crate::connect;
-use crate::pause::{Effect, PauseKind, classify};
+use crate::pause::throttled;
 use crate::refusal::Refusal;
 use crate::{MailError, Security, Sender, Server};
 
@@ -213,8 +213,7 @@ impl SendError {
     pub fn failure(&self) -> Failure {
         match self {
             SendError::NotSent(e @ MailError::Refused { reply, .. })
-                if Refusal::of(reply).is_none()
-                    && !matches!(classify(e), Effect::Pause(PauseKind::Throttled(_))) =>
+                if Refusal::of(reply).is_none() && throttled(e).is_none() =>
             {
                 Failure::unrecognized(
                     "服务器拒收了这封邮件。请检查导师的邮箱地址是否正确。",
@@ -327,23 +326,31 @@ impl Smtp {
 
 async fn open(net: &Net, sender: &Sender) -> Result<AsyncSmtpConnection, MailError> {
     let server = &sender.smtp;
+    let turned_away = |e| match refused(e) {
+        MailError::Refused { reply, smtp_code } => MailError::Handshake {
+            host: server.host.to_string(),
+            reply,
+            smtp_code,
+        },
+        e => e,
+    };
     let tcp = connect::connect(net, &server.host, server.port).await?;
     let mut conn = match server.security {
         Security::Tls => {
             let tls = connect::encrypt(net, &server.host, tcp).await?;
             AsyncSmtpConnection::connect_with_transport(Box::new(Tls(tls)), &HELLO)
                 .await
-                .map_err(refused)?
+                .map_err(turned_away)?
         }
         Security::Starttls => {
             let mut conn = AsyncSmtpConnection::connect_with_transport(Box::new(tcp), &HELLO)
                 .await
-                .map_err(refused)?;
+                .map_err(turned_away)?;
             conn.starttls(connect::lettre_tls(net, &server.host)?, &HELLO)
                 .await
                 .map_err(|e| {
                     if e.status().is_some() || e.is_response() {
-                        refused(e)
+                        turned_away(e)
                     } else {
                         // The upgrade's own, such as a server without STARTTLS.
                         MailError::Tls {

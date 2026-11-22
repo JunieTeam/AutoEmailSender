@@ -4,21 +4,25 @@ use chrono::TimeZone;
 use failure::Failure;
 use serde::{Deserialize, Serialize};
 
-use crate::MailError;
+use crate::{MailError, SendError};
 
 const MINUTE: i64 = 60_000;
 
-/// What a failure means for sending: pause the mailbox, or fail only this email.
+/// What a failure handing an email over means: pause the mailbox, fail only this email, or count it
+/// as maybe sent. A failure logging in names no email, so its meaning is a `PauseKind` alone
+/// (`of_login`).
 #[derive(Debug, PartialEq, Eq)]
 pub enum Effect {
     Pause(PauseKind),
     Email,
+    MaybeSent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PauseKind {
     Throttled(Throttle),
-    LoginRejected,
+    /// The server turned down the login, or the connection before it.
+    Refused,
     Connection,
 }
 
@@ -37,21 +41,15 @@ pub struct Pause {
     pub reason: Failure,
 }
 
-/// Only for failures known to have happened before handover, or an explicit server rejection.
-pub fn classify(error: &MailError) -> Effect {
+/// How long the mailbox pauses after `login` failed; whatever the server said, the email that was
+/// to go is not to blame.
+pub fn of_login(error: &MailError) -> PauseKind {
     match error {
-        MailError::Login { reply, smtp_code } | MailError::Refused { reply, smtp_code } => {
-            if let Some(throttle) =
-                throttle(reply).or_else(|| (*smtp_code == Some(421)).then_some(Throttle::Hour))
-            {
-                Effect::Pause(PauseKind::Throttled(throttle))
-            } else if matches!(error, MailError::Login { .. }) {
-                Effect::Pause(PauseKind::LoginRejected)
-            } else {
-                Effect::Email
-            }
+        MailError::Handshake { .. } | MailError::Login { .. } | MailError::Refused { .. } => {
+            throttled(error).map_or(PauseKind::Refused, PauseKind::Throttled)
         }
-        MailError::Recipient(_) => Effect::Email,
+        // Only putting an email together finds an address unusable, which logging in does not.
+        MailError::Recipient(_) => PauseKind::Refused,
         MailError::Resolve { .. }
         | MailError::Connect { .. }
         | MailError::ProxyDown { .. }
@@ -59,7 +57,34 @@ pub fn classify(error: &MailError) -> Effect {
         | MailError::TimedOut { .. }
         | MailError::Tls { .. }
         | MailError::Broken(_)
-        | MailError::Unreadable => Effect::Pause(PauseKind::Connection),
+        | MailError::Unreadable => PauseKind::Connection,
+    }
+}
+
+/// What a failure of `Smtp::send` means: once the email is named, a refusal is this email's unless
+/// it says the mailbox is throttled.
+pub fn of_sending(error: &SendError) -> Effect {
+    match error {
+        SendError::NotSent(e @ MailError::Refused { .. }) => {
+            throttled(e).map_or(Effect::Email, |t| Effect::Pause(PauseKind::Throttled(t)))
+        }
+        SendError::NotSent(MailError::Recipient(_)) => Effect::Email,
+        SendError::NotSent(e) => Effect::Pause(of_login(e)),
+        SendError::Unknown(_) => Effect::MaybeSent,
+    }
+}
+
+/// Whether a refusal says the mailbox is throttled: in its words, or by 421.
+pub(crate) fn throttled(error: &MailError) -> Option<Throttle> {
+    match error {
+        MailError::Handshake {
+            reply, smtp_code, ..
+        }
+        | MailError::Login { reply, smtp_code }
+        | MailError::Refused { reply, smtp_code } => {
+            throttle(reply).or_else(|| (*smtp_code == Some(421)).then_some(Throttle::Hour))
+        }
+        _ => None,
     }
 }
 
@@ -121,7 +146,7 @@ impl PauseKind {
     pub fn until<T: TimeZone>(self, now: i64, zone: &T) -> i64 {
         match self {
             Self::Throttled(Throttle::Daily) => next_day_start(now, zone),
-            Self::Throttled(Throttle::Hour) | Self::LoginRejected => now + 60 * MINUTE,
+            Self::Throttled(Throttle::Hour) | Self::Refused => now + 60 * MINUTE,
             Self::Connection => now + MINUTE,
         }
     }
@@ -222,36 +247,55 @@ mod tests {
         ] {
             assert_eq!(throttle(reply), expected, "{reply}");
             let smtp_code = reply.split_whitespace().next().unwrap().parse().unwrap();
-            let expected = expected
-                .or_else(|| (smtp_code == 421).then_some(Throttle::Hour))
-                .map_or(Effect::Email, |t| Effect::Pause(PauseKind::Throttled(t)));
+            let throttled = expected.or_else(|| (smtp_code == 421).then_some(Throttle::Hour));
+            let refused = MailError::Refused {
+                reply: reply.into(),
+                smtp_code: Some(smtp_code),
+            };
             assert_eq!(
-                classify(&MailError::Refused {
-                    reply: reply.into(),
-                    smtp_code: Some(smtp_code)
-                }),
-                expected,
+                of_sending(&SendError::NotSent(refused)),
+                throttled.map_or(Effect::Email, |t| Effect::Pause(PauseKind::Throttled(t))),
+                "{reply}"
+            );
+            // The same words before the email was named are the mailbox's.
+            let greeting = MailError::Handshake {
+                host: "smtp.example.edu.cn".into(),
+                reply: reply.into(),
+                smtp_code: Some(smtp_code),
+            };
+            assert_eq!(
+                of_login(&greeting),
+                throttled.map_or(PauseKind::Refused, PauseKind::Throttled),
                 "{reply}"
             );
         }
         assert_eq!(
-            classify(&MailError::Login {
+            of_login(&MailError::Login {
                 reply: "535 invalid credentials".into(),
                 smtp_code: Some(535)
             }),
-            Effect::Pause(PauseKind::LoginRejected)
+            PauseKind::Refused
         );
         assert_eq!(
-            classify(&MailError::Login {
+            of_login(&MailError::Login {
                 reply: "535 too many login attempts".into(),
                 smtp_code: Some(535)
             }),
-            Effect::Pause(PauseKind::Throttled(Throttle::Hour))
+            PauseKind::Throttled(Throttle::Hour)
         );
-        assert_eq!(classify(&MailError::Recipient("bad".into())), Effect::Email);
         assert_eq!(
-            classify(&MailError::Broken("connection reset".into())),
+            of_sending(&SendError::NotSent(MailError::Recipient("bad".into()))),
+            Effect::Email
+        );
+        assert_eq!(
+            of_sending(&SendError::NotSent(MailError::Broken(
+                "connection reset".into()
+            ))),
             Effect::Pause(PauseKind::Connection)
+        );
+        assert_eq!(
+            of_sending(&SendError::Unknown(MailError::Broken("cut off".into()))),
+            Effect::MaybeSent
         );
     }
 

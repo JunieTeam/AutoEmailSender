@@ -13,7 +13,7 @@ use profile::Rotation;
 use sqlx::{Connection, SqlitePool, types::Json};
 use tokio::sync::Notify;
 use transport::pause::{self, Effect, Pause};
-use transport::{Letter, SendError, SendStatus};
+use transport::{Letter, SendStatus};
 
 const MINUTE: i64 = 60_000;
 const DAY: i64 = 24 * 60 * MINUTE;
@@ -465,38 +465,21 @@ async fn send<T: chrono::TimeZone>(
         Ok(smtp) => smtp,
         Err(err) => {
             // What the reply was taken as: its codes alone may not tell.
-            let failure = pause::classify(&err);
+            let kind = pause::of_login(&err);
             tracing::warn!(
-                ?failure,
+                ?kind,
                 diagnostic = err.diagnostic(),
                 "email {id} not sent from mailbox {mailbox_id}: {err}"
             );
-            match failure {
-                Effect::Pause(kind) => {
-                    let pause = Pause {
-                        until: kind.until(now(), zone),
-                        reason: err.failure(),
-                    };
-                    writes
-                        .retry("pause mailbox", || async {
-                            apply_for_account(
-                                &mut *db.acquire().await?,
-                                mailbox_id,
-                                &account,
-                                &pause,
-                            )
-                            .await
-                        })
-                        .await;
-                }
-                // Not held while the database is waited for: the email may change meanwhile, as
-                // when rescheduled. The step runs again and decides anew; the server refused
-                // before any password went.
-                Effect::Email => {
-                    return email::failed(&mut *db.acquire().await?, id, &err.failure(), now())
-                        .await;
-                }
-            }
+            let pause = Pause {
+                until: kind.until(now(), zone),
+                reason: err.failure(),
+            };
+            writes
+                .retry("pause mailbox", || async {
+                    apply_for_account(&mut *db.acquire().await?, mailbox_id, &account, &pause).await
+                })
+                .await;
             return Ok(());
         }
     };
@@ -538,30 +521,22 @@ async fn send<T: chrono::TimeZone>(
             tracing::info!("email {id} sent from mailbox {mailbox_id}");
             Outcome::Sent
         }
-        Err(err) => match err {
-            SendError::NotSent(ref error) => {
-                let failure = pause::classify(error);
-                tracing::warn!(
-                    ?failure,
-                    diagnostic = err.diagnostic(),
-                    "email {id} from mailbox {mailbox_id}: {err}"
-                );
-                match failure {
-                    Effect::Pause(kind) => Outcome::Paused(Pause {
-                        until: kind.until(now(), zone),
-                        reason: err.failure(),
-                    }),
-                    Effect::Email => Outcome::Failed(err.failure()),
-                }
+        Err(err) => {
+            let effect = pause::of_sending(&err);
+            tracing::warn!(
+                ?effect,
+                diagnostic = err.diagnostic(),
+                "email {id} from mailbox {mailbox_id}: {err}"
+            );
+            match effect {
+                Effect::Pause(kind) => Outcome::Paused(Pause {
+                    until: kind.until(now(), zone),
+                    reason: err.failure(),
+                }),
+                Effect::Email => Outcome::Failed(err.failure()),
+                Effect::MaybeSent => Outcome::MaybeSent(err.failure()),
             }
-            SendError::Unknown(_) => {
-                tracing::warn!(
-                    diagnostic = err.diagnostic(),
-                    "email {id} from mailbox {mailbox_id}: {err}"
-                );
-                Outcome::MaybeSent(err.failure())
-            }
-        },
+        }
     };
     // Only this run knows how SMTP answered, so it keeps trying until that is written.
     let answered = now();

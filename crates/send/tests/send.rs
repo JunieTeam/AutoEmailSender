@@ -3338,20 +3338,32 @@ async fn a_claim_that_cannot_be_saved_waits_logged_in_until_storage_works(db: Sq
     ));
 }
 
-#[sqlx::test(migrator = "db::MIGRATOR")]
-async fn a_refusal_saved_late_does_not_fail_an_email_rescheduled_meanwhile(db: SqlitePool) {
+/// Keeps the server from answering until the test has made its change.
+#[derive(Default)]
+struct Hold {
+    heard: Notify,
+    answer: Notify,
+}
+
+/// A mailbox at `address` on a server that turns every connection down at our greeting, before any
+/// password or email; after `hold`, if any.
+async fn refusing_mailbox(db: &SqlitePool, address: &str, hold: Option<Arc<Hold>>) -> i64 {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    // Turns down every connection at its greeting, before any password.
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(async move {
         loop {
             let (stream, _) = listener.accept().await.unwrap();
+            let hold = hold.clone();
             tokio::spawn(async move {
                 let mut stream = BufReader::new(stream);
                 stream.get_mut().write_all(b"220 ready\r\n").await.unwrap();
                 let mut line = String::new();
                 stream.read_line(&mut line).await.unwrap();
+                if let Some(hold) = hold {
+                    hold.heard.notify_one();
+                    hold.answer.notified().await;
+                }
                 let _ = stream.get_mut().write_all(b"550 5.7.1 refused\r\n").await;
             });
         }
@@ -3362,7 +3374,7 @@ async fn a_refusal_saved_late_does_not_fail_an_email_rescheduled_meanwhile(db: S
         security: Security::Starttls,
     };
     let form = MailboxForm {
-        address: ADDRESS.into(),
+        address: address.into(),
         sender_name: "林晓".into(),
         provider: mailbox::providers::CUSTOM.into(),
         smtp: server(port),
@@ -3370,55 +3382,124 @@ async fn a_refusal_saved_late_does_not_fail_an_email_rescheduled_meanwhile(db: S
         daily_limit: 2,
         min_interval_s: 60,
     };
-    mailbox::create(&db, &form.check().unwrap(), SECRET, 0)
+    mailbox::create(db, &form.check().unwrap(), SECRET, 0)
         .await
-        .unwrap();
+        .unwrap()
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn a_refusal_before_login_pauses_the_mailbox_and_the_email_waits(db: SqlitePool) {
+    let id = refusing_mailbox(&db, ADDRESS, None).await;
     let net = Net::new(vec![]).unwrap();
     let writes = db::Writes::default();
     let mentor = approve(&db, "wang@example.edu.cn", &[], T).await;
-    let id = first_email(&db, mentor).await.id;
-    sqlx::query(
-        r#"CREATE TRIGGER block_failure BEFORE UPDATE OF state ON email
-        WHEN NEW.state = 'failed'
-        BEGIN
-            SELECT RAISE(FAIL, 'storage unavailable');
-        END"#,
-    )
-    .execute(&db)
-    .await
-    .unwrap();
-    assert!(
-        send::step(&db, &writes, &net, nowhere(), || T)
-            .await
-            .is_err()
-    );
-    // In the same millisecond as the approval, so that no timestamp tells the change apart.
-    assert!(
-        email::schedule::reschedule(&db, id, T + DAY, T)
-            .await
-            .unwrap()
-    );
-    sqlx::query("DROP TRIGGER block_failure")
-        .execute(&db)
-        .await
-        .unwrap();
-    send::step(&db, &writes, &net, nowhere(), || T)
-        .await
-        .unwrap();
-    let email = first_email(&db, mentor).await;
-    assert_eq!(email.delivery, Delivery::Approved);
-    assert_eq!(email.latest_at, Some(T + DAY + 3_600_000));
-    // Once due, the refusal is the email's.
     assert_eq!(
-        send::step(&db, &writes, &net, nowhere(), || T + DAY)
+        send::step(&db, &writes, &net, nowhere(), || T)
             .await
             .unwrap(),
         Next::Now
     );
+    assert_eq!(first_email(&db, mentor).await.delivery, Delivery::Approved);
+    let mailbox = mailbox::list(&db, T).await.unwrap().remove(0);
+    assert_eq!(mailbox.id, id);
+    let pause = mailbox.pause.unwrap();
+    assert_eq!(pause.until, T + 60 * MINUTE);
+    assert!(
+        pause
+            .reason
+            .message
+            .starts_with("localhost 在登录前拒绝了连接")
+            && pause.reason.details.is_some(),
+        "{pause:?}"
+    );
+    // Not tried again until the pause ends.
+    assert_eq!(
+        send::step(&db, &writes, &net, nowhere(), || T + MINUTE)
+            .await
+            .unwrap(),
+        Next::At(T + 60 * MINUTE)
+    );
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn the_same_refusal_once_the_email_is_named_fails_only_it(db: SqlitePool) {
+    let writes = db::Writes::default();
+    let (net, inbox) = mailbox(&db, SECRET).await;
+    let mentor = approve(&db, "refused@example.edu.cn", &[], T).await;
+    send::step(&db, &writes, &net, nowhere(), || T)
+        .await
+        .unwrap();
+    let delivery = first_email(&db, mentor).await.delivery;
+    assert!(
+        matches!(delivery, Delivery::Failed { ref error } if error.message.starts_with("邮件被收件方的服务器拒收")),
+        "{delivery:?}"
+    );
+    assert!(mailbox::list(&db, T).await.unwrap()[0].pause.is_none());
+    assert!(inbox.lock().unwrap().is_empty());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_email_rescheduled_during_a_refused_handshake_keeps_its_new_time(db: SqlitePool) {
+    let hold = Arc::new(Hold::default());
+    refusing_mailbox(&db, ADDRESS, Some(hold.clone())).await;
+    let net = Net::new(vec![]).unwrap();
+    let writes = db::Writes::default();
+    let mentor = approve(&db, "wang@example.edu.cn", &[], T).await;
+    let id = first_email(&db, mentor).await.id;
+    let (next, ()) = tokio::join!(send::step(&db, &writes, &net, nowhere(), || T), async {
+        hold.heard.notified().await;
+        assert!(
+            email::schedule::reschedule(&db, id, T + DAY, T)
+                .await
+                .unwrap()
+        );
+        hold.answer.notify_one();
+    });
+    assert_eq!(next.unwrap(), Next::Now);
+    let email = first_email(&db, mentor).await;
+    assert_eq!(email.delivery, Delivery::Approved);
+    assert_eq!(email.latest_at, Some(T + DAY + 3_600_000));
+    assert!(mailbox::list(&db, T).await.unwrap()[0].pause.is_some());
+}
+
+#[sqlx::test(migrator = "db::MIGRATOR")]
+async fn an_email_moved_to_another_mailbox_during_a_refused_handshake_goes_from_it(db: SqlitePool) {
+    let hold = Arc::new(Hold::default());
+    let refusing = refusing_mailbox(&db, "lin@refusing.example.cn", Some(hold.clone())).await;
+    let (net, inbox) = mailbox(&db, SECRET).await;
+    let working = mailbox::list(&db, T)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|m| m.id != refusing)
+        .unwrap()
+        .id;
+    let writes = db::Writes::default();
+    let mentor = approve(&db, "wang@example.edu.cn", &[], T).await;
+    assert!(
+        mentor::set_mailbox(&db, mentor, Some(refusing))
+            .await
+            .unwrap()
+    );
+    let (next, ()) = tokio::join!(send::step(&db, &writes, &net, nowhere(), || T), async {
+        hold.heard.notified().await;
+        assert!(
+            mentor::set_mailbox(&db, mentor, Some(working))
+                .await
+                .unwrap()
+        );
+        hold.answer.notify_one();
+    });
+    assert_eq!(next.unwrap(), Next::Now);
+    assert_eq!(first_email(&db, mentor).await.delivery, Delivery::Approved);
+    send::step(&db, &writes, &net, nowhere(), || T)
+        .await
+        .unwrap();
     assert!(matches!(
         first_email(&db, mentor).await.delivery,
-        Delivery::Failed { .. }
+        Delivery::Sent { .. }
     ));
+    assert_eq!(inbox.lock().unwrap().len(), 1);
 }
 
 #[sqlx::test(migrator = "db::MIGRATOR")]

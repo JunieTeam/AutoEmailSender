@@ -2,7 +2,7 @@ use std::io;
 
 use failure::Failure;
 
-use crate::pause::{Effect, PauseKind, classify};
+use crate::pause::throttled;
 use crate::refusal::Refusal;
 
 /// Why talking to a mail server failed. Displays in English for the log, without the server's
@@ -42,6 +42,13 @@ pub enum MailError {
         host: String,
         source: io::Error,
     },
+    /// The SMTP server turned down the connection before the login: its greeting, ours, or the
+    /// upgrade to encryption; with its reply.
+    Handshake {
+        host: String,
+        reply: String,
+        smtp_code: Option<u16>,
+    },
     /// The server turned down the login, with its reply.
     Login {
         reply: String,
@@ -79,6 +86,14 @@ impl std::fmt::Display for MailError {
             } => write!(f, "proxy {proxy} to {host}:{port}: {reason}"),
             MailError::TimedOut { host, port } => write!(f, "{host}:{port} timed out"),
             MailError::Tls { host, source } => write!(f, "tls with {host}: {source}"),
+            MailError::Handshake {
+                host,
+                reply,
+                smtp_code,
+            } => {
+                write!(f, "{host} refused before login")?;
+                codes(f, reply, *smtp_code)
+            }
             MailError::Login { reply, smtp_code } => {
                 write!(f, "login refused")?;
                 codes(f, reply, *smtp_code)
@@ -127,6 +142,15 @@ impl MailError {
     pub fn without(self, secret: &str) -> MailError {
         let hide = |words: String| words.replace(secret, "***");
         match self {
+            MailError::Handshake {
+                host,
+                reply,
+                smtp_code,
+            } => MailError::Handshake {
+                host,
+                reply: hide(reply),
+                smtp_code,
+            },
             MailError::Login { reply, smtp_code } => MailError::Login {
                 reply: hide(reply),
                 smtp_code,
@@ -141,7 +165,7 @@ impl MailError {
 
     /// What happened and what to do about it; the server's words only when no case fits them.
     pub fn failure(&self) -> Failure {
-        if let Effect::Pause(PauseKind::Throttled(throttle)) = classify(self) {
+        if let Some(throttle) = throttled(self) {
             return Failure::new(throttle.message());
         }
         match self {
@@ -170,6 +194,13 @@ impl MailError {
                 "与 {host} 建立加密连接失败。请检查加密方式和端口是否对应：SSL/TLS \
                 一般用 465、993 端口，STARTTLS 一般用 587、143 端口。"
             )),
+            MailError::Handshake { host, reply, .. } => Failure::unrecognized(
+                format!(
+                    "{host} 在登录前拒绝了连接。请检查服务器地址和端口是否正确；\
+                    服务商拦截了当前网络时，更换网络或代理节点后再试。"
+                ),
+                reply,
+            ),
             MailError::Login { reply, .. } => login(reply),
             MailError::Refused { reply, .. } => match Refusal::of(reply) {
                 Some(refusal) => Failure::new(refusal.message()),
@@ -186,9 +217,9 @@ impl MailError {
     /// The server's words, for the log.
     pub fn diagnostic(&self) -> Option<String> {
         match self {
-            MailError::Login { reply, .. } | MailError::Refused { reply, .. } => {
-                Some(failure::diagnostic(reply))
-            }
+            MailError::Handshake { reply, .. }
+            | MailError::Login { reply, .. }
+            | MailError::Refused { reply, .. } => Some(failure::diagnostic(reply)),
             MailError::ProxyFailed { reason, .. } => Some(failure::diagnostic(reason)),
             MailError::Broken(e) => Some(failure::diagnostic(e)),
             _ => None,
@@ -275,5 +306,13 @@ mod tests {
         let failure = refused.failure();
         assert!(!format!("{failure:?}").contains("abcd-1234"), "{failure:?}");
         assert!(failure.details.is_some(), "{failure:?}");
+        let greeting = MailError::Handshake {
+            host: "smtp.example.edu.cn".into(),
+            reply: "permanent error (554): 5.7.1 abcd-1234 not welcome".into(),
+            smtp_code: Some(554),
+        }
+        .without("abcd-1234");
+        assert!(!greeting.diagnostic().unwrap().contains("abcd-1234"));
+        assert!(!format!("{:?}", greeting.failure()).contains("abcd-1234"));
     }
 }
